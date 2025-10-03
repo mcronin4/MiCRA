@@ -1,0 +1,1 @@
+# This is where we will use Whisper to transcribe the audio

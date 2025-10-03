@@ -1,0 +1,2 @@
+# This will be added as a later step - we will use this to detect who is speaking in the audio
+# We may have the ability to let users specify the number of speakers in the audio, or we could add a step to predict the number of speakers

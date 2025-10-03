@@ -1,0 +1,1 @@
+# Will use vision-language embeddings to match images to text
