@@ -4,9 +4,10 @@ import { useState } from 'react';
 
 export default function Home() {
   const [text, setText] = useState('');
+  const [platform, setPlatform] = useState('linkedin');
 
   const handleSend = () => {
-    console.log('Sending text:', text);
+    console.log('Sending text:', text, 'for platform:', platform);
     // Add your send logic here
   };
 
@@ -26,6 +27,31 @@ export default function Home() {
           <label htmlFor="text-input" className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
             Enter your text below
           </label>
+          <div className="mt-4 mb-4">
+            <span className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">Repurpose for:</span>
+            <div className="flex items-center space-x-4">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  value="linkedin"
+                  checked={platform === 'linkedin'}
+                  onChange={(e) => setPlatform(e.target.value)}
+                  className="form-radio h-5 w-5 text-indigo-600"
+                />
+                <span className="ml-2 text-gray-700 dark:text-gray-300">LinkedIn</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  value="email"
+                  checked={platform === 'email'}
+                  onChange={(e) => setPlatform(e.target.value)}
+                  className="form-radio h-5 w-5 text-indigo-600"
+                />
+                <span className="ml-2 text-gray-700 dark:text-gray-300">Email</span>
+              </label>
+            </div>
+          </div>
           <textarea
             id="text-input"
             className="mt-1 block w-full h-64 px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-base text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
