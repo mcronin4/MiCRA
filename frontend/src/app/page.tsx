@@ -28,7 +28,8 @@ export default function Home() {
         },
         body: JSON.stringify({
           job_id: jobId, //job ID is the unique ID for the job
-          text: text
+          text: text,
+          platform: platform
         }),
       });
 

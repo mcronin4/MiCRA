@@ -1,5 +1,5 @@
 # This will be used to generate LinkedIn posts based on the summarized text
-from llm.gemini import query_gemini
+from ...llm.gemini import query_gemini
 
 
 def generate_linkedin_post(summary: str):
