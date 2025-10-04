@@ -8,9 +8,43 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  const handleSend = () => {
-    console.log('Sending text:', text);
-    // Add your send logic here
+  const handleSend = async () => { //async so it's always running
+    if (!text.trim()) {
+      setMessage('Please enter some text before sending.'); //if we can't trim text, there was nothing sent
+      return;
+    }
+
+    setIsLoading(true); //sets the state to loading
+    setMessage(''); //sets the state to empty string
+
+    try {
+      // Generate a unique job ID
+      const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`; //generates a unique job ID with date and random number
+      
+      const response = await fetch('/backend/v1/trigger_job/', { //fetch makes HTTP request to the backend, this variable stores the HTTP resonse, paused operation until complete
+        method: 'POST', //Method for sending data to server
+        headers: {
+          'Content-Type': 'application/json', //Content-Type header for JSON data
+        },
+        body: JSON.stringify({
+          job_id: jobId, //job ID is the unique ID for the job
+          text: text
+        }),
+      });
+
+      if (response.ok) { //if the response is ok, we can set the message and clear the text area
+        const data = await response.json(); //data is the response from the backend
+        setMessage(data.message); //set the message to the message from the backend
+        setText(''); // Clear the text area after successful send
+      } else {
+        const errorData = await response.json();
+        setMessage(`Error: ${errorData.detail || 'Failed to send text'}`); //error
+      }
+    } catch (error) {
+      setMessage(`Error: ${error instanceof Error ? error.message : 'Failed to connect to server'}`); //error message from the server
+    } finally {
+      setIsLoading(false); //done loading
+    }
   };
 
   return (
@@ -59,9 +93,10 @@ export default function Home() {
           <div className="mt-6 flex justify-end">
             <button
               onClick={handleSend}
-              className="py-2 px-6 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-300"
+              disabled={isLoading}
+              className="py-3 px-8 border border-transparent rounded-full shadow-sm text-lg font-semibold text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Send
+              {isLoading ? 'Sending...' : 'Repurpose'}
             </button>
           </div>
           
