@@ -1,14 +1,69 @@
+"use client";
+
+import { useState } from 'react';
+
 export default function Home() {
+  const [text, setText] = useState('');
+  const [platform, setPlatform] = useState('linkedin');
+
+  const handleSend = () => {
+    console.log('Sending text:', text, 'for platform:', platform);
+    // Add your send logic here
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-          Temporary Setup
-        </h1>
-        <p className="text-lg text-gray-600 dark:text-gray-400">
-          This is a placeholder page for the MiCRA project frontend.
-        </p>
-      </div>
+    <div className="min-h-screen w-full p-4 sm:p-6 lg:p-8">
+      <header className="w-full max-w-5xl mx-auto mb-12">
+        <h1 className="text-3xl font-bold text-white">MiCRA</h1>
+      </header>
+
+      <main className="flex flex-col items-center justify-center">
+        <div className="w-full max-w-2xl mx-auto text-center mb-10">
+          <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-3">
+            Multi-Modal Content Repurposing Agent
+          </h2>
+        </div>
+
+        <div className="w-full max-w-2xl mx-auto bg-white bg-opacity-20 backdrop-filter backdrop-blur-lg p-6 sm:p-8 rounded-2xl shadow-lg">
+          <div className="mb-6">
+            <span className="block text-lg font-medium text-gray-800 mb-4">Repurpose for:</span>
+            <div className="flex rounded-lg p-1 bg-white bg-opacity-20">
+              <button
+                onClick={() => setPlatform('linkedin')}
+                className={`w-full text-center py-2 rounded-md transition-colors duration-300 ${
+                  platform === 'linkedin' ? 'bg-blue-500 text-white' : 'text-gray-800 hover:bg-white hover:bg-opacity-50'
+                }`}
+              >
+                LinkedIn
+              </button>
+              <button
+                onClick={() => setPlatform('email')}
+                className={`w-full text-center py-2 rounded-md transition-colors duration-300 ${
+                  platform === 'email' ? 'bg-blue-500 text-white' : 'text-gray-800 hover:bg-white hover:bg-opacity-50'
+                }`}
+              >
+                Email
+              </button>
+            </div>
+          </div>
+          <textarea
+            id="text-input"
+            className="w-full h-64 px-4 py-3 bg-white bg-opacity-10 border-2 border-transparent rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-base text-gray-800 placeholder-gray-500 transition"
+            placeholder="Type or paste your text here..."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            required
+          />
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={handleSend}
+              className="py-3 px-8 border border-transparent rounded-full shadow-sm text-lg font-semibold text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transform hover:scale-105 transition-all duration-300"
+            >
+              Repurpose
+            </button>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
