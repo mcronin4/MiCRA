@@ -32,10 +32,10 @@ Your ‘command-line’ is accessible from any of these, depending on your OS an
   - macOS/Linux: _create_: `python -m venv .venv`, _activate_: `source .venv/bin/activate`
   - Windows: _create_: `python -m venv .venv`, _activate_: `.venv\Scripts\Activate.ps1`
 - Install existing dependencies with `pip install -r requirements.txt` (may have to use `pip3` if that doesn’t work)
-4. Set up an backend environment variables file
+5. Set up an backend environment variables file
 - Create a file in `/backend` called `.env`
 - In this file, add the line `GEMINI_API_KEY=your_api_key`
 - Generate an API key at https://aistudio.google.com/api-keys if you don’t have one
-5. Set up frontend dependencies
+6. Set up frontend dependencies
 - Change to the `/frontend` directory
 - Run `npm install` to install all the necessary dependencies
