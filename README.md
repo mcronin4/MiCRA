@@ -29,8 +29,8 @@ Your ‘command-line’ is accessible from any of these, depending on your OS an
 4. Setup backend environment
 - Run `cd backend`
 - Create and activate your virtual environment with
-- macOS/Linux: _create_: `python -m venv .venv`, _activate_: `source .venv/bin/activate`
-- Windows: _create_: `python -m venv .venv`, _activate_: `.venv\Scripts\Activate.ps1`
+  - macOS/Linux: _create_: `python -m venv .venv`, _activate_: `source .venv/bin/activate`
+  - Windows: _create_: `python -m venv .venv`, _activate_: `.venv\Scripts\Activate.ps1`
 - Install existing dependencies with `pip install -r requirements.txt` (may have to use `pip3` if that doesn’t work)
 4. Set up an backend environment variables file
 - Create a file in `/backend` called `.env`
