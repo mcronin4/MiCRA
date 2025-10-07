@@ -9,6 +9,7 @@ NOTE: If you haven’t done the “first-time setup” step, read and complete t
 1. Ensure you’ve activated your venv
 2. If you’ve pulled new changes recently, you may have to run: `pip install -r requirements.txt`
 3. From the `/backend/app` directory, run: `fastapi dev main.py`
+4. Alternatively, from the `/backend` directory, run: `python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 
 ## 2) Running the backend locally
 
@@ -30,6 +31,7 @@ Your ‘command-line’ is accessible from any of these, depending on your OS an
 - Run `cd backend`
 - Create and activate your virtual environment with
   - macOS/Linux: _create_: `python -m venv .venv`, _activate_: `source .venv/bin/activate`
+  - Git Bash on Windows: `source .venv/Scripts/activate`
   - Windows: _create_: `python -m venv .venv`, _activate_: `.venv\Scripts\Activate.ps1`
 - Install existing dependencies with `pip install -r requirements.txt` (may have to use `pip3` if that doesn’t work)
 5. Set up an backend environment variables file
