@@ -10,7 +10,7 @@ NOTE: If you haven’t done the “first-time setup” step, read and complete t
 2. If you’ve pulled new changes recently, you may have to run: `pip install -r requirements.txt`
 3. From the `/backend/app` directory, run: `fastapi dev main.py`
 
-## 2) Running the backend locally
+## 2) Running the frontend locally
 
 1. If you’ve pulled new changes recently, you may have to rerun `npm install`
 2. From the `/frontend` directory, run: `npm run dev`

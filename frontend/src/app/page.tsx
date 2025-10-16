@@ -94,11 +94,9 @@ export default function Home() {
 
       <main className="flex flex-col items-center justify-center">
         <div className="w-full max-w-2xl mx-auto text-center mb-16">
-          <div className="p-2">
-            <h2 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-black via-[#BA59A9] to-[#674FE3] mb-3 tracking-tight">
-              Multi-Modal Content Repurposing Agent
-            </h2>
-          </div>
+          <h2 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-black via-[#BA59A9] to-[#674FE3] mb-3 tracking-tight pb-2">
+            Multi-Modal Content Repurposing Agent
+          </h2>
           <p className="text-lg text-[#6e6e73] max-w-xl mx-auto">
             Transform your content across platforms with AI-powered intelligence
           </p>
