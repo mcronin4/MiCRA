@@ -1,15 +1,28 @@
 "use client";
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, createRef } from 'react';
 import Draggable from 'react-draggable';
-import { Heart, MessageCircle, Send, Share2, MoreHorizontal, Paperclip, Mic } from 'lucide-react';
+import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import { Paperclip, Mic, Send } from 'lucide-react';
+import LinkedInPost from './parts/LinkedInPost';
+import TikTokPost from './parts/TikTokPost';
+import EmailDraft from './parts/EmailDraft';
+import AddPartMenu from './AddPartMenu';
 
 type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
+type Part = {
+  id: number;
+  type: 'LinkedIn' | 'TikTok' | 'Email';
+  position: { x: number; y: number };
+  ref: React.RefObject<HTMLDivElement>;
+};
 
 const FinalReview = () => {
   const [activeTab, setActiveTab] = useState<SourceType>('Video');
-  const linkedInRef = useRef(null);
-  const tiktokRef = useRef(null);
-  const emailRef = useRef(null);
+  const [parts, setParts] = useState<Part[]>([]);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const nextId = useRef(0);
+  const transformState = useRef<ReactZoomPanPinchRef | null>(null);
 
   const SourceMediaContent = () => {
     switch (activeTab) {
@@ -82,93 +95,88 @@ const FinalReview = () => {
     }
   };
 
+  const handleAddPart = (partType: 'LinkedIn' | 'TikTok' | 'Email') => {
+    if (transformState.current) {
+      const { scale, positionX, positionY } = transformState.current.state;
+      const newPart: Part = {
+        id: nextId.current++,
+        type: partType,
+        position: {
+          x: ((menuPosition?.x || 50) + positionX) / scale,
+          y: ((menuPosition?.y || 100) + positionY) / scale,
+        },
+        ref: createRef<HTMLDivElement>(),
+      };
+      setParts([...parts, newPart]);
+    }
+  };
+
+  const handleCanvasContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (e.target === e.currentTarget) {
+      setMenuPosition({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+
   return (
     <div className="h-screen flex font-sans text-[#1d1d1f] overflow-hidden">
       {/* Left Column: Draggable Canvas */}
-      <div className="flex-1 h-full relative bg-[#f0f2f5]" style={{
-        backgroundImage: 'radial-gradient(#d2d6dc 1px, transparent 1px)',
-        backgroundSize: '16px 16px',
-      }}>
+      <div
+        className="flex-1 h-full relative bg-[#f0f2f5] overflow-hidden"
+        style={{
+          backgroundImage: 'radial-gradient(#d2d6dc 1px, transparent 1px)',
+          backgroundSize: '16px 16px',
+        }}
+      >
         <div className="p-8">
           <h1 className="text-2xl font-bold text-gray-800">Drafts</h1>
         </div>
+        <TransformWrapper
+          ref={transformState}
+          disabled={isDragging}
+          onTransformed={(ref) => (transformState.current = ref)}
+        >
+          <TransformComponent>
+            <div
+              style={{ width: '4000px', height: '3000px' }}
+              onContextMenu={handleCanvasContextMenu}
+              onClick={() => setMenuPosition(null)}
+            >
+              {parts.map((part) => {
+                const Component = {
+                  LinkedIn: LinkedInPost,
+                  TikTok: TikTokPost,
+                  Email: EmailDraft,
+                }[part.type];
 
-        <Draggable nodeRef={linkedInRef} defaultPosition={{x: 50, y: 100}} bounds="parent">
-          <div ref={linkedInRef} className="w-[500px] bg-white p-5 rounded-xl shadow-md cursor-move">
-            {/* LinkedIn Post Draft */}
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                    <div className="w-12 h-12 bg-gray-300 rounded-full mr-3"></div>
-                    <div>
-                        <p className="font-bold text-sm">MICRA Team</p>
-                        <p className="text-xs text-gray-500">Java Technical Lead — MICRA</p>
-                        <p className="text-xs text-gray-500">16 h · <span>🌍</span></p>
+                const nodeRef = React.createRef<HTMLDivElement>();
+                return (
+                  <Draggable
+                    key={part.id}
+                    nodeRef={nodeRef}
+                    defaultPosition={part.position}
+                    onStart={() => setIsDragging(true)}
+                    onStop={() => setIsDragging(false)}
+                  >
+                    <div ref={nodeRef}>
+                      <Component />
                     </div>
-                </div>
-                <MoreHorizontal className="text-gray-500" />
+                  </Draggable>
+                );
+              })}
             </div>
-            <p className="text-sm mb-4">
-            Proud to introduce the brilliant people behind Micra. We're a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.
-            </p>
-            <div className="bg-gray-100 rounded-lg p-4">
-                <p className="text-center font-semibold text-purple-700 mb-2">MICRA</p>
-                <p className="text-center text-xs text-gray-600 mb-4">Meet the Team</p>
-                <div className="flex justify-center space-x-4">
-                    <div className="w-16 h-16 bg-gray-300 rounded-full"></div>
-                    <div className="w-16 h-16 bg-gray-300 rounded-full"></div>
-                    <div className="w-16 h-16 bg-gray-300 rounded-full"></div>
-                </div>
-            </div>
-            <div className="flex justify-around text-sm text-gray-600 mt-4 pt-2 border-t">
-                <button className="flex items-center space-x-2 hover:bg-gray-100 p-2 rounded-lg"><Share2 size={20}/> <span>Like</span></button>
-                <button className="flex items-center space-x-2 hover:bg-gray-100 p-2 rounded-lg"><MessageCircle size={20}/> <span>Comment</span></button>
-                <button className="flex items-center space-x-2 hover:bg-gray-100 p-2 rounded-lg"><Share2 size={20}/> <span>Share</span></button>
-                <button className="flex items-center space-x-2 hover:bg-gray-100 p-2 rounded-lg"><Send size={20}/> <span>Send</span></button>
-            </div>
-          </div>
-        </Draggable>
+          </TransformComponent>
+        </TransformWrapper>
 
-        <Draggable nodeRef={tiktokRef} defaultPosition={{x: 600, y: 150}} bounds="parent">
-          <div ref={tiktokRef} className="cursor-move w-min">
-            {/* TikTok Draft */}
-            <div className="bg-black w-64 h-[450px] rounded-3xl p-2 shadow-lg">
-                <div className="bg-gray-800 h-full w-full rounded-2xl flex flex-col justify-end items-end p-4 space-y-4">
-                    <div className="flex flex-col items-center space-y-1 text-white">
-                        <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center">+</div>
-                    </div>
-                    <div className="flex flex-col items-center space-y-1 text-white">
-                        <Heart size={32} />
-                        <span className="text-xs">1.2M</span>
-                    </div>
-                    <div className="flex flex-col items-center space-y-1 text-white">
-                        <MessageCircle size={32} />
-                        <span className="text-xs">40K</span>
-                    </div>
-                    <div className="flex flex-col items-center space-y-1 text-white">
-                        <Share2 size={32} />
-                        <span className="text-xs">12K</span>
-                    </div>
-                </div>
-            </div>
+        {menuPosition && (
+          <div style={{ position: 'absolute', top: menuPosition.y, left: menuPosition.x }}>
+            <AddPartMenu
+              onAddPart={handleAddPart}
+              onClose={() => setMenuPosition(null)}
+            />
           </div>
-        </Draggable>
-
-        <Draggable nodeRef={emailRef} defaultPosition={{x: 50, y: 550}} bounds="parent">
-          <div ref={emailRef} className="w-[500px] bg-white p-5 rounded-xl shadow-md cursor-move">
-            {/* Email Draft */}
-            <h3 className="font-semibold mb-3 text-gray-800">Email Draft</h3>
-            <div className="border rounded-lg p-4 text-sm">
-                <p><span className="font-semibold">Subject: Meet the Team Behind Micra</span></p>
-                <br />
-                <p>Hi [First Name],</p>
-                <br />
-                <p>I'm excited to introduce the brilliant people behind Micra a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.</p>
-                <br />
-                <p>Best regards,</p>
-                <p>[Your Name]</p>
-            </div>
-          </div>
-        </Draggable>
+        )}
       </div>
 
       {/* Right Column: Static Sidebar */}
