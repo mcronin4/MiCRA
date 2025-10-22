@@ -3,7 +3,7 @@ import React from 'react';
 type PartType = 'LinkedIn' | 'TikTok' | 'Email';
 
 interface AddPartMenuProps {
-  onAddPart: (partType: PartType, position: { x: number; y: number }) => void;
+  onAddPart: (partType: PartType) => void;
   onClose: () => void;
   position: { x: number; y: number };
 }
@@ -19,7 +19,7 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position 
             key={part}
             className="p-2 hover:bg-gray-100 cursor-pointer"
             onClick={() => {
-              onAddPart(part, position);
+              onAddPart(part);
               onClose();
             }}
           >

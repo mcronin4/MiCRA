@@ -20,6 +20,7 @@ const FinalReview = () => {
   const [activeTab, setActiveTab] = useState<SourceType>('Video');
   const [parts, setParts] = useState<Part[]>([]);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [newPartPosition, setNewPartPosition] = useState<{ x: number; y: number } | null>(null);
   const [sidebarsVisible, setSidebarsVisible] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [scale, setScale] = useState(1);
@@ -104,37 +105,41 @@ const FinalReview = () => {
     // These dimensions should roughly match the size of the components
     switch (partType) {
       case 'LinkedIn':
-        return { width: 556, height: 300 };
+        return { width: 500, height: 300 };
       case 'TikTok':
-        return { width: 300, height: 500 };
+        return { width: 320, height: 560 };
       case 'Email':
-        return { width: 600, height: 400 };
+        return { width: 500, height: 400 };
       default:
         return { width: 400, height: 300 };
     }
   };
 
-  const handleAddPart = (partType: 'LinkedIn' | 'TikTok' | 'Email', position: { x: number; y: number }) => {
-    if (transformState.current) {
+  const handleAddPart = (partType: 'LinkedIn' | 'TikTok' | 'Email') => {
+    if (transformState.current && newPartPosition) {
       const { scale, positionX, positionY } = transformState.current.state;
       const { width, height } = getPartDimensions(partType);
       const newPart: Part = {
         id: nextId.current++,
         type: partType,
         position: {
-          x: (position.x - positionX) / scale - width / 2,
-          y: (position.y - positionY) / scale - height / 2,
+          x: (newPartPosition.x - positionX) / scale - width / 2,
+          y: (newPartPosition.y - positionY) / scale - height / 2,
         },
       };
       setParts([...parts, newPart]);
+      setNewPartPosition(null);
     }
   };
 
   const handleCanvasContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (e.target === e.currentTarget && canvasContainerRef.current) {
+    if (canvasContainerRef.current) {
       const rect = canvasContainerRef.current.getBoundingClientRect();
-      setMenuPosition({ x: e.clientX - rect.left + 5, y: e.clientY - rect.top + 5 });
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setMenuPosition({ x: x + 5, y: y + 5 });
+      setNewPartPosition({ x, y });
     }
   };
 
