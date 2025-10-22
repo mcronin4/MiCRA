@@ -7,13 +7,13 @@ import LinkedInPost from './parts/LinkedInPost';
 import TikTokPost from './parts/TikTokPost';
 import EmailDraft from './parts/EmailDraft';
 import AddPartMenu from './AddPartMenu';
+import ZoomControls from './ZoomControls';
 
 type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
 type Part = {
   id: number;
   type: 'LinkedIn' | 'TikTok' | 'Email';
   position: { x: number; y: number };
-  ref: React.RefObject<HTMLDivElement>;
 };
 
 const FinalReview = () => {
@@ -21,6 +21,7 @@ const FinalReview = () => {
   const [parts, setParts] = useState<Part[]>([]);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [scale, setScale] = useState(1);
   const nextId = useRef(0);
   const transformState = useRef<ReactZoomPanPinchRef | null>(null);
 
@@ -105,7 +106,6 @@ const FinalReview = () => {
           x: ((menuPosition?.x || 50) + positionX) / scale,
           y: ((menuPosition?.y || 100) + positionY) / scale,
         },
-        ref: createRef<HTMLDivElement>(),
       };
       setParts([...parts, newPart]);
     }
@@ -135,7 +135,13 @@ const FinalReview = () => {
         <TransformWrapper
           ref={transformState}
           disabled={isDragging}
-          onTransformed={(ref) => (transformState.current = ref)}
+          onTransformed={(ref, state) => {
+            transformState.current = ref;
+            setScale(state.scale);
+          }}
+          minScale={0.2}
+          centerOnInit={true}
+          centerZoomedOut={true}
         >
           <TransformComponent>
             <div
@@ -149,8 +155,8 @@ const FinalReview = () => {
                   TikTok: TikTokPost,
                   Email: EmailDraft,
                 }[part.type];
+                const nodeRef = createRef<HTMLDivElement>();
 
-                const nodeRef = React.createRef<HTMLDivElement>();
                 return (
                   <Draggable
                     key={part.id}
@@ -177,6 +183,11 @@ const FinalReview = () => {
             />
           </div>
         )}
+        <ZoomControls
+          scale={scale}
+          onZoomIn={() => transformState.current?.zoomIn()}
+          onZoomOut={() => transformState.current?.zoomOut()}
+        />
       </div>
 
       {/* Right Column: Static Sidebar */}
