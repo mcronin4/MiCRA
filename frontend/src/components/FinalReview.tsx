@@ -2,7 +2,7 @@
 import React, { useState, useRef, createRef } from 'react';
 import Draggable from 'react-draggable';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
-import { Paperclip, Mic, Send } from 'lucide-react';
+import { Paperclip, Mic, Send, PanelLeft, PanelRight } from 'lucide-react';
 import LinkedInPost from './parts/LinkedInPost';
 import TikTokPost from './parts/TikTokPost';
 import EmailDraft from './parts/EmailDraft';
@@ -20,6 +20,7 @@ const FinalReview = () => {
   const [activeTab, setActiveTab] = useState<SourceType>('Video');
   const [parts, setParts] = useState<Part[]>([]);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [sidebarsVisible, setSidebarsVisible] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [scale, setScale] = useState(1);
   const [chatMessage, setChatMessage] = useState('');
@@ -178,6 +179,7 @@ const FinalReview = () => {
   return (
     <div className="h-screen flex font-sans text-[#1d1d1f] overflow-hidden">
       {/* Left Column: Source Media */}
+      {sidebarsVisible && (
       <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
         <div className="flex-grow overflow-y-auto space-y-6">
           <h2 className="text-lg font-semibold mb-4">Source Media</h2>
@@ -231,6 +233,7 @@ const FinalReview = () => {
           </ul>
         </div>
       </div>
+      )}
 
       {/* Middle Column: Draggable Canvas */}
       <div
@@ -241,9 +244,6 @@ const FinalReview = () => {
           backgroundSize: '16px 16px',
         }}
       >
-        <div className="p-8">
-          <h1 className="text-2xl font-bold text-gray-800">Drafts</h1>
-        </div>
         <TransformWrapper
           ref={transformState}
           disabled={isDragging}
@@ -274,7 +274,12 @@ const FinalReview = () => {
                     key={part.id}
                     nodeRef={nodeRef}
                     defaultPosition={part.position}
-                    onStart={() => setIsDragging(true)}
+                    onStart={(e) => {
+                      if ('button' in e && e.button === 2) {
+                        return false;
+                      }
+                      setIsDragging(true);
+                    }}
                     onStop={() => setIsDragging(false)}
                   >
                     <div ref={nodeRef}>
@@ -299,9 +304,16 @@ const FinalReview = () => {
           onZoomIn={() => transformState.current?.zoomIn()}
           onZoomOut={() => transformState.current?.zoomOut()}
         />
+        <button
+          onClick={() => setSidebarsVisible(!sidebarsVisible)}
+          className="absolute top-4 left-4 bg-white/80 backdrop-blur-lg p-2 rounded-lg shadow-lg"
+        >
+          {sidebarsVisible ? <PanelLeft size={20} /> : <PanelRight size={20} />}
+        </button>
       </div>
 
       {/* Right Column: Chatbot */}
+      {sidebarsVisible && (
       <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
         <div className="flex-grow overflow-y-auto space-y-6">
           <h2 className="text-lg font-semibold mb-4">MICRAi</h2>
@@ -328,6 +340,7 @@ const FinalReview = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
