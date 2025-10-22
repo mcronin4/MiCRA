@@ -22,6 +22,8 @@ const FinalReview = () => {
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [scale, setScale] = useState(1);
+  const [chatMessage, setChatMessage] = useState('');
+  const [chatHistory, setChatHistory] = useState<{ user: string; text: string }[]>([]);
   const nextId = useRef(0);
   const transformState = useRef<ReactZoomPanPinchRef | null>(null);
 
@@ -118,6 +120,43 @@ const FinalReview = () => {
     }
   };
 
+  const handleSendMessage = async () => {
+    if (chatMessage.trim() === '') return;
+
+    const newMessage = { user: 'You', text: chatMessage };
+    setChatHistory([...chatHistory, newMessage]);
+    setChatMessage('');
+
+    try {
+      const response = await fetch('/backend/v1/hitl/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: chatMessage }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        const botMessage = { user: 'MICRAi', text: data.message };
+        setChatHistory(prevChatHistory => [...prevChatHistory, botMessage]);
+      } catch (error) {
+        console.error('Error parsing JSON:', error);
+        const errorMessage = { user: 'MICRAi', text: 'Sorry, something went wrong. Please try again.' };
+        setChatHistory(prevChatHistory => [...prevChatHistory, errorMessage]);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage = { user: 'MICRAi', text: 'Sorry, something went wrong. Please try again.' };
+      setChatHistory(prevChatHistory => [...prevChatHistory, errorMessage]);
+    }
+  };
+
 
   return (
     <div className="h-screen flex font-sans text-[#1d1d1f] overflow-hidden">
@@ -191,8 +230,8 @@ const FinalReview = () => {
       </div>
 
       {/* Right Column: Static Sidebar */}
-      <div className="w-[450px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg overflow-y-auto space-y-6">
-        <div>
+      <div className="w-[450px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
+        <div className="flex-grow overflow-y-auto space-y-6">
           <h2 className="text-lg font-semibold mb-4">Source Media</h2>
           <div className="flex items-center space-x-4 border-b border-gray-200/80 pb-2 mb-4">
             {([ 'Video', 'Audio', 'Images', 'Text'] as SourceType[]).map((tab) => (
@@ -245,27 +284,29 @@ const FinalReview = () => {
         </div>
 
         <div>
-          <div className="flex items-start space-x-3">
+          {chatHistory.map((chat, index) => (
+            <div key={index} className="flex items-start space-x-3 mb-4">
               <div className="w-8 h-8 bg-gray-300 rounded-full flex-shrink-0"></div>
               <div className="flex-1">
-                  <div className="bg-gray-100 p-3 rounded-lg">
-                      <p className="text-sm">Can use a professional tone instead for the posts?</p>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">You · 02:22 AM</p>
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <p className="text-sm">{chat.text}</p>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">{chat.user}</p>
               </div>
-          </div>
+            </div>
+          ))}
           <div className="mt-4 relative">
-              <input type="text" placeholder="Message MICRAi..." className="w-full pl-10 pr-20 py-2 border rounded-full bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <input type="text" placeholder="Message MICRAi..." className="w-full pl-10 pr-20 py-2 border rounded-full bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400" value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} />
               <Paperclip className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-2">
                   <Mic className="text-gray-400 cursor-pointer" size={20} />
-                  <button className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center">
+                  <button className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center" onClick={handleSendMessage}>
                       <Send size={16} className="-ml-0.5" />
                   </button>
               </div>
           </div>
         </div>
-      </div>
+        </div>
     </div>
   );
 };
