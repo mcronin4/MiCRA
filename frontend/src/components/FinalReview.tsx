@@ -318,13 +318,16 @@ const FinalReview = () => {
         <div className="flex-grow overflow-y-auto space-y-6">
           <h2 className="text-lg font-semibold mb-4">MICRAi</h2>
           {chatHistory.map((chat, index) => (
-            <div key={index} className="flex items-start space-x-3 mb-4">
-              <div className="w-8 h-8 bg-gray-300 rounded-full flex-shrink-0"></div>
+            <div key={index} className={`flex mb-4 ${chat.user === 'You' ? 'justify-end' : 'justify-start'}`}>
               <div className="flex-1">
-                <div className="bg-gray-100 p-3 rounded-lg">
+                {chat.user === 'You' ? (
+                  <div className="bg-gray-100 p-3 rounded-lg">
+                    <p className="text-sm">{chat.text}</p>
+                  </div>
+                ) : (
                   <p className="text-sm">{chat.text}</p>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">{chat.user}</p>
+                )}
+                <p className={`text-xs text-gray-400 mt-1 ${chat.user === 'You' ? 'text-right' : ''}`}>{chat.user}</p>
               </div>
             </div>
           ))}
