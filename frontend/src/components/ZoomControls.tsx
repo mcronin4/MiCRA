@@ -1,5 +1,6 @@
 import React from 'react';
 import { Plus, Minus, Maximize, Lock } from 'lucide-react';
+import { Button } from './ui/button';
 
 interface ZoomControlsProps {
   scale: number;
@@ -19,20 +20,20 @@ const ZoomControls: React.FC<ZoomControlsProps> = ({
   isLocked,
 }) => {
   return (
-    <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg flex flex-col items-center">
-      <button onClick={onZoomIn} className="p-2 hover:bg-gray-100 w-full">
+    <div className="absolute bottom-4 right-4 bg-white/70 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-lg flex flex-col items-center p-1 space-y-1">
+      <Button variant="ghost" size="icon" onClick={onZoomIn}>
         <Plus size={20} />
-      </button>
-      <button onClick={onZoomOut} className="p-2 hover:bg-gray-100 w-full">
+      </Button>
+      <Button variant="ghost" size="icon" onClick={onZoomOut}>
         <Minus size={20} />
-      </button>
-      <div className="w-full border-t border-gray-200 my-1"></div>
-      <button onClick={onFitView} className="p-2 hover:bg-gray-100 w-full">
+      </Button>
+      <div className="w-full border-t border-gray-200/80 my-1"></div>
+      <Button variant="ghost" size="icon" onClick={onFitView}>
         <Maximize size={16} />
-      </button>
-      <button onClick={onToggleLock} className={`p-2 hover:bg-gray-100 w-full ${isLocked ? 'text-blue-500' : ''}`}>
+      </Button>
+      <Button variant="ghost" size="icon" onClick={onToggleLock} className={`${isLocked ? 'text-blue-500' : ''}`}>
         <Lock size={16} />
-      </button>
+      </Button>
     </div>
   );
 };

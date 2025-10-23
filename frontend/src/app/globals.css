@@ -25,6 +25,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "SF Pro Display", "SF UI Display", "SF UI Text", "Segoe UI", system-ui, Tahoma, Geneva, Verdana, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: all 0.2s ease-in-out;
 }
 
 @keyframes fade-in {

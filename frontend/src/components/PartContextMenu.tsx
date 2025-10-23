@@ -1,4 +1,6 @@
 import React from 'react';
+import { Button } from './ui/button';
+import { Copy, Trash2, CopyPlus } from 'lucide-react';
 
 type PartContextMenuProps = {
   position: { x: number; y: number };
@@ -15,24 +17,29 @@ const PartContextMenu: React.FC<PartContextMenuProps> = ({
   onCopy,
   onClose,
 }) => {
+  const handleAction = (action: () => void) => {
+    action();
+    onClose();
+  };
+
   return (
     <div
-      className="absolute bg-white shadow-lg rounded-md p-2 z-50"
+      className="absolute bg-white/70 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-xl z-50 flex flex-col p-2"
       style={{ top: position.y, left: position.x }}
-      onClick={onClose}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <ul>
-        <li className="px-4 py-2 hover:bg-gray-100 cursor-pointer" onClick={onDuplicate}>
-          Duplicate
-        </li>
-        <li className="px-4 py-2 hover:bg-gray-100 cursor-pointer" onClick={onCopy}>
-          Copy
-        </li>
-        <li className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-red-500" onClick={onDelete}>
-          Delete
-        </li>
-      </ul>
+      <Button variant="ghost" className="w-full justify-start px-3" onClick={() => handleAction(onDuplicate)}>
+        <CopyPlus size={16} className="mr-2" />
+        Duplicate
+      </Button>
+      <Button variant="ghost" className="w-full justify-start px-3" onClick={() => handleAction(onCopy)}>
+        <Copy size={16} className="mr-2" />
+        Copy
+      </Button>
+      <Button variant="ghost" className="w-full justify-start px-3 text-red-500 hover:text-red-500" onClick={() => handleAction(onDelete)}>
+        <Trash2 size={16} className="mr-2" />
+        Delete
+      </Button>
     </div>
   );
 };

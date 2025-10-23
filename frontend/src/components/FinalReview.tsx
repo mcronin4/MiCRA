@@ -1,6 +1,6 @@
 "use client";
-import React, { useState, useRef, useCallback } from 'react';
-import { Paperclip, Mic, Send, PanelLeft, PanelRight } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Plus, Globe, Box, ArrowUp, PanelLeft, PanelRight } from 'lucide-react';
 import { ReactFlowWrapper } from './canvas/ReactFlowWrapper';
 import type { Node, Edge, OnConnect } from '@xyflow/react';
 import { LinkedInComponent } from './canvas/LinkedInComponent';
@@ -27,10 +27,16 @@ const FinalReview = () => {
   const [sidebarsVisible, setSidebarsVisible] = useState(true);
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState<{ user: string; text: string }[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const nextId = useRef(0);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [isLocked, setIsLocked] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const SourceMediaContent = () => {
     switch (activeTab) {
@@ -327,7 +333,7 @@ const FinalReview = () => {
               <div key={index} className={`flex mb-4 ${chat.user === 'You' ? 'justify-end' : 'justify-start'}`}>
                 <div className="flex-1">
                   {chat.user === 'You' ? (
-                    <div className="bg-gray-100 p-3 rounded-lg">
+                    <div className="bg-[#F4F4F6] text-[#1d1d1f] p-3 rounded-lg">
                       <p className="text-sm">{chat.text}</p>
                     </div>
                   ) : (
@@ -338,16 +344,42 @@ const FinalReview = () => {
               </div>
             ))}
           </div>
-          <div className="mt-4 relative">
-            <input type="text" placeholder="Message MICRAi..." className="w-full pl-10 pr-20 py-2 border rounded-full bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400" value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} />
-            <Paperclip className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-2">
-              <Mic className="text-gray-400 cursor-pointer" size={20} />
-              <button className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center" onClick={handleSendMessage}>
-                <Send size={16} className="-ml-0.5" />
+          {isClient && <div className="mt-4 p-2 border rounded-lg bg-white/80 shadow-sm">
+            <textarea
+              ref={textareaRef}
+              placeholder="Start with an idea or task."
+              className="w-full bg-transparent focus:outline-none resize-none text-sm placeholder-gray-500"
+              value={chatMessage}
+              onChange={(e) => {
+                setChatMessage(e.target.value);
+                if (textareaRef.current) {
+                  textareaRef.current.style.height = 'auto';
+                  textareaRef.current.style.height = `${e.target.scrollHeight}px`;
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              rows={1}
+            />
+            <div className="flex justify-between items-center mt-2">
+              <div className="flex items-center space-x-2 text-gray-500">
+                <Plus size={20} className="cursor-pointer hover:text-gray-800" />
+                <Globe size={20} className="cursor-pointer hover:text-gray-800" />
+                <Box size={20} className="cursor-pointer hover:text-gray-800" />
+              </div>
+              <button
+                className="bg-gray-200 text-gray-600 w-8 h-8 rounded-md flex items-center justify-center hover:bg-gray-300 disabled:opacity-50"
+                onClick={handleSendMessage}
+                disabled={!chatMessage.trim()}
+              >
+                <ArrowUp size={16} />
               </button>
             </div>
-          </div>
+          </div>}
         </div>
       )}
     </div>

@@ -13,7 +13,7 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, MouseEvent } from "react";
 import { Button } from "@/components/ui/button"; // Assuming you have a Button component
 import type { Edge, Node, NodeTypes, OnConnect, Viewport } from "@xyflow/react";
 import { ReactFlowWrapper } from "./ReactFlowWrapper";
@@ -21,6 +21,8 @@ import { LinkedInNode } from "./LinkedInNode";
 import { EmailNode } from "./EmailNode";
 import { TikTokNode } from "./TikTokNode";
 import ZoomControls from "../ZoomControls";
+import AddPartMenu from "../AddPartMenu";
+import PartContextMenu from "../PartContextMenu";
 
 const nodeTypes: NodeTypes = {
   linkedIn: LinkedInNode,
@@ -82,11 +84,43 @@ function InnerCanvas({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
 
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),
     [setEdges, addEdge]
   );
+
+  const onPaneContextMenu = useCallback(
+    (event: MouseEvent) => {
+      event.preventDefault();
+      setContextMenu(null);
+      setAddMenu({
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [setAddMenu]
+  );
+
+  const onNodeContextMenu = useCallback(
+    (event: MouseEvent, node: Node) => {
+      event.preventDefault();
+      setAddMenu(null);
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        nodeId: node.id,
+      });
+    },
+    [setContextMenu]
+  );
+
+  const onPaneClick = useCallback(() => {
+    setAddMenu(null);
+    setContextMenu(null);
+  }, []);
 
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault();
@@ -118,6 +152,48 @@ function InnerCanvas({
     },
     [reactFlowInstance, setNodes]
   );
+
+  const addNode = (type: string) => {
+    if (!addMenu) return;
+    const position = reactFlowInstance.screenToFlowPosition({
+      x: addMenu.x,
+      y: addMenu.y,
+    });
+    const newNode: Node = {
+      id: `${type}-${Date.now()}`,
+      type,
+      position,
+      data: { label: `${type} node` },
+    };
+    setNodes((nds: Node[]) => nds.concat(newNode));
+  };
+
+  const deleteNode = () => {
+    if (!contextMenu) return;
+    setNodes((nds: Node[]) => nds.filter((n: Node) => n.id !== contextMenu.nodeId));
+  };
+
+  const duplicateNode = () => {
+    if (!contextMenu) return;
+    const nodeToDuplicate = nodes.find((n: Node) => n.id === contextMenu.nodeId);
+    if (!nodeToDuplicate) return;
+    const newNode: Node = {
+      ...nodeToDuplicate,
+      id: `${nodeToDuplicate.type}-${Date.now()}`,
+      position: {
+        x: nodeToDuplicate.position.x + 20,
+        y: nodeToDuplicate.position.y + 20,
+      },
+    };
+    setNodes((nds: Node[]) => nds.concat(newNode));
+  };
+
+  const copyNode = () => {
+    if (!contextMenu) return;
+    const nodeToCopy = nodes.find((n: Node) => n.id === contextMenu.nodeId);
+    if (!nodeToCopy) return;
+    navigator.clipboard.writeText(JSON.stringify(nodeToCopy));
+  };
 
   return (
     <ReactFlowProvider>
@@ -219,7 +295,10 @@ function InnerCanvas({
             nodeTypes={nodeTypes}
             fitView
             proOptions={{ hideAttribution: true }}
-            onMove={(_, viewport: Viewport) => setZoom(viewport.zoom)}
+            onMove={(_: any, viewport: Viewport) => setZoom(viewport.zoom)}
+            onPaneContextMenu={onPaneContextMenu}
+            onNodeContextMenu={onNodeContextMenu}
+            onPaneClick={onPaneClick}
           >
             <Background variant="dots" gap={16} size={1} />
             <Controls />
@@ -233,6 +312,22 @@ function InnerCanvas({
             onToggleLock={() => setIsLocked(!isLocked)}
             isLocked={isLocked}
           />
+          {addMenu && (
+            <AddPartMenu
+              position={addMenu}
+              onAddPart={addNode}
+              onClose={() => setAddMenu(null)}
+            />
+          )}
+          {contextMenu && (
+            <PartContextMenu
+              position={contextMenu}
+              onDelete={deleteNode}
+              onDuplicate={duplicateNode}
+              onCopy={copyNode}
+              onClose={() => setContextMenu(null)}
+            />
+          )}
         </div>
       </div>
     </ReactFlowProvider>
@@ -260,20 +355,19 @@ function DraggableNode({
   };
 
   const colorClasses = {
-    blue: "from-blue-500/20 to-blue-600/20 hover:from-blue-500/30 hover:to-blue-600/30 border-blue-500/30 text-blue-500",
-    green: "from-green-500/20 to-green-600/20 hover:from-green-500/30 hover:to-green-600/30 border-green-500/30 text-green-500",
-    purple: "from-purple-500/20 to-purple-600/20 hover:from-purple-500/30 hover:to-purple-600/30 border-purple-500/30 text-purple-500",
-    yellow: "from-yellow-500/20 to-yellow-600/20 hover:from-yellow-500/30 hover:to-yellow-600/30 border-yellow-500/30 text-yellow-500",
+    blue: "bg-blue-100 hover:bg-blue-200 text-blue-800",
+    green: "bg-green-100 hover:bg-green-200 text-green-800",
+    purple: "bg-purple-100 hover:bg-purple-200 text-purple-800",
+    yellow: "bg-yellow-100 hover:bg-yellow-200 text-yellow-800",
   };
 
   if (collapsed) {
     return (
       <div
-        className={`cursor-move rounded-xl bg-gradient-to-br ${colorClasses[color]} border backdrop-blur-sm p-3 transition-all hover:scale-105 hover:shadow-lg flex items-center justify-center group`}
+        className={`cursor-move rounded-lg p-3 transition-colors flex items-center justify-center group ${colorClasses[color]}`}
         onDragStart={onDragStart}
         draggable
         title={label}
-        style={{ opacity: 1 }}
       >
         <div className="text-foreground">{icon}</div>
       </div>
@@ -282,10 +376,9 @@ function DraggableNode({
 
   return (
     <div
-      className={`cursor-move rounded-xl bg-gradient-to-br ${colorClasses[color]} border backdrop-blur-sm p-4 transition-all hover:scale-[1.02] hover:shadow-lg group`}
+      className={`cursor-move rounded-lg p-4 transition-colors group ${colorClasses[color]}`}
       onDragStart={onDragStart}
       draggable
-      style={{ opacity: 1 }}
     >
       <div className="space-y-2">
         <div className="flex items-center gap-3">

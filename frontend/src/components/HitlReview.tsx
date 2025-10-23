@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
 
 interface HitlReviewProps {
   content: string;
@@ -11,6 +12,14 @@ const HitlReview: React.FC<HitlReviewProps> = ({ content, onApprove, onEdit, onS
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(content);
   const [sendBackReason, setSendBackReason] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [isEditing, editedContent]);
 
   const handleEdit = () => {
     onEdit(editedContent);
@@ -23,21 +32,32 @@ const HitlReview: React.FC<HitlReviewProps> = ({ content, onApprove, onEdit, onS
     }
   };
 
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setEditedContent(e.target.value);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  };
+
+
   return (
-    <div className="mt-10">
-      <div className="border border-gray-200 rounded-xl overflow-hidden">
+    <div className="mt-10 max-w-2xl mx-auto">
+      <div className="border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-[#1d1d1f]">Review Content</h3>
+          <h3 className="text-lg font-semibold text-gray-800">Review Content</h3>
         </div>
         <div className="bg-white p-6">
           {isEditing ? (
             <textarea
-              className="w-full h-48 px-5 py-4 bg-gray-50 border border-gray-300 rounded-xl text-base text-[#1d1d1f] placeholder-[#86868b] focus:outline-none focus:ring-2 focus:ring-[#0071e3] focus:border-transparent transition-all duration-200 resize-none"
+              ref={textareaRef}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-base text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none overflow-hidden"
               value={editedContent}
-              onChange={(e) => setEditedContent(e.target.value)}
+              onChange={handleContentChange}
+              rows={1}
             />
           ) : (
-            <pre className="text-[#1d1d1f] whitespace-pre-wrap text-sm leading-relaxed font-normal">
+            <pre className="text-gray-800 whitespace-pre-wrap text-base leading-relaxed font-normal">
               {content}
             </pre>
           )}
@@ -45,44 +65,33 @@ const HitlReview: React.FC<HitlReviewProps> = ({ content, onApprove, onEdit, onS
         <div className="bg-gray-50 px-6 py-4 flex items-center justify-between">
           <div>
             {isEditing ? (
-              <button
-                onClick={handleEdit}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 text-sm font-medium"
-              >
+              <Button onClick={handleEdit}>
                 Save Edits
-              </button>
+              </Button>
             ) : (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-all duration-200 text-sm font-medium"
-              >
+              <Button onClick={() => setIsEditing(true)} variant="secondary">
                 Edit
-              </button>
+              </Button>
             )}
           </div>
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={onApprove}
-              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 text-sm font-medium"
-            >
-              Approve
-            </button>
-            <div>
-              <input
+          <div className="flex items-center space-x-2">
+             <input
                 type="text"
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Reason for sending back..."
                 value={sendBackReason}
                 onChange={(e) => setSendBackReason(e.target.value)}
               />
-              <button
-                onClick={handleSendBack}
-                disabled={!sendBackReason.trim()}
-                className="ml-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 text-sm font-medium disabled:opacity-50"
-              >
-                Send Back
-              </button>
-            </div>
+            <Button onClick={onApprove} variant="default" className="bg-green-500 hover:bg-green-600">
+              Approve
+            </Button>
+            <Button
+              onClick={handleSendBack}
+              disabled={!sendBackReason.trim()}
+              variant="destructive"
+            >
+              Send Back
+            </Button>
           </div>
         </div>
       </div>
