@@ -15,11 +15,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { Button } from "@/components/ui/button"; // Assuming you have a Button component
-import type { Edge, Node, NodeTypes, OnConnect } from "@xyflow/react";
+import type { Edge, Node, NodeTypes, OnConnect, Viewport } from "@xyflow/react";
 import { ReactFlowWrapper } from "./ReactFlowWrapper";
 import { LinkedInNode } from "./LinkedInNode";
 import { EmailNode } from "./EmailNode";
 import { TikTokNode } from "./TikTokNode";
+import ZoomControls from "../ZoomControls";
 
 const nodeTypes: NodeTypes = {
   linkedIn: LinkedInNode,
@@ -79,9 +80,11 @@ function InnerCanvas({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [zoom, setZoom] = useState(1);
 
   const onConnect: OnConnect = useCallback(
-    (params) => setEdges((eds) => addEdge(params, eds)),
+    (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),
     [setEdges, addEdge]
   );
 
@@ -111,7 +114,7 @@ function InnerCanvas({
         data: { label: `${type} node` },
       };
 
-      setNodes((nds) => nds.concat(newNode));
+      setNodes((nds: Node[]) => nds.concat(newNode));
     },
     [reactFlowInstance, setNodes]
   );
@@ -215,11 +218,21 @@ function InnerCanvas({
             onDragOver={onDragOver}
             nodeTypes={nodeTypes}
             fitView
+            proOptions={{ hideAttribution: true }}
+            onMove={(_, viewport: Viewport) => setZoom(viewport.zoom)}
           >
             <Background variant="dots" gap={16} size={1} />
             <Controls />
             <MiniMap />
           </ReactFlow>
+          <ZoomControls
+            scale={zoom}
+            onZoomIn={() => reactFlowInstance?.zoomIn()}
+            onZoomOut={() => reactFlowInstance?.zoomOut()}
+            onFitView={() => reactFlowInstance?.fitView()}
+            onToggleLock={() => setIsLocked(!isLocked)}
+            isLocked={isLocked}
+          />
         </div>
       </div>
     </ReactFlowProvider>

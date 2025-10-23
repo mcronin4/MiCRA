@@ -27,8 +27,6 @@ const ZoomControls: React.FC<ZoomControlsProps> = ({
         <Minus size={20} />
       </button>
       <div className="w-full border-t border-gray-200 my-1"></div>
-      <span className="text-xs font-medium py-1">{Math.round(scale * 100)}%</span>
-      <div className="w-full border-t border-gray-200 my-1"></div>
       <button onClick={onFitView} className="p-2 hover:bg-gray-100 w-full">
         <Maximize size={16} />
       </button>

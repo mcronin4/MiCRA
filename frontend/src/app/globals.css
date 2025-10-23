@@ -50,3 +50,7 @@ body {
     width: 70%;
   }
 }
+
+.react-flow__attribution {
+  display: none;
+}
