@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Plus, Globe, Box, ArrowUp, PanelLeft, PanelRight } from 'lucide-react';
+import { Plus, ArrowUp, PanelLeft, PanelRight } from 'lucide-react';
 import { ReactFlowWrapper } from './canvas/ReactFlowWrapper';
 import type { Node, Edge, OnConnect } from '@xyflow/react';
 import { LinkedInComponent } from './canvas/LinkedInComponent';
@@ -198,6 +198,10 @@ const FinalReview = () => {
     const newMessage = { user: 'You', text: chatMessage };
     setChatHistory([...chatHistory, newMessage]);
     setChatMessage('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.overflowY = 'hidden';
+    }
 
     try {
       const response = await fetch('/backend/v1/hitl/chat', {
@@ -348,7 +352,7 @@ const FinalReview = () => {
             <textarea
               ref={textareaRef}
               placeholder="Start with an idea or task."
-              className="w-full bg-transparent focus:outline-none resize-none text-sm placeholder-gray-500"
+              className="w-full bg-transparent focus:outline-none resize-none text-sm text-black placeholder-gray-500 max-h-24"
               value={chatMessage}
               onChange={(e) => {
                 setChatMessage(e.target.value);
@@ -368,8 +372,6 @@ const FinalReview = () => {
             <div className="flex justify-between items-center mt-2">
               <div className="flex items-center space-x-2 text-gray-500">
                 <Plus size={20} className="cursor-pointer hover:text-gray-800" />
-                <Globe size={20} className="cursor-pointer hover:text-gray-800" />
-                <Box size={20} className="cursor-pointer hover:text-gray-800" />
               </div>
               <button
                 className="bg-gray-200 text-gray-600 w-8 h-8 rounded-md flex items-center justify-center hover:bg-gray-300 disabled:opacity-50"
