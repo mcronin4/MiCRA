@@ -1,37 +1,35 @@
 "use client";
-import React, { useState, useRef, createRef } from 'react';
-import Draggable from 'react-draggable';
-import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import React, { useState, useRef, useCallback } from 'react';
 import { Paperclip, Mic, Send, PanelLeft, PanelRight } from 'lucide-react';
-import LinkedInPost from './parts/LinkedInPost';
-import TikTokPost from './parts/TikTokPost';
-import EmailDraft from './parts/EmailDraft';
+import { ReactFlowWrapper } from './canvas/ReactFlowWrapper';
+import type { Node, Edge, OnConnect } from '@xyflow/react';
+import { LinkedInNode } from './canvas/LinkedInNode';
+import { TikTokNode } from './canvas/TikTokNode';
+import { EmailNode } from './canvas/EmailNode';
 import AddPartMenu from './AddPartMenu';
 import ZoomControls from './ZoomControls';
 import PartContextMenu from './PartContextMenu';
 
 type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
-type Part = {
-  id: number;
-  type: 'LinkedIn' | 'TikTok' | 'Email';
-  position: { x: number; y: number };
+
+const nodeTypes = {
+  LinkedIn: LinkedInNode,
+  TikTok: TikTokNode,
+  Email: EmailNode,
 };
 
 const FinalReview = () => {
   const [activeTab, setActiveTab] = useState<SourceType>('Video');
-  const [parts, setParts] = useState<Part[]>([]);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
-  const [partContextMenu, setPartContextMenu] = useState<{ x: number; y: number; partId: number } | null>(null);
-  const [copiedPart, setCopiedPart] = useState<Part | null>(null);
+  const [partContextMenu, setPartContextMenu] = useState<{ x: number; y: number; partId: string } | null>(null);
+  const [copiedPart, setCopiedPart] = useState<Node | null>(null);
   const [newPartPosition, setNewPartPosition] = useState<{ x: number; y: number } | null>(null);
   const [sidebarsVisible, setSidebarsVisible] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
-  const [scale, setScale] = useState(1);
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState<{ user: string; text: string }[]>([]);
   const nextId = useRef(0);
-  const transformState = useRef<ReactZoomPanPinchRef | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
   const SourceMediaContent = () => {
     switch (activeTab) {
@@ -104,83 +102,68 @@ const FinalReview = () => {
     }
   };
 
-  const getPartDimensions = (partType: 'LinkedIn' | 'TikTok' | 'Email') => {
-    // These dimensions should roughly match the size of the components
-    switch (partType) {
-      case 'LinkedIn':
-        return { width: 500, height: 300 };
-      case 'TikTok':
-        return { width: 320, height: 560 };
-      case 'Email':
-        return { width: 500, height: 400 };
-      default:
-        return { width: 400, height: 300 };
-    }
-  };
-
-  const handleAddPart = (partType: 'LinkedIn' | 'TikTok' | 'Email') => {
-    if (transformState.current && newPartPosition) {
-      const { scale, positionX, positionY } = transformState.current.state;
-      const { width, height } = getPartDimensions(partType);
-      const newPart: Part = {
-        id: nextId.current++,
+  const handleAddPart = (partType: 'LinkedIn' | 'TikTok' | 'Email', setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
+    if (reactFlowInstance && newPartPosition) {
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: newPartPosition.x,
+        y: newPartPosition.y,
+      });
+      const newNode: Node = {
+        id: `${partType}-${nextId.current++}`,
         type: partType,
-        position: {
-          x: (newPartPosition.x - positionX) / scale - width / 2,
-          y: (newPartPosition.y - positionY) / scale - height / 2,
-        },
+        position,
+        data: { label: `${partType} node` },
       };
-      setParts([...parts, newPart]);
+      setNodes((nds: Node[]) => nds.concat(newNode));
       setNewPartPosition(null);
     }
   };
 
-  const handleDeletePart = (partId: number) => {
-    setParts(parts.filter((part) => part.id !== partId));
+  const handleDeletePart = (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
+    setNodes((nds: Node[]) => nds.filter((node) => node.id !== partId));
     setPartContextMenu(null);
   };
 
-  const handleDuplicatePart = (partId: number) => {
-    const partToDuplicate = parts.find((part) => part.id === partId);
+  const handleDuplicatePart = (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>, nodes: Node[]) => {
+    const partToDuplicate = nodes.find((node) => node.id === partId);
     if (partToDuplicate) {
-      const newPart: Part = {
+      const newNode: Node = {
         ...partToDuplicate,
-        id: nextId.current++,
+        id: `${partToDuplicate.type}-${nextId.current++}`,
         position: {
           x: partToDuplicate.position.x + 20,
           y: partToDuplicate.position.y + 20,
         },
       };
-      setParts([...parts, newPart]);
+      setNodes((nds: Node[]) => nds.concat(newNode));
     }
     setPartContextMenu(null);
   };
 
-  const handleCopyPart = (partId: number) => {
-    const partToCopy = parts.find((part) => part.id === partId);
+  const handleCopyPart = (partId: string, nodes: Node[]) => {
+    const partToCopy = nodes.find((node) => node.id === partId);
     if (partToCopy) {
       setCopiedPart(partToCopy);
     }
     setPartContextMenu(null);
   };
 
-  const handlePastePart = () => {
-    if (copiedPart && newPartPosition) {
-      const { scale, positionX, positionY } = transformState.current!.state;
-      const { width, height } = getPartDimensions(copiedPart.type);
-      const newPart: Part = {
+  const handlePastePart = (setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
+    if (copiedPart && newPartPosition && reactFlowInstance) {
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: newPartPosition.x,
+        y: newPartPosition.y,
+      });
+      const newNode: Node = {
         ...copiedPart,
-        id: nextId.current++,
-        position: {
-          x: (newPartPosition.x - positionX) / scale - width / 2,
-          y: (newPartPosition.y - positionY) / scale - height / 2,
-        },
+        id: `${copiedPart.type}-${nextId.current++}`,
+        position,
       };
-      setParts([...parts, newPart]);
+      setNodes((nds: Node[]) => nds.concat(newNode));
     }
   };
 
-  const handlePartContextMenu = (e: React.MouseEvent<HTMLDivElement>, partId: number) => {
+  const handlePartContextMenu = (e: React.MouseEvent<HTMLDivElement>, partId: string) => {
     e.preventDefault();
     e.stopPropagation();
     if (canvasContainerRef.current) {
@@ -191,7 +174,7 @@ const FinalReview = () => {
     }
   };
 
-  const handleCanvasContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleCanvasContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     if (canvasContainerRef.current) {
       const rect = canvasContainerRef.current.getBoundingClientRect();
@@ -239,148 +222,95 @@ const FinalReview = () => {
     }
   };
 
-
   return (
     <div className="h-screen flex font-sans text-[#1d1d1f] overflow-hidden">
       {/* Left Column: Source Media */}
       {sidebarsVisible && (
-      <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
-        <div className="flex-grow overflow-y-auto space-y-6">
-          <h2 className="text-lg font-semibold mb-4">Source Media</h2>
-          <div className="flex items-center space-x-4 border-b border-gray-200/80 pb-2 mb-4">
-            {([ 'Video', 'Audio', 'Images', 'Text'] as SourceType[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`pb-2 text-sm font-medium transition-colors duration-200 ${
-                  activeTab === tab
-                    ? 'text-black border-b-2 border-black'
-                    : 'text-gray-500 hover:text-black'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+        <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
+          <div className="flex-grow overflow-y-auto space-y-6">
+            <h2 className="text-lg font-semibold mb-4">Source Media</h2>
+            <div className="flex items-center space-x-4 border-b border-gray-200/80 pb-2 mb-4">
+              {([ 'Video', 'Audio', 'Images', 'Text'] as SourceType[]).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`pb-2 text-sm font-medium transition-colors duration-200 ${
+                    activeTab === tab
+                      ? 'text-black border-b-2 border-black'
+                      : 'text-gray-500 hover:text-black'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <div>{SourceMediaContent()}</div>
           </div>
-          <div>{SourceMediaContent()}</div>
-        </div>
 
-        <div>
-          <h2 className="text-lg font-semibold mb-4">Auto-Checks & Flags</h2>
-          <ul className="space-y-4 text-sm">
-            <li className="flex justify-between items-center">
-              <span className="text-gray-600">Image–text match score</span>
-              <span className="font-medium text-gray-900">85%</span>
-            </li>
-            <li className="flex justify-between items-center">
-              <span className="text-gray-600">Proper noun checker</span>
-              <span className="text-blue-500 font-medium cursor-pointer">Review</span>
-            </li>
-            <li className="flex justify-between items-center">
-              <span className="text-gray-600">Spell/grammar suggestions</span>
-              <span className="font-medium text-gray-900">2 Found</span>
-            </li>
-            <li className="space-y-2">
-              <span className="text-gray-600">Platform-limit meter</span>
-              <div className="w-full bg-gray-200/70 rounded-full h-1.5">
-                <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: '45%' }}></div>
-              </div>
-            </li>
-            <li className="space-y-2">
-              <span className="text-gray-600">Risks</span>
-              <div className="flex flex-wrap gap-2">
-                <span className="bg-yellow-400/30 text-yellow-900 text-xs font-medium px-2.5 py-1 rounded-full">
-                  Brand Reputation
-                </span>
-              </div>
-            </li>
-          </ul>
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Auto-Checks & Flags</h2>
+            <ul className="space-y-4 text-sm">
+              <li className="flex justify-between items-center">
+                <span className="text-gray-600">Image–text match score</span>
+                <span className="font-medium text-gray-900">85%</span>
+              </li>
+              <li className="flex justify-between items-center">
+                <span className="text-gray-600">Proper noun checker</span>
+                <span className="text-blue-500 font-medium cursor-pointer">Review</span>
+              </li>
+              <li className="flex justify-between items-center">
+                <span className="text-gray-600">Spell/grammar suggestions</span>
+                <span className="font-medium text-gray-900">2 Found</span>
+              </li>
+              <li className="space-y-2">
+                <span className="text-gray-600">Platform-limit meter</span>
+                <div className="w-full bg-gray-200/70 rounded-full h-1.5">
+                  <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: '45%' }}></div>
+                </div>
+              </li>
+              <li className="space-y-2">
+                <span className="text-gray-600">Risks</span>
+                <div className="flex flex-wrap gap-2">
+                  <span className="bg-yellow-400/30 text-yellow-900 text-xs font-medium px-2.5 py-1 rounded-full">
+                    Brand Reputation
+                  </span>
+                </div>
+              </li>
+            </ul>
+          </div>
         </div>
-      </div>
       )}
 
       {/* Middle Column: Draggable Canvas */}
       <div
         ref={canvasContainerRef}
         className="flex-1 h-full relative bg-[#f0f2f5] overflow-hidden"
-        style={{
-          backgroundImage: 'radial-gradient(#d2d6dc 1px, transparent 1px)',
-          backgroundSize: '16px 16px',
-        }}
       >
-        <TransformWrapper
-          ref={transformState}
-          disabled={isDragging}
-          onTransformed={(ref, state) => {
-            transformState.current = ref;
-            setScale(state.scale);
-          }}
-          minScale={0.2}
-          centerOnInit={true}
-          centerZoomedOut={true}
-        >
-          <TransformComponent>
-            <div
-              style={{ width: '4000px', height: '3000px' }}
-              onContextMenu={handleCanvasContextMenu}
-              onClick={() => {
-                setMenuPosition(null);
-                setPartContextMenu(null);
-              }}
-            >
-              {parts.map((part) => {
-                const Component = {
-                  LinkedIn: LinkedInPost,
-                  TikTok: TikTokPost,
-                  Email: EmailDraft,
-                }[part.type];
-                const nodeRef = createRef<HTMLDivElement>();
-
-                return (
-                  <Draggable
-                    key={part.id}
-                    nodeRef={nodeRef}
-                    defaultPosition={part.position}
-                    onStart={(e) => {
-                      if ('button' in e && e.button === 2) {
-                        return false;
-                      }
-                      setIsDragging(true);
-                    }}
-                    onStop={() => setIsDragging(false)}
-                  >
-                    <div ref={nodeRef}>
-                      <Component onContextMenu={(e) => handlePartContextMenu(e, part.id)} />
-                    </div>
-                  </Draggable>
-                );
-              })}
-            </div>
-          </TransformComponent>
-        </TransformWrapper>
-
-        {menuPosition && (
-          <AddPartMenu
-            onAddPart={handleAddPart}
-            onClose={() => setMenuPosition(null)}
-            position={menuPosition}
-            onPaste={handlePastePart}
-            canPaste={!!copiedPart}
-          />
-        )}
-        {partContextMenu && (
-          <PartContextMenu
-            position={{ x: partContextMenu.x, y: partContextMenu.y }}
-            onDelete={() => handleDeletePart(partContextMenu.partId)}
-            onDuplicate={() => handleDuplicatePart(partContextMenu.partId)}
-            onCopy={() => handleCopyPart(partContextMenu.partId)}
-            onClose={() => setPartContextMenu(null)}
-          />
-        )}
+        <ReactFlowWrapper>
+          {(flowProps) => (
+            <CanvasArea
+              {...flowProps}
+              menuPosition={menuPosition}
+              partContextMenu={partContextMenu}
+              copiedPart={copiedPart}
+              handleAddPart={handleAddPart}
+              handlePastePart={handlePastePart}
+              handleDeletePart={handleDeletePart}
+              handleDuplicatePart={handleDuplicatePart}
+              handleCopyPart={handleCopyPart}
+              setMenuPosition={setMenuPosition}
+              setPartContextMenu={setPartContextMenu}
+              handleCanvasContextMenu={handleCanvasContextMenu}
+              handlePartContextMenu={handlePartContextMenu}
+              setReactFlowInstance={setReactFlowInstance}
+              reactFlowInstance={reactFlowInstance}
+            />
+          )}
+        </ReactFlowWrapper>
         <ZoomControls
-          scale={scale}
-          onZoomIn={() => transformState.current?.zoomIn()}
-          onZoomOut={() => transformState.current?.zoomOut()}
+          scale={reactFlowInstance ? reactFlowInstance.getZoom() : 1}
+          onZoomIn={() => reactFlowInstance?.zoomIn()}
+          onZoomOut={() => reactFlowInstance?.zoomOut()}
         />
         <button
           onClick={() => setSidebarsVisible(!sidebarsVisible)}
@@ -392,37 +322,108 @@ const FinalReview = () => {
 
       {/* Right Column: Chatbot */}
       {sidebarsVisible && (
-      <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
-        <div className="flex-grow overflow-y-auto space-y-6">
-          <h2 className="text-lg font-semibold mb-4">MICRAi</h2>
-          {chatHistory.map((chat, index) => (
-            <div key={index} className={`flex mb-4 ${chat.user === 'You' ? 'justify-end' : 'justify-start'}`}>
-              <div className="flex-1">
-                {chat.user === 'You' ? (
-                  <div className="bg-gray-100 p-3 rounded-lg">
+        <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
+          <div className="flex-grow overflow-y-auto space-y-6">
+            <h2 className="text-lg font-semibold mb-4">MICRAi</h2>
+            {chatHistory.map((chat, index) => (
+              <div key={index} className={`flex mb-4 ${chat.user === 'You' ? 'justify-end' : 'justify-start'}`}>
+                <div className="flex-1">
+                  {chat.user === 'You' ? (
+                    <div className="bg-gray-100 p-3 rounded-lg">
+                      <p className="text-sm">{chat.text}</p>
+                    </div>
+                  ) : (
                     <p className="text-sm">{chat.text}</p>
-                  </div>
-                ) : (
-                  <p className="text-sm">{chat.text}</p>
-                )}
-                <p className={`text-xs text-gray-400 mt-1 ${chat.user === 'You' ? 'text-right' : ''}`}>{chat.user}</p>
+                  )}
+                  <p className={`text-xs text-gray-400 mt-1 ${chat.user === 'You' ? 'text-right' : ''}`}>{chat.user}</p>
+                </div>
               </div>
+            ))}
+          </div>
+          <div className="mt-4 relative">
+            <input type="text" placeholder="Message MICRAi..." className="w-full pl-10 pr-20 py-2 border rounded-full bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400" value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} />
+            <Paperclip className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+              <Mic className="text-gray-400 cursor-pointer" size={20} />
+              <button className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center" onClick={handleSendMessage}>
+                <Send size={16} className="-ml-0.5" />
+              </button>
             </div>
-          ))}
-        </div>
-        <div className="mt-4 relative">
-          <input type="text" placeholder="Message MICRAi..." className="w-full pl-10 pr-20 py-2 border rounded-full bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400" value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} />
-          <Paperclip className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-2">
-            <Mic className="text-gray-400 cursor-pointer" size={20} />
-            <button className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center" onClick={handleSendMessage}>
-              <Send size={16} className="-ml-0.5" />
-            </button>
           </div>
         </div>
-      </div>
       )}
     </div>
+  );
+};
+
+const CanvasArea = ({
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  menuPosition,
+  partContextMenu,
+  copiedPart,
+  handleAddPart,
+  handlePastePart,
+  handleDeletePart,
+  handleDuplicatePart,
+  handleCopyPart,
+  setMenuPosition,
+  setPartContextMenu,
+  handleCanvasContextMenu,
+  handlePartContextMenu,
+  setReactFlowInstance,
+  reactFlowInstance,
+}: any) => {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const onConnect: OnConnect = useCallback(
+    (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),
+    [setEdges, addEdge]
+  );
+
+  return (
+    <>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onInit={setReactFlowInstance}
+        nodeTypes={nodeTypes}
+        onPaneContextMenu={handleCanvasContextMenu}
+        onNodeContextMenu={(event: React.MouseEvent<HTMLDivElement>, node: Node) => handlePartContextMenu(event, node.id)}
+        fitView
+      >
+        <Background />
+        <Controls />
+        <MiniMap />
+      </ReactFlow>
+
+      {menuPosition && (
+        <AddPartMenu
+          onAddPart={(partType) => handleAddPart(partType, setNodes)}
+          onClose={() => setMenuPosition(null)}
+          position={menuPosition}
+          onPaste={() => handlePastePart(setNodes)}
+          canPaste={!!copiedPart}
+        />
+      )}
+      {partContextMenu && (
+        <PartContextMenu
+          position={{ x: partContextMenu.x, y: partContextMenu.y }}
+          onDelete={() => handleDeletePart(partContextMenu.partId, setNodes)}
+          onDuplicate={() => handleDuplicatePart(partContextMenu.partId, setNodes, nodes)}
+          onCopy={() => handleCopyPart(partContextMenu.partId, nodes)}
+          onClose={() => setPartContextMenu(null)}
+        />
+      )}
+    </>
   );
 };
 
