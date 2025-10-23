@@ -1,11 +1,10 @@
 import React from 'react';
 import { Heart, MessageCircle, Share2 } from 'lucide-react';
-import { Handle, Position } from '@xyflow/react';
+import { Position } from '@xyflow/react';
 
-export function TikTokNode({ data }: { data: any }) {
+export function TikTokComponent({ data }: { data: any }) {
   return (
     <div className="w-min">
-      <Handle type="target" position={Position.Left} />
       {/* TikTok Draft */}
       <div className="relative bg-black w-80 h-[560px] rounded-3xl shadow-lg overflow-hidden">
         <div className="absolute inset-0 bg-gray-800">
@@ -41,7 +40,6 @@ export function TikTokNode({ data }: { data: any }) {
           </div>
         </div>
       </div>
-      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

@@ -1,11 +1,10 @@
 import React from 'react';
 import { MessageCircle, Send, Share2, MoreHorizontal } from 'lucide-react';
-import { Handle, Position } from '@xyflow/react';
+import { Position } from '@xyflow/react';
 
-export function LinkedInNode({ data }: { data: any }) {
+export function LinkedInComponent({ data }: { data: any }) {
   return (
     <div className="w-[500px] bg-white p-5 rounded-xl shadow-md">
-      <Handle type="target" position={Position.Left} />
       <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
               <div className="w-12 h-12 bg-gray-300 rounded-full mr-3"></div>
@@ -35,7 +34,6 @@ export function LinkedInNode({ data }: { data: any }) {
           <button className="flex items-center space-x-2 hover:bg-gray-100 p-2 rounded-lg"><Share2 size={20}/> <span>Share</span></button>
           <button className="flex items-center space-x-2 hover:bg-gray-100 p-2 rounded-lg"><Send size={20}/> <span>Send</span></button>
       </div>
-      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

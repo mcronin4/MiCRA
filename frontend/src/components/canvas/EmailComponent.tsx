@@ -1,10 +1,9 @@
 import React from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Position } from '@xyflow/react';
 
-export function EmailNode({ data }: { data: any }) {
+export function EmailComponent({ data }: { data: any }) {
   return (
     <div className="w-[500px] bg-white rounded-xl shadow-lg font-sans">
-      <Handle type="target" position={Position.Left} />
       {/* Header */}
       <div className="bg-gray-100 p-3 rounded-t-xl border-b border-gray-200 flex items-center justify-between">
         <h3 className="font-semibold text-gray-700">Compose Email</h3>
@@ -36,7 +35,6 @@ export function EmailNode({ data }: { data: any }) {
           <p>Best regards,</p>
           <p className="font-medium">[Your Name]</p>
       </div>
-      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

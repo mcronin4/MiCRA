@@ -3,9 +3,9 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Paperclip, Mic, Send, PanelLeft, PanelRight } from 'lucide-react';
 import { ReactFlowWrapper } from './canvas/ReactFlowWrapper';
 import type { Node, Edge, OnConnect } from '@xyflow/react';
-import { LinkedInNode } from './canvas/LinkedInNode';
-import { TikTokNode } from './canvas/TikTokNode';
-import { EmailNode } from './canvas/EmailNode';
+import { LinkedInComponent } from './canvas/LinkedInComponent';
+import { TikTokComponent } from './canvas/TikTokComponent';
+import { EmailComponent } from './canvas/EmailComponent';
 import AddPartMenu from './AddPartMenu';
 import ZoomControls from './ZoomControls';
 import PartContextMenu from './PartContextMenu';
@@ -13,9 +13,9 @@ import PartContextMenu from './PartContextMenu';
 type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
 
 const nodeTypes = {
-  LinkedIn: LinkedInNode,
-  TikTok: TikTokNode,
-  Email: EmailNode,
+  LinkedIn: LinkedInComponent,
+  TikTok: TikTokComponent,
+  Email: EmailComponent,
 };
 
 const FinalReview = () => {
@@ -30,6 +30,7 @@ const FinalReview = () => {
   const nextId = useRef(0);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   const SourceMediaContent = () => {
     switch (activeTab) {
@@ -304,14 +305,11 @@ const FinalReview = () => {
               handlePartContextMenu={handlePartContextMenu}
               setReactFlowInstance={setReactFlowInstance}
               reactFlowInstance={reactFlowInstance}
+              isLocked={isLocked}
+              setIsLocked={setIsLocked}
             />
           )}
         </ReactFlowWrapper>
-        <ZoomControls
-          scale={reactFlowInstance ? reactFlowInstance.getZoom() : 1}
-          onZoomIn={() => reactFlowInstance?.zoomIn()}
-          onZoomOut={() => reactFlowInstance?.zoomOut()}
-        />
         <button
           onClick={() => setSidebarsVisible(!sidebarsVisible)}
           className="absolute top-4 left-4 bg-white/80 backdrop-blur-lg p-2 rounded-lg shadow-lg"
@@ -378,6 +376,8 @@ const CanvasArea = ({
   handlePartContextMenu,
   setReactFlowInstance,
   reactFlowInstance,
+  isLocked,
+  setIsLocked,
 }: any) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -399,10 +399,15 @@ const CanvasArea = ({
         onPaneContextMenu={handleCanvasContextMenu}
         onNodeContextMenu={(event: React.MouseEvent<HTMLDivElement>, node: Node) => handlePartContextMenu(event, node.id)}
         fitView
+        nodesDraggable={!isLocked}
+        nodesConnectable={!isLocked}
+        panOnDrag={!isLocked}
+        zoomOnScroll={!isLocked}
+        zoomOnDoubleClick={!isLocked}
+        panOnScroll={!isLocked}
       >
         <Background />
-        <Controls />
-        <MiniMap />
+        <MiniMap position="bottom-left" />
       </ReactFlow>
 
       {menuPosition && (
@@ -423,6 +428,14 @@ const CanvasArea = ({
           onClose={() => setPartContextMenu(null)}
         />
       )}
+      <ZoomControls
+        scale={reactFlowInstance ? reactFlowInstance.getZoom() : 1}
+        onZoomIn={() => reactFlowInstance?.zoomIn()}
+        onZoomOut={() => reactFlowInstance?.zoomOut()}
+        onFitView={() => reactFlowInstance?.fitView()}
+        onToggleLock={() => setIsLocked(!isLocked)}
+        isLocked={isLocked}
+      />
     </>
   );
 };
