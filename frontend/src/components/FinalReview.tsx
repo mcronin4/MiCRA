@@ -195,8 +195,8 @@ const FinalReview = () => {
   const handleSendMessage = async () => {
     if (chatMessage.trim() === '') return;
 
-    const newMessage = { user: 'You', text: chatMessage };
-    setChatHistory([...chatHistory, newMessage]);
+    const userMessage = { user: 'You', text: chatMessage };
+    setChatHistory(prev => [...prev, userMessage]);
     setChatMessage('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -220,16 +220,16 @@ const FinalReview = () => {
       try {
         const data = JSON.parse(text);
         const botMessage = { user: 'MICRAi', text: data.message };
-        setChatHistory(prevChatHistory => [...prevChatHistory, botMessage]);
+        setChatHistory(prev => [...prev, botMessage]);
       } catch (error) {
         console.error('Error parsing JSON:', error);
         const errorMessage = { user: 'MICRAi', text: 'Sorry, something went wrong. Please try again.' };
-        setChatHistory(prevChatHistory => [...prevChatHistory, errorMessage]);
+        setChatHistory(prev => [...prev, errorMessage]);
       }
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = { user: 'MICRAi', text: 'Sorry, something went wrong. Please try again.' };
-      setChatHistory(prevChatHistory => [...prevChatHistory, errorMessage]);
+      setChatHistory(prev => [...prev, errorMessage]);
     }
   };
 
@@ -331,7 +331,7 @@ const FinalReview = () => {
       {/* Right Column: Chatbot */}
       {sidebarsVisible && (
         <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
-          <div className="flex-grow overflow-y-auto space-y-6">
+          <div className="flex-grow overflow-y-auto space-y-6 pr-4">
             <h2 className="text-lg font-semibold mb-4">MICRAi</h2>
             {chatHistory.map((chat, index) => (
               <div key={index} className={`flex mb-4 ${chat.user === 'You' ? 'justify-end' : 'justify-start'}`}>
@@ -348,11 +348,11 @@ const FinalReview = () => {
               </div>
             ))}
           </div>
-          {isClient && <div className="mt-4 p-2 border rounded-lg bg-white/80 shadow-sm">
+          {isClient && <div className="mt-4 p-2 border rounded-lg bg-white/80 shadow-sm chat-input-container">
             <textarea
               ref={textareaRef}
               placeholder="Start with an idea or task."
-              className="w-full bg-transparent focus:outline-none resize-none text-sm text-black placeholder-gray-500 max-h-24"
+              className="w-full bg-transparent focus:outline-none resize-none text-sm text-black placeholder-gray-500 max-h-40 overflow-y-auto"
               value={chatMessage}
               onChange={(e) => {
                 setChatMessage(e.target.value);

@@ -55,3 +55,7 @@ body {
 .react-flow__attribution {
   display: none;
 }
+
+.chat-input-container {
+  border: 1px solid #E6E6E6;
+}
