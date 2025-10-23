@@ -1,7 +1,7 @@
 import React from 'react';
 
-const EmailDraft = () => (
-  <div className="w-[500px] bg-white rounded-xl shadow-lg cursor-move font-sans">
+const EmailDraft = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void }) => (
+  <div className="w-[500px] bg-white rounded-xl shadow-lg cursor-move font-sans" onContextMenu={onContextMenu}>
     {/* Header */}
     <div className="bg-gray-100 p-3 rounded-t-xl border-b border-gray-200 flex items-center justify-between">
       <h3 className="font-semibold text-gray-700">Compose Email</h3>

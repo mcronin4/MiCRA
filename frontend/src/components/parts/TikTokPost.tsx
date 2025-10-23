@@ -1,8 +1,8 @@
 import React from 'react';
 import { Heart, MessageCircle, Share2 } from 'lucide-react';
 
-const TikTokPost = () => (
-    <div className="cursor-move w-min">
+const TikTokPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void }) => (
+    <div className="cursor-move w-min" onContextMenu={onContextMenu}>
       {/* TikTok Draft */}
       <div className="relative bg-black w-80 h-[560px] rounded-3xl shadow-lg overflow-hidden">
         <div className="absolute inset-0 bg-gray-800">

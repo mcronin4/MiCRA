@@ -1,8 +1,8 @@
 import React from 'react';
 import { MessageCircle, Send, Share2, MoreHorizontal } from 'lucide-react';
 
-const LinkedInPost = () => (
-  <div className="w-[500px] bg-white p-5 rounded-xl shadow-md cursor-move">
+const LinkedInPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void }) => (
+  <div className="w-[500px] bg-white p-5 rounded-xl shadow-md cursor-move" onContextMenu={onContextMenu}>
     {/* LinkedIn Post Draft */}
     <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">

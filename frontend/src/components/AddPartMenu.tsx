@@ -6,9 +6,11 @@ interface AddPartMenuProps {
   onAddPart: (partType: PartType) => void;
   onClose: () => void;
   position: { x: number; y: number };
+  onPaste?: () => void;
+  canPaste?: boolean;
 }
 
-const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position }) => {
+const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position, onPaste, canPaste }) => {
   const parts: PartType[] = ['LinkedIn', 'TikTok', 'Email'];
 
   return (
@@ -26,6 +28,17 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position 
             {part}
           </li>
         ))}
+        {canPaste && onPaste && (
+          <li
+            className="p-2 hover:bg-gray-100 cursor-pointer"
+            onClick={() => {
+              onPaste();
+              onClose();
+            }}
+          >
+            Paste
+          </li>
+        )}
       </ul>
     </div>
   );

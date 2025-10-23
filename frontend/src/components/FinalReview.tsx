@@ -8,6 +8,7 @@ import TikTokPost from './parts/TikTokPost';
 import EmailDraft from './parts/EmailDraft';
 import AddPartMenu from './AddPartMenu';
 import ZoomControls from './ZoomControls';
+import PartContextMenu from './PartContextMenu';
 
 type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
 type Part = {
@@ -20,6 +21,8 @@ const FinalReview = () => {
   const [activeTab, setActiveTab] = useState<SourceType>('Video');
   const [parts, setParts] = useState<Part[]>([]);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [partContextMenu, setPartContextMenu] = useState<{ x: number; y: number; partId: number } | null>(null);
+  const [copiedPart, setCopiedPart] = useState<Part | null>(null);
   const [newPartPosition, setNewPartPosition] = useState<{ x: number; y: number } | null>(null);
   const [sidebarsVisible, setSidebarsVisible] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
@@ -129,6 +132,62 @@ const FinalReview = () => {
       };
       setParts([...parts, newPart]);
       setNewPartPosition(null);
+    }
+  };
+
+  const handleDeletePart = (partId: number) => {
+    setParts(parts.filter((part) => part.id !== partId));
+    setPartContextMenu(null);
+  };
+
+  const handleDuplicatePart = (partId: number) => {
+    const partToDuplicate = parts.find((part) => part.id === partId);
+    if (partToDuplicate) {
+      const newPart: Part = {
+        ...partToDuplicate,
+        id: nextId.current++,
+        position: {
+          x: partToDuplicate.position.x + 20,
+          y: partToDuplicate.position.y + 20,
+        },
+      };
+      setParts([...parts, newPart]);
+    }
+    setPartContextMenu(null);
+  };
+
+  const handleCopyPart = (partId: number) => {
+    const partToCopy = parts.find((part) => part.id === partId);
+    if (partToCopy) {
+      setCopiedPart(partToCopy);
+    }
+    setPartContextMenu(null);
+  };
+
+  const handlePastePart = () => {
+    if (copiedPart && newPartPosition) {
+      const { scale, positionX, positionY } = transformState.current!.state;
+      const { width, height } = getPartDimensions(copiedPart.type);
+      const newPart: Part = {
+        ...copiedPart,
+        id: nextId.current++,
+        position: {
+          x: (newPartPosition.x - positionX) / scale - width / 2,
+          y: (newPartPosition.y - positionY) / scale - height / 2,
+        },
+      };
+      setParts([...parts, newPart]);
+    }
+  };
+
+  const handlePartContextMenu = (e: React.MouseEvent<HTMLDivElement>, partId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (canvasContainerRef.current) {
+      const rect = canvasContainerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setPartContextMenu({ x: x + 5, y: y + 5, partId });
     }
   };
 
@@ -264,7 +323,10 @@ const FinalReview = () => {
             <div
               style={{ width: '4000px', height: '3000px' }}
               onContextMenu={handleCanvasContextMenu}
-              onClick={() => setMenuPosition(null)}
+              onClick={() => {
+                setMenuPosition(null);
+                setPartContextMenu(null);
+              }}
             >
               {parts.map((part) => {
                 const Component = {
@@ -288,7 +350,7 @@ const FinalReview = () => {
                     onStop={() => setIsDragging(false)}
                   >
                     <div ref={nodeRef}>
-                      <Component />
+                      <Component onContextMenu={(e) => handlePartContextMenu(e, part.id)} />
                     </div>
                   </Draggable>
                 );
@@ -302,6 +364,17 @@ const FinalReview = () => {
             onAddPart={handleAddPart}
             onClose={() => setMenuPosition(null)}
             position={menuPosition}
+            onPaste={handlePastePart}
+            canPaste={!!copiedPart}
+          />
+        )}
+        {partContextMenu && (
+          <PartContextMenu
+            position={{ x: partContextMenu.x, y: partContextMenu.y }}
+            onDelete={() => handleDeletePart(partContextMenu.partId)}
+            onDuplicate={() => handleDuplicatePart(partContextMenu.partId)}
+            onCopy={() => handleCopyPart(partContextMenu.partId)}
+            onClose={() => setPartContextMenu(null)}
           />
         )}
         <ZoomControls
