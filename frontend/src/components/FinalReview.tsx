@@ -26,17 +26,27 @@ const FinalReview = () => {
   const [newPartPosition, setNewPartPosition] = useState<{ x: number; y: number } | null>(null);
   const [sidebarsVisible, setSidebarsVisible] = useState(true);
   const [chatMessage, setChatMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState<{ user: string; text: string }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ user: string; text: string; isLoading?: boolean }[]>([]);
+  const [conversationState, setConversationState] = useState<any>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatHistoryRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const setNodesRef = useRef<React.Dispatch<React.SetStateAction<Node[]>> | null>(null);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Auto-scroll to bottom when chat history changes
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+    }
+  }, [chatHistory]);
 
   const SourceMediaContent = () => {
     switch (activeTab) {
@@ -192,11 +202,35 @@ const FinalReview = () => {
     }
   };
 
+  const addNodeToCanvas = useCallback((nodeType: 'LinkedIn' | 'TikTok' | 'Email', content: string) => {
+    if (!setNodesRef.current || !reactFlowInstance) return;
+
+    // Add node in the center of the canvas
+    const viewport = reactFlowInstance.getViewport();
+    const centerX = (window.innerWidth / 2 - viewport.x) / viewport.zoom;
+    const centerY = (window.innerHeight / 2 - viewport.y) / viewport.zoom;
+
+    const newNode: Node = {
+      id: `${nodeType}-${nextId.current++}`,
+      type: nodeType,
+      position: { x: centerX - 250, y: centerY - 200 }, // Offset to center the node
+      data: { label: `${nodeType} node`, content },
+    };
+
+    setNodesRef.current((nds: Node[]) => nds.concat(newNode));
+  }, [reactFlowInstance]);
+
   const handleSendMessage = async () => {
     if (chatMessage.trim() === '') return;
 
     const userMessage = { user: 'You', text: chatMessage };
     setChatHistory(prev => [...prev, userMessage]);
+    
+    // Add loading message
+    const loadingMessage = { user: 'MICRAi', text: '', isLoading: true };
+    setChatHistory(prev => [...prev, loadingMessage]);
+    
+    const currentMessage = chatMessage;
     setChatMessage('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -209,25 +243,43 @@ const FinalReview = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: chatMessage }),
+        body: JSON.stringify({ 
+          message: currentMessage,
+          conversation_state: conversationState
+        }),
       });
 
       if (!response.ok) {
         throw new Error('Network response was not ok');
       }
 
-      const text = await response.text();
-      try {
-        const data = JSON.parse(text);
-        const botMessage = { user: 'MICRAi', text: data.message };
-        setChatHistory(prev => [...prev, botMessage]);
-      } catch (error) {
-        console.error('Error parsing JSON:', error);
-        const errorMessage = { user: 'MICRAi', text: 'Sorry, something went wrong. Please try again.' };
-        setChatHistory(prev => [...prev, errorMessage]);
+      const data = await response.json();
+      
+      // Update conversation state
+      if (data.conversation_state !== undefined) {
+        setConversationState(data.conversation_state);
+      }
+      
+      // Remove loading message
+      setChatHistory(prev => prev.filter(msg => !msg.isLoading));
+      
+      const botMessage = { user: 'MICRAi', text: data.message };
+      setChatHistory(prev => [...prev, botMessage]);
+
+      // Handle actions (create nodes)
+      if (data.action && data.content) {
+        if (data.action === 'create_linkedin') {
+          addNodeToCanvas('LinkedIn', data.content);
+        } else if (data.action === 'create_email') {
+          addNodeToCanvas('Email', data.content);
+        } else if (data.action === 'create_tiktok') {
+          addNodeToCanvas('TikTok', data.content);
+        }
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      // Remove loading message
+      setChatHistory(prev => prev.filter(msg => !msg.isLoading));
       const errorMessage = { user: 'MICRAi', text: 'Sorry, something went wrong. Please try again.' };
       setChatHistory(prev => [...prev, errorMessage]);
     }
@@ -317,6 +369,7 @@ const FinalReview = () => {
               reactFlowInstance={reactFlowInstance}
               isLocked={isLocked}
               setIsLocked={setIsLocked}
+              setNodesRef={setNodesRef}
             />
           )}
         </ReactFlowWrapper>
@@ -331,7 +384,7 @@ const FinalReview = () => {
       {/* Right Column: Chatbot */}
       {sidebarsVisible && (
         <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
-          <div className="flex-grow overflow-y-auto space-y-6 pr-4">
+          <div ref={chatHistoryRef} className="flex-grow overflow-y-auto space-y-6 pr-4">
             <h2 className="text-lg font-semibold mb-4">MICRAi</h2>
             {chatHistory.map((chat, index) => (
               <div key={index} className={`flex mb-4 ${chat.user === 'You' ? 'justify-end' : 'justify-start'}`}>
@@ -340,10 +393,18 @@ const FinalReview = () => {
                     <div className="bg-[#F4F4F6] text-[#1d1d1f] p-3 rounded-lg">
                       <p className="text-sm">{chat.text}</p>
                     </div>
+                  ) : chat.isLoading ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
                   ) : (
                     <p className="text-sm">{chat.text}</p>
                   )}
-                  <p className={`text-xs text-gray-400 mt-1 ${chat.user === 'You' ? 'text-right' : ''}`}>{chat.user}</p>
+                  {!chat.isLoading && (
+                    <p className={`text-xs text-gray-400 mt-1 ${chat.user === 'You' ? 'text-right' : ''}`}>{chat.user}</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -412,9 +473,18 @@ const CanvasArea = ({
   reactFlowInstance,
   isLocked,
   setIsLocked,
+  setNodesRef,
 }: any) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
+  // Store setNodes in the parent's ref
+  useEffect(() => {
+    if (setNodesRef) {
+      setNodesRef.current = setNodes;
+    }
+  }, [setNodesRef, setNodes]);
+  
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),
     [setEdges, addEdge]

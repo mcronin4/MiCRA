@@ -4,7 +4,8 @@ import { Position } from '@xyflow/react';
 
 export function TikTokComponent({ data }: { data: any }) {
   const username = data?.username || '@micra_official';
-  const caption = data?.caption || 'Check out this amazing content! 🔥 #contentcreation #micra #innovation';
+  // If content is provided, use it as the caption, otherwise use default
+  const caption = data?.content || data?.caption || 'Check out this amazing content! 🔥 #contentcreation #micra #innovation';
   const music = data?.music || 'Original Sound - MiCRA';
   const likes = data?.likes || '1.2M';
   const comments = data?.comments || '40.2K';

@@ -2,6 +2,16 @@ import React from 'react';
 import { Position } from '@xyflow/react';
 
 export function EmailComponent({ data }: { data: any }) {
+  const content = data?.content || `Hi [First Name],
+
+I'm excited to introduce the brilliant people behind Micra—a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.
+
+Best regards,
+[Your Name]`;
+
+  const subject = data?.subject || "Meet the Team Behind Micra";
+  const to = data?.to || "marketing-leads@example.com";
+
   return (
     <div className="w-[500px] bg-white rounded-xl shadow-lg font-sans">
       {/* Header */}
@@ -18,22 +28,17 @@ export function EmailComponent({ data }: { data: any }) {
       <div className="p-4 text-sm text-gray-600">
         <div className="flex items-center mb-2">
           <span className="font-semibold w-16">To:</span>
-          <span className="bg-gray-100 rounded-full px-3 py-1 text-xs">marketing-leads@example.com</span>
+          <span className="bg-gray-100 rounded-full px-3 py-1 text-xs">{to}</span>
         </div>
         <div className="flex items-center">
           <span className="font-semibold w-16">Subject:</span>
-          <span className="font-medium text-gray-800">Meet the Team Behind Micra</span>
+          <span className="font-medium text-gray-800">{subject}</span>
         </div>
       </div>
 
       {/* Email Body */}
-      <div className="p-4 border-t border-gray-200 text-sm text-gray-800 leading-relaxed">
-          <p>Hi [First Name],</p>
-          <br />
-          <p>I'm excited to introduce the brilliant people behind Micra—a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.</p>
-          <br />
-          <p>Best regards,</p>
-          <p className="font-medium">[Your Name]</p>
+      <div className="p-4 border-t border-gray-200 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+        {content}
       </div>
     </div>
   );
