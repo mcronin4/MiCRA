@@ -32,10 +32,10 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position,
     };
   }, [onClose]);
 
-  const parts: { name: PartType; icon: React.ReactNode }[] = [
-    { name: 'LinkedIn', icon: <Linkedin size={16} className="mr-2" /> },
-    { name: 'TikTok', icon: <FaTiktok size={16} className="mr-2" /> },
-    { name: 'Email', icon: <Mail size={16} className="mr-2" /> },
+  const parts: { name: PartType; label: string; icon: React.ReactNode }[] = [
+    { name: 'LinkedIn', label: 'Generate LinkedIn Post', icon: <Linkedin size={16} className="mr-2" /> },
+    { name: 'TikTok', label: 'Generate TikTok', icon: <FaTiktok size={16} className="mr-2" /> },
+    { name: 'Email', label: 'Generate Email', icon: <Mail size={16} className="mr-2" /> },
   ];
 
   const handleAction = (action: () => void) => {
@@ -53,11 +53,11 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position,
         <Button
           key={part.name}
           variant="ghost"
-          className="w-full justify-start px-3"
+          className="w-full justify-start px-3 text-xs"
           onClick={() => handleAction(() => onAddPart(part.name))}
         >
           {part.icon}
-          {part.name}
+          {part.label}
         </Button>
       ))}
       {canPaste && onPaste && (

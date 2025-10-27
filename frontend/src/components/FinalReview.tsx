@@ -18,6 +18,13 @@ const nodeTypes = {
   Email: EmailComponent,
 };
 
+interface SourceText {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+}
+
 const FinalReview = () => {
   const [activeTab, setActiveTab] = useState<SourceType>('Video');
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
@@ -26,11 +33,18 @@ const FinalReview = () => {
   const [newPartPosition, setNewPartPosition] = useState<{ x: number; y: number } | null>(null);
   const [sidebarsVisible, setSidebarsVisible] = useState(true);
   const [chatMessage, setChatMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState<{ user: string; text: string; isLoading?: boolean }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ user: string; text: string; isLoading?: boolean; showToneOptions?: boolean }[]>([]);
   const [conversationState, setConversationState] = useState<any>({});
+  const [sourceTexts, setSourceTexts] = useState<SourceText[]>([]);
+  const [newSourceContent, setNewSourceContent] = useState('');
+  const [tonePreference, setTonePreference] = useState<string>('');
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [editingTitle, setEditingTitle] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatHistoryRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
+  const sourceIdCounter = useRef(0);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [isLocked, setIsLocked] = useState(false);
@@ -47,6 +61,132 @@ const FinalReview = () => {
       chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
     }
   }, [chatHistory]);
+
+  // Auto-generate when canvas triggers generation with source + tone
+  useEffect(() => {
+    const autoGenerate = async () => {
+      if (conversationState.generating_from_canvas && sourceTexts.length > 0 && tonePreference) {
+        const contentType = conversationState.content_type;
+        
+        // Add loading message
+        const loadingMessage = { user: 'MICRAi', text: '', isLoading: true };
+        setChatHistory(prev => [...prev, loadingMessage]);
+        
+        try {
+          const sourceTextsForAPI = sourceTexts.map(source => ({
+            id: source.id,
+            title: source.title,
+            content: source.content
+          }));
+
+          const response = await fetch('http://localhost:8000/api/v1/hitl/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              message: 'Generate content from source material',
+              conversation_state: conversationState,
+              source_texts: sourceTextsForAPI,
+              tone_preference: tonePreference
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Backend error:', response.status, errorText);
+            throw new Error(`Network response was not ok: ${response.status}`);
+          }
+
+          const data = await response.json();
+          
+          // Remove loading message
+          setChatHistory(prev => prev.filter(msg => !msg.isLoading));
+          
+          const botMessage = { user: 'MICRAi', text: data.message };
+          setChatHistory(prev => [...prev, botMessage]);
+
+          // Handle actions (create nodes)
+          if (data.action && data.content) {
+            if (data.action === 'create_linkedin') {
+              addNodeToCanvas('LinkedIn', data.content);
+            } else if (data.action === 'create_email') {
+              addNodeToCanvas('Email', data.content);
+            } else if (data.action === 'create_tiktok') {
+              addNodeToCanvas('TikTok', data.content);
+            }
+          }
+          
+          // Clear conversation state
+          setConversationState({});
+        } catch (error) {
+          console.error('Error generating content:', error);
+          setChatHistory(prev => prev.filter(msg => !msg.isLoading));
+          const errorMessage = { user: 'MICRAi', text: 'Sorry, something went wrong. Please try again.' };
+          setChatHistory(prev => [...prev, errorMessage]);
+          setConversationState({});
+        }
+      }
+    };
+    
+    autoGenerate();
+  }, [conversationState.generating_from_canvas]);
+
+  const handleAddSource = () => {
+    if (newSourceContent.trim() === '') return;
+    
+    const title = newSourceContent.slice(0, 30) + (newSourceContent.length > 30 ? '...' : '');
+    const newSource: SourceText = {
+      id: `source-${sourceIdCounter.current++}`,
+      title,
+      content: newSourceContent,
+      createdAt: new Date(),
+    };
+    
+    setSourceTexts(prev => [...prev, newSource]);
+    setNewSourceContent('');
+  };
+
+  const handleDeleteSource = (id: string) => {
+    setSourceTexts(prev => prev.filter(source => source.id !== id));
+  };
+
+  const handleEditSource = (id: string) => {
+    const source = sourceTexts.find(s => s.id === id);
+    if (source) {
+      setEditingSourceId(id);
+      setEditingContent(source.content);
+      setEditingTitle(source.title);
+    }
+  };
+
+  const handleSaveEdit = (id: string) => {
+    setSourceTexts(prev => prev.map(source => 
+      source.id === id 
+        ? { ...source, title: editingTitle, content: editingContent }
+        : source
+    ));
+    setEditingSourceId(null);
+    setEditingContent('');
+    setEditingTitle('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingSourceId(null);
+    setEditingContent('');
+    setEditingTitle('');
+  };
+
+  const handleToneSelect = async (tone: string) => {
+    setTonePreference(tone);
+    
+    // Add user's selection to chat
+    const userMessage = { user: 'You', text: tone };
+    setChatHistory(prev => [...prev, userMessage]);
+    
+    // Trigger the next step in conversation
+    await handleSendMessage(tone);
+  };
 
   const SourceMediaContent = () => {
     switch (activeTab) {
@@ -104,14 +244,110 @@ const FinalReview = () => {
         );
       case 'Text':
         return (
-          <div>
-            <div className="bg-gray-800/5 p-4 rounded-lg mb-4 h-48 overflow-y-auto">
-              <p className="text-xs text-gray-700 leading-relaxed">
-                This is the full text document. It can be scrolled through to read all the content that has been provided as source material for the generated drafts. This text could be a blog post, an article, a whitepaper, or any other long-form text content.
-                <br /><br />
-                The system will use this text to extract key points, summarize information, and generate various social media posts and other content formats based on the core message of the document.
-              </p>
+          <div className="space-y-4">
+            {/* New Source Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-gray-700">Add Source Text</label>
+              <div className="p-0.5">
+                <textarea
+                  placeholder="Paste or type your source text here..."
+                  className="w-full bg-gray-800/5 p-3 rounded-lg text-xs text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border border-transparent focus:border-blue-500"
+                  value={newSourceContent}
+                  onChange={(e) => setNewSourceContent(e.target.value)}
+                  rows={6}
+                />
+              </div>
+              <button
+                onClick={handleAddSource}
+                disabled={!newSourceContent.trim()}
+                className="w-full bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Add Source
+              </button>
             </div>
+
+            {/* Existing Sources */}
+            {sourceTexts.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium text-gray-700">Source Materials ({sourceTexts.length})</h4>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {sourceTexts.map((source) => (
+                    <div
+                      key={source.id}
+                      className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm"
+                    >
+                      {editingSourceId === source.id ? (
+                        // Edit Mode
+                        <div className="space-y-2 p-0.5">
+                          <input
+                            type="text"
+                            className="w-full bg-gray-50 px-2 py-1 rounded text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-transparent focus:border-blue-500"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            placeholder="Title..."
+                          />
+                          <textarea
+                            className="w-full bg-gray-50 px-2 py-2 rounded text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border border-transparent focus:border-blue-500"
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            rows={4}
+                            placeholder="Content..."
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleSaveEdit(source.id)}
+                              className="flex-1 bg-blue-500 text-white px-3 py-1 rounded text-xs font-medium hover:bg-blue-600 transition-colors"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={handleCancelEdit}
+                              className="flex-1 bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs font-medium hover:bg-gray-300 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        // View Mode
+                        <>
+                          <div className="flex justify-between items-start mb-2">
+                            <h5 className="text-xs font-semibold text-gray-800 flex-1">{source.title}</h5>
+                            <div className="flex gap-1 ml-2">
+                              <button
+                                onClick={() => handleEditSource(source.id)}
+                                className="text-gray-400 hover:text-blue-500"
+                                title="Edit source"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSource(source.id)}
+                                className="text-gray-400 hover:text-red-500"
+                                title="Delete source"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-600 line-clamp-3">{source.content}</p>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {sourceTexts.length === 0 && (
+              <div className="text-center py-8 text-xs text-gray-500">
+                No source materials yet. Add text above to get started.
+              </div>
+            )}
           </div>
         );
       default:
@@ -120,19 +356,56 @@ const FinalReview = () => {
   };
 
   const handleAddPart = (partType: 'LinkedIn' | 'TikTok' | 'Email', setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
-    if (reactFlowInstance && newPartPosition) {
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: newPartPosition.x,
-        y: newPartPosition.y,
-      });
-      const newNode: Node = {
-        id: `${partType}-${nextId.current++}`,
-        type: partType,
-        position,
-        data: { label: `${partType} node` },
+    // Instead of adding empty node, trigger chat-based generation
+    setMenuPosition(null);
+    setNewPartPosition(null);
+    
+    // Ensure sidebar is visible
+    if (!sidebarsVisible) {
+      setSidebarsVisible(true);
+    }
+    
+    // Map part type to content type string
+    const contentTypeMap = {
+      'LinkedIn': 'linkedin',
+      'TikTok': 'tiktok', 
+      'Email': 'email'
+    };
+    const contentType = contentTypeMap[partType];
+    
+    // Check if we have source text
+    const hasSource = sourceTexts.length > 0;
+    
+    if (hasSource) {
+      // Always ask for tone when generating from canvas
+      const botMessage = { 
+        user: 'MICRAi', 
+        text: `I'll create a ${partType} ${contentType === 'linkedin' ? 'post' : contentType === 'email' ? 'draft' : 'script'} using your source material. What tone or style would you like?`,
+        showToneOptions: true
       };
-      setNodes((nds: Node[]) => nds.concat(newNode));
-      setNewPartPosition(null);
+      setChatHistory(prev => [...prev, botMessage]);
+
+      
+      setConversationState({
+        waiting_for_tone: true,
+        content_type: contentType,
+        user_instruction: 'Create content from source material',
+        from_canvas: true
+      });
+    } else {
+      // No source text, ask for context first
+      const contentName = contentType === 'linkedin' ? 'LinkedIn post' : contentType === 'email' ? 'email' : 'TikTok script';
+      const botMessage = { 
+        user: 'MICRAi', 
+        text: `I'll help you create a ${contentName}! What topic or message would you like to ${contentType === 'email' ? 'communicate' : 'share'}?`
+      };
+      setChatHistory(prev => [...prev, botMessage]);
+      
+      setConversationState({
+        waiting_for_context: true,
+        content_type: contentType,
+        from_canvas: true
+      });
     }
   };
 
@@ -202,7 +475,7 @@ const FinalReview = () => {
     }
   };
 
-  const addNodeToCanvas = useCallback((nodeType: 'LinkedIn' | 'TikTok' | 'Email', content: string) => {
+  const addNodeToCanvas = useCallback((nodeType: 'LinkedIn' | 'TikTok' | 'Email', content: string | any) => {
     if (!setNodesRef.current || !reactFlowInstance) return;
 
     // Add node in the center of the canvas
@@ -210,27 +483,41 @@ const FinalReview = () => {
     const centerX = (window.innerWidth / 2 - viewport.x) / viewport.zoom;
     const centerY = (window.innerHeight / 2 - viewport.y) / viewport.zoom;
 
+    // Handle both string content and structured content
+    let nodeData: any = { label: `${nodeType} node` };
+    
+    if (typeof content === 'string') {
+      nodeData.content = content;
+    } else if (typeof content === 'object') {
+      // Merge structured content into node data
+      nodeData = { ...nodeData, ...content };
+    }
+
     const newNode: Node = {
       id: `${nodeType}-${nextId.current++}`,
       type: nodeType,
       position: { x: centerX - 250, y: centerY - 200 }, // Offset to center the node
-      data: { label: `${nodeType} node`, content },
+      data: nodeData,
     };
 
     setNodesRef.current((nds: Node[]) => nds.concat(newNode));
   }, [reactFlowInstance]);
 
-  const handleSendMessage = async () => {
-    if (chatMessage.trim() === '') return;
+  const handleSendMessage = async (messageOverride?: string) => {
+    const messageToSend = messageOverride || chatMessage;
+    if (messageToSend.trim() === '') return;
 
-    const userMessage = { user: 'You', text: chatMessage };
-    setChatHistory(prev => [...prev, userMessage]);
+    // Only add user message if not already added (when using messageOverride)
+    if (!messageOverride) {
+      const userMessage = { user: 'You', text: messageToSend };
+      setChatHistory(prev => [...prev, userMessage]);
+    }
     
     // Add loading message
     const loadingMessage = { user: 'MICRAi', text: '', isLoading: true };
     setChatHistory(prev => [...prev, loadingMessage]);
     
-    const currentMessage = chatMessage;
+    const currentMessage = messageToSend;
     setChatMessage('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -238,19 +525,30 @@ const FinalReview = () => {
     }
 
     try {
-      const response = await fetch('/backend/v1/hitl/chat', {
+      // Prepare source texts for API (serialize to plain objects)
+      const sourceTextsForAPI = sourceTexts.map(source => ({
+        id: source.id,
+        title: source.title,
+        content: source.content
+      }));
+
+      const response = await fetch('http://localhost:8000/api/v1/hitl/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
           message: currentMessage,
-          conversation_state: conversationState
+          conversation_state: conversationState,
+          source_texts: sourceTextsForAPI.length > 0 ? sourceTextsForAPI : null,
+          tone_preference: tonePreference || null
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Network response was not ok');
+        const errorText = await response.text();
+        console.error('Backend error:', response.status, errorText);
+        throw new Error(`Network response was not ok: ${response.status}`);
       }
 
       const data = await response.json();
@@ -263,7 +561,11 @@ const FinalReview = () => {
       // Remove loading message
       setChatHistory(prev => prev.filter(msg => !msg.isLoading));
       
-      const botMessage = { user: 'MICRAi', text: data.message };
+      const botMessage = { 
+        user: 'MICRAi', 
+        text: data.message,
+        showToneOptions: data.conversation_state?.show_tone_options || false
+      };
       setChatHistory(prev => [...prev, botMessage]);
 
       // Handle actions (create nodes)
@@ -290,7 +592,7 @@ const FinalReview = () => {
       {/* Left Column: Source Media */}
       {sidebarsVisible && (
         <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
-          <div className="flex-grow overflow-y-auto space-y-6">
+          <div className="flex-grow overflow-y-auto space-y-6 pb-4">
             <h2 className="text-lg font-semibold mb-4">Source Media</h2>
             <div className="flex items-center space-x-4 border-b border-gray-200/80 pb-2 mb-4">
               {([ 'Video', 'Audio', 'Images', 'Text'] as SourceType[]).map((tab) => (
@@ -384,8 +686,9 @@ const FinalReview = () => {
       {/* Right Column: Chatbot */}
       {sidebarsVisible && (
         <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
-          <div ref={chatHistoryRef} className="flex-grow overflow-y-auto space-y-6 pr-4">
+          <div ref={chatHistoryRef} className="flex-grow overflow-y-auto space-y-6 pr-4 pb-4">
             <h2 className="text-lg font-semibold mb-4">MICRAi</h2>
+            
             {chatHistory.map((chat, index) => (
               <div key={index} className={`flex mb-4 ${chat.user === 'You' ? 'justify-end' : 'justify-start'}`}>
                 <div className="flex-1">
@@ -400,7 +703,25 @@ const FinalReview = () => {
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                     </div>
                   ) : (
-                    <p className="text-sm">{chat.text}</p>
+                    <>
+                      <p className="text-sm mb-3">{chat.text}</p>
+                      {chat.showToneOptions && (
+                        <div className="mt-3 space-y-2">
+                          {['Professional', 'Friendly', 'Concise', 'Persuasive'].map((tone) => (
+                            <button
+                              key={tone}
+                              onClick={() => handleToneSelect(tone)}
+                              className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-800 transition-colors border border-gray-200 hover:border-gray-300"
+                            >
+                              <div className="flex items-center">
+                                <div className="w-4 h-4 rounded-full border-2 border-gray-400 mr-3"></div>
+                                <span className="font-medium">{tone}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                   {!chat.isLoading && (
                     <p className={`text-xs text-gray-400 mt-1 ${chat.user === 'You' ? 'text-right' : ''}`}>{chat.user}</p>
