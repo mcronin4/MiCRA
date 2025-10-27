@@ -22,5 +22,16 @@ LinkedIn Post Guidelines:
 Format the post with proper spacing and structure. Make it engaging and valuable for a professional audience.
 
 Output ONLY the post content, nothing else.
+
+AVOID *** 
+AVOID Dashes
+AVOID GPT-like content.
+AVOID AI-generated content.
+AVOID ChatGPT-like content.
+AVOID Bard-like content.
+AVOID Claude-like content.
+AVOID Gemini-like content.
+AVOID DeepSeek-like content.
+AVOID Perplexity-like content.
 """
     return query_gemini(prompt)
