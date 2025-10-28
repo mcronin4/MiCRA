@@ -24,29 +24,36 @@ def generate_email(
         tone_guidance = f"Tone/Style to use: {tone_preference}"
     
     prompt = f"""
-Create a professional email about the following topic or message:
+Create a professional email about the following topic:
 
 Topic: {topic}
 {source_context}
 
-Email Guidelines:
-- Start with an appropriate greeting (e.g., "Hi [Name]," or "Hello,")
-- Open with a clear and engaging first sentence that states the purpose
-- Keep paragraphs short (2-3 sentences max) for easy scanning
+STRICT REQUIREMENTS:
+- Maximum email body: 800 characters
+- Subject line: 6-8 words maximum, compelling and clear
+- 2-4 short paragraphs in body
+- Each paragraph: 2-3 sentences maximum
+
+STRUCTURE:
+1. Subject line: Clear, specific, action-oriented
+2. Greeting: Simple and appropriate (e.g., "Hi [Name]," or "Hello,")
+3. Opening (1 sentence): State purpose immediately
+4. Body (2-4 sentences): Provide essential details and value
+5. Close (1-2 sentences): Clear call-to-action or next steps
+6. Sign-off: Professional (e.g., "Best," "Thanks," "Best regards,")
+
+STYLE:
 - {tone_guidance}
-- Be concise and to the point - respect the recipient's time
-- Include specific details or value
-- End with a clear call-to-action or next steps
-- Close with an appropriate sign-off (e.g., "Best regards," or "Thank you,")
-- Maximum length: 1,500 characters
+- Be direct and scannable - no fluff
+- Use specific details, not generic statements
+- Respect the recipient's time
+- Write like a human colleague, not a corporate template
 
-{"- If source context is provided, reflect key details from it while maintaining email structure" if source_context else ""}
-{"- Preserve sensitive details and do not fabricate information" if source_context else ""}
-
-Format the email with proper structure and spacing. Make it professional, clear, and actionable.
+{"CRITICAL: Use source context for factual details. Do not fabricate." if source_context else ""}
 
 Output in this EXACT format:
-SUBJECT: [compelling subject line here]
+SUBJECT: [compelling subject line]
 ---
 [email body including greeting and sign-off]
 """

@@ -24,38 +24,33 @@ def generate_linkedin_post(
         tone_guidance = f"Tone/Style to use: {tone_preference}"
     
     prompt = f"""
-Create a professional LinkedIn post about the following topic or message:
+Create a concise, engaging LinkedIn post about the following topic:
 
 Topic: {topic}
 {source_context}
 
-LinkedIn Post Guidelines:
-- Start with a compelling hook that grabs attention (question, surprising fact, or bold statement)
-- Use short paragraphs (1-2 sentences each) for easy mobile reading
-- Include line breaks between paragraphs for visual breathing room
+STRICT REQUIREMENTS:
+- Maximum length: 1,200 characters (firm limit)
+- Target length: 800-1,000 characters for optimal engagement
+- 3-5 short paragraphs maximum
+- Each paragraph: 1-2 sentences only
+
+STRUCTURE:
+1. Hook (1 sentence): Start with a compelling question, surprising insight, or bold statement
+2. Core value (2-3 sentences): Share ONE key insight, lesson, or actionable takeaway
+3. Brief context/story (optional, 1-2 sentences): Add relatability if relevant
+4. Call-to-action (1 sentence): End with an engaging question or clear next step
+
+STYLE:
 - {tone_guidance}
-- Share value: insights, lessons learned, or actionable advice
-- Be authentic and relatable
-- End with a call-to-action or thought-provoking question to encourage engagement
-- Maximum length: 2,900 characters
-- Optional: Include 3-5 relevant hashtags at the end (but only if they feel natural)
+- Write like a human, not an AI
+- Use conversational language, avoid corporate jargon
+- Be specific and concrete, not vague or generic
+- NO asterisks (***), NO dashes for emphasis, NO overused phrases
+- Optional: 2-3 relevant hashtags only if they add value
 
-{"- If source context is provided, reflect key details from it" if source_context else ""}
-{"- Preserve sensitive details and do not fabricate information" if source_context else ""}
+{"CRITICAL: Extract key points from source context. Stay factual. Do not fabricate." if source_context else ""}
 
-Format the post with proper spacing and structure. Make it engaging and valuable for a professional audience.
-
-Output ONLY the post content, nothing else.
-
-AVOID *** 
-AVOID Dashes
-AVOID GPT-like content.
-AVOID AI-generated content.
-AVOID ChatGPT-like content.
-AVOID Bard-like content.
-AVOID Claude-like content.
-AVOID Gemini-like content.
-AVOID DeepSeek-like content.
-AVOID Perplexity-like content.
+Output ONLY the post content. No preamble, no explanations.
 """
     return query_gemini(prompt)

@@ -24,27 +24,37 @@ def generate_tiktok_script(
         tone_guidance = f"{tone_preference}, while remaining engaging for TikTok"
     
     prompt = f"""
-Create a TikTok video script/caption about the following topic or message:
+Create a TikTok caption about the following topic:
 
 Topic: {topic}
 {source_context}
 
-TikTok Script Guidelines:
-- Start with an attention-grabbing hook (first 3 seconds are crucial!)
-- Keep it short, punchy, and easy to follow
+STRICT REQUIREMENTS:
+- Maximum length: 300 characters (including spaces)
+- Must include 3-5 relevant hashtags
+- First line must hook attention in 5 words or less
+
+STRUCTURE:
+1. Hook (5 words max): Grab attention immediately
+2. Value (1-2 short sentences): Deliver one punchy insight or tip
+3. Engagement (1 question or CTA): Encourage comments/shares
+4. Hashtags: 3-5 trending or niche-relevant tags
+
+STYLE:
 - Tone: {tone_guidance}
-- Use casual, conversational language
-- Include actionable tips or insights
-- End with a call-to-action or engaging question
-- Maximum length: 150 characters for caption
-- Include 3-5 relevant hashtags
+- Casual, conversational, no corporate speak
+- Short sentences, energetic pace
+- Speak directly to viewer ("you")
+- Make every word count
 
-{"- If source context is provided, extract the most engaging points" if source_context else ""}
-{"- Preserve key facts and do not fabricate information" if source_context else ""}
+{"CRITICAL: Extract the most engaging point from source. Stay accurate." if source_context else ""}
 
-Format the script to be compelling for a short-form video platform.
+Output format:
+[Hook]
+[Value - keep it punchy]
+[CTA/Question]
 
-Output ONLY the caption/script with hashtags, nothing else.
+#hashtag1 #hashtag2 #hashtag3
 """
     return query_gemini(prompt)
 
