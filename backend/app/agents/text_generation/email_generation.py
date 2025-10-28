@@ -1,5 +1,4 @@
-# This will be used to generate emails based on the summarized text# This will be used to generate LinkedIn posts based on the summarized text
-from ...llm.gemini import query_gemini
+# This will be used to generate emails based on the summarized text
 
 
 def generate_email(summary: str):
