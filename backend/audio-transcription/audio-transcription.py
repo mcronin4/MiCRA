@@ -25,41 +25,48 @@ def download_audio(url: str) -> str:
       Returns:
           str: The path to the downloaded audio file.
       """
-    with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
-        info = ydl.extract_info(url, download=False)
-        title = info.get("title", "Unknown_Title")
+    try:
+      with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+          info = ydl.extract_info(url, download=False)
+          title = info.get("title", "Unknown_Title")
 
-    # Sanitize title for safe filenames (remove illegal characters)
-    safe_title = re.sub(r'[\\/*?:"<>| ]', "_", title)
+      # Sanitize title for safe filenames (remove illegal characters)
+      safe_title = re.sub(r'[\\/*?:"<>| ]', "_", title)
 
-    os.makedirs("mp3_files", exist_ok=True)
-    file_path = f"mp3_files/{safe_title}_audio.mp3"
+      os.makedirs("mp3_files", exist_ok=True)
+      file_path = f"mp3_files/{safe_title}_audio.mp3"
 
-    ydl_opts = {
-        "format": "ba[ext=m4a]/bestaudio/best",
-        "outtmpl": file_path,
-        "noplaylist": True,
-        "geo_bypass": True,
-        "geo_bypass_country": "CA",
-        "forceipv4": True,
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) "
-                "Gecko/20100101 Firefox/123.0"
-            ),
-            "Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8",
-        },
-        "retries": 5,
-        "fragment_retries": 5,
-    }
+      ydl_opts = {
+          "format": "ba[ext=m4a]/bestaudio/best",
+          "outtmpl": file_path,
+          "noplaylist": True,
+          "geo_bypass": True,
+          "geo_bypass_country": "CA",
+          "forceipv4": True,
+          "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+          "http_headers": {
+              "User-Agent": (
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) "
+                  "Gecko/20100101 Firefox/123.0"
+              ),
+              "Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8",
+          },
+          "retries": 5,
+          "fragment_retries": 5,
+      }
 
-    # download mp3 file
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+      # download mp3 file
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+          ydl.download([url])
 
-    print(f"✅ Audio downloaded to {file_path}")
-    return file_path
+      print(f"✅ Audio downloaded to {file_path}")
+      return file_path
+    
+    except Exception as e:
+      print(f"Error downloading audio: {e}")
+      print(f"Error type: {type(e).__name__}")
+      print(f"Full error details: {traceback.format_exc()}")
+      return None
 
 def transcribe_audio_or_video_file(audio_path: str):
     """
@@ -153,11 +160,18 @@ if __name__ == "__main__":
         print("Transcription Completed!")
       else:
         print("Transcription failed.")
+      # Clean up after processing
+      try:
+          os.remove(file_path)
+          print(f"Temporary file removed: {file_path}")
+      except Exception as e:
+          print(f"Could not remove file: {e}")
       
   except KeyboardInterrupt:
     print("Transcription cancelled by user.")
   except Exception as e:
     print(f"Unexpected error: {e}")
       
-    #download_audio("https://www.bilibili.com/video/BV1NM1KB3EX5/?spm_id_from=333.40138.feed-card.all.click")
-    #transcribe_audio_or_video_file("mp3_files\AI_layoffs_hit_Big_Tech__Here's_what_to_know_audio.mp3")
+    # Sample tests:
+    # download_audio("https://www.bilibili.com/video/BV1NM1KB3EX5/?spm_id_from=333.40138.feed-card.all.click")
+    # transcribe_audio_or_video_file("C:\QMIND\MiCRA-clean\backend\audio-transcription\mp3_files\万能机位思路，5分钟讲透！拍什么都能用（不是套路，是思路_audio.mp3")
