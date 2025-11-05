@@ -5,6 +5,7 @@ import yt_dlp
 from faster_whisper import WhisperModel
 import traceback  # print error
 import re
+import time
 
 # load vitual environment variables
 load_dotenv()
@@ -92,7 +93,12 @@ def transcribe_audio_or_video_file(audio_path: str):
       
       # transcribe video
       print("Transcribing audio...")
+      start_time = time.time()
+      
       segments, info = model.transcribe(audio_path, vad_filter=ASR_VAD) # return timestamped segments (start, end, text) and metadata
+      
+      end_time = time.time()
+      elapsed = end_time - start_time
       
       print(f"Detected lanuaguge: {info.language}")
       results = []
@@ -102,7 +108,8 @@ def transcribe_audio_or_video_file(audio_path: str):
           "end": seg.end,
           "text": seg.text.strip()}) # .strip(): clean text, no extra space
         print(f"[{seg.start:.2f} - {seg.end:.2f}] {seg.text}")
-        
+      
+      print(f"Transcription completed in {elapsed:.2f} seconds.")
       return results # return a list
     
     except Exception as e:
@@ -148,18 +155,16 @@ if __name__ == "__main__":
     
     if choice == "file":
       results = transcribe_audio_or_video_file(input_value)
-      if results:
+      if not results:
         print("Transcription Completed!")
-      else:
-        print("Transcription failed.")
+        
     elif choice == "url":
       print(f"\nDownloading and transcribing: {input_value}")
       file_path = download_audio(input_value)
       results = transcribe_audio_or_video_file(file_path)
-      if results:
+      if not results:
         print("Transcription Completed!")
-      else:
-        print("Transcription failed.")
+        
       # Clean up after processing
       try:
           os.remove(file_path)
