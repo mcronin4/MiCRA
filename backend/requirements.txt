@@ -29,3 +29,5 @@ typing_extensions
 urllib3
 uvicorn
 websockets
+yt-dlp
+faster-whisper
