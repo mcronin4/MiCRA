@@ -1,0 +1,163 @@
+# interacte with operating system, create folders, handle file path...
+import os
+from dotenv import load_dotenv
+import yt_dlp
+from faster_whisper import WhisperModel
+import traceback  # print error
+import re
+
+# load vitual environment variables
+load_dotenv()
+ASR_MODEL = os.getenv("ASR_MODEL", "small")
+ASR_DEVICE = os.getenv("ASR_DEVICE", "cpu")  # cuda | metal | cpu | auto
+# float16 | int8_float16 | int8
+ASR_COMPUTE = os.getenv("ASR_COMPUTE", "int8_float16")
+ASR_VAD = os.getenv("ASR_VAD", "true").lower() == "true"
+
+
+def download_audio(url: str) -> str:
+    """
+      Download the best audio stream from a YouTube video using yt-dlp.
+
+      Args:
+          url (str): The YouTube video URL.
+
+      Returns:
+          str: The path to the downloaded audio file.
+      """
+    with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+        info = ydl.extract_info(url, download=False)
+        title = info.get("title", "Unknown_Title")
+
+    # Sanitize title for safe filenames (remove illegal characters)
+    safe_title = re.sub(r'[\\/*?:"<>| ]', "_", title)
+
+    os.makedirs("mp3_files", exist_ok=True)
+    file_path = f"mp3_files/{safe_title}_audio.mp3"
+
+    ydl_opts = {
+        "format": "ba[ext=m4a]/bestaudio/best",
+        "outtmpl": file_path,
+        "noplaylist": True,
+        "geo_bypass": True,
+        "geo_bypass_country": "CA",
+        "forceipv4": True,
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) "
+                "Gecko/20100101 Firefox/123.0"
+            ),
+            "Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8",
+        },
+        "retries": 5,
+        "fragment_retries": 5,
+    }
+
+    # download mp3 file
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    print(f"✅ Audio downloaded to {file_path}")
+    return file_path
+
+def transcribe_audio_or_video_file(audio_path: str):
+    """
+    Transcribes an audio file using Faster-Whisper.
+
+    Args:
+        audio_path (str): Path to the audio file.
+
+    Returns:
+        list: A list of transcription segments.
+    """
+    # normalize path
+    audio_path = os.path.normpath(audio_path)
+    try:
+      # if the file does not exist at file path, exit
+      if not os.path.exists(audio_path):
+        print(f"Audio file not found at: {audio_path}")
+        return None
+      
+      # load whisper model
+      print(f"Loading model...")
+      model = WhisperModel(ASR_MODEL, device=ASR_DEVICE, compute_type=ASR_COMPUTE)
+      
+      # transcribe video
+      print("Transcribing audio...")
+      segments, info = model.transcribe(audio_path, vad_filter=ASR_VAD) # return timestamped segments (start, end, text) and metadata
+      
+      print(f"Detected lanuaguge: {info.language}")
+      results = []
+      for seg in segments:
+        results.append({
+          "start:": seg.start,
+          "end": seg.end,
+          "text": seg.text.strip()}) # .strip(): clean text, no extra space
+        print(f"[{seg.start:.2f} - {seg.end:.2f}] {seg.text}")
+        
+      return results # return a list
+    
+    except Exception as e:
+      print(f"Error during transcription: {e}")
+      print(f"Error type: {type(e).__name__}") # type(e) gives <class 'FileNotFoundError'>, .__name__ extract class name
+      print(f"Full error details: {traceback.format_exc()}")
+      return None
+      
+def get_user_choice():
+  """
+    Get user input for transcription method.
+
+    Returns:
+        tuple: (choice, input_value) where choice is 'file', 'youtube', or 'video'
+    """
+  print("Choose an option:")
+  print("1. Upload audio file or video file (mp3, wav, mp4, mov, mkv, etc.)")
+  print("2. Provide video URL")
+  
+  while True: 
+    choice = input("\nEnter your choice (1 or 2): ").strip()
+    
+    if choice == "1":
+      file_path = input("Enter file path: ").strip()
+      if file_path:
+        return "file", file_path
+      else:
+        print("Please provide a valid file path")
+        
+    elif choice == "2":
+      url = input("Enter your video URL:").strip()
+      if url:
+        return "url", url
+      else:
+        print("Please provide a valid URL")
+        
+    else:
+      print(f"Invalid choice. Please enter 1 or 2.")
+
+if __name__ == "__main__":
+  try:
+    choice, input_value = get_user_choice()
+    
+    if choice == "file":
+      results = transcribe_audio_or_video_file(input_value)
+      if results:
+        print("Transcription Completed!")
+      else:
+        print("Transcription failed.")
+    elif choice == "url":
+      print(f"\nDownloading and transcribing: {input_value}")
+      file_path = download_audio(input_value)
+      results = transcribe_audio_or_video_file(file_path)
+      if results:
+        print("Transcription Completed!")
+      else:
+        print("Transcription failed.")
+      
+  except KeyboardInterrupt:
+    print("Transcription cancelled by user.")
+  except Exception as e:
+    print(f"Unexpected error: {e}")
+      
+    #download_audio("https://www.bilibili.com/video/BV1NM1KB3EX5/?spm_id_from=333.40138.feed-card.all.click")
+    #transcribe_audio_or_video_file("mp3_files\AI_layoffs_hit_Big_Tech__Here's_what_to_know_audio.mp3")
