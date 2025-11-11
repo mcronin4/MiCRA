@@ -1,13 +1,29 @@
-# This will be used to generate emails based on the topic/message
+# This will be used to generate emails based on the topic/message or a provided summary.
+from typing import Optional, List, Dict
+
 from ...llm.gemini import query_gemini
-from typing import Optional
 
 
 def generate_email(
-    topic: str,
-    source_texts: Optional[list[dict]] = None,
+    topic: Optional[str] = None,
+    summary: Optional[str] = None,
+    source_texts: Optional[List[Dict]] = None,
     tone_preference: Optional[str] = None
 ):
+    """
+    Generate a professional email grounded in provided context.
+
+    Arguments:
+        topic: High-level topic or subject to cover.
+        summary: Optional textual summary to use when a topic is not provided.
+        source_texts: Optional structured sources with `title` and `content`.
+        tone_preference: Optional tone/style instruction.
+    """
+    if not topic and not summary and not source_texts:
+        raise ValueError("Provide at least a topic, summary, or source texts to generate an email.")
+
+    topic_text = topic or "Update based on provided context"
+
     # Build source context section
     source_context = ""
     if source_texts and len(source_texts) > 0:
@@ -17,6 +33,10 @@ def generate_email(
             content = source.get('content', '')
             source_context += f"\n--- {title} ---\n{content}\n"
         source_context += "\nImportant: Use the source context as your primary reference. Extract key points and details from it. Do NOT fabricate information not present in the source. Maintain consistency with source facts."
+    elif summary:
+        source_context = "\n\nSOURCE CONTEXT (use as primary reference):\n"
+        source_context += f"\n--- Summary ---\n{summary}\n"
+        source_context += "\nImportant: Use the summary as your primary reference. Do NOT fabricate information not present in the summary."
     
     # Build tone section
     tone_guidance = "Use a professional yet friendly tone"
@@ -26,7 +46,7 @@ def generate_email(
     prompt = f"""
 Create a professional email about the following topic:
 
-Topic: {topic}
+Topic: {topic_text}
 {source_context}
 
 STRICT REQUIREMENTS:
