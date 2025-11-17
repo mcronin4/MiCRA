@@ -6,7 +6,7 @@ from faster_whisper import WhisperModel
 import traceback  # print error
 import re
 import time
-import uuid
+import tempfile
 
 # load vitual environment variables
 load_dotenv()
@@ -34,12 +34,14 @@ def download_audio(url: str) -> str:
 
       # Sanitize title for safe filenames (remove illegal characters)
       safe_title = re.sub(r'[\\/*?:"<>| ]', "_", title)
-      
-      # Create a unique ID
-      unique_id = uuid.uuid4().hex   # example: "a3c9ef24cf074f6fa4959f8331e8ac94"
 
-      os.makedirs("mp3_files", exist_ok=True)
-      file_path = f"mp3_files/{safe_title}_{unique_id}_audio.mp3"
+      temp_file = tempfile.NamedTemporaryFile(
+        suffix=f"_{safe_title}.mp3",
+        delete=False
+      )
+        
+      file_path = temp_file.name
+      temp_file.close()
 
       ydl_opts = {
           "format": "ba[ext=m4a]/bestaudio/best",
