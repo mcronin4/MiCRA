@@ -17,17 +17,17 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, MouseEvent } 
 import { Button } from "@/components/ui/button"; // Assuming you have a Button component
 import type { Edge, Node, NodeTypes, OnConnect, Viewport } from "@xyflow/react";
 import { ReactFlowWrapper } from "./ReactFlowWrapper";
-import { LinkedInNode } from "./LinkedInNode";
-import { EmailNode } from "./EmailNode";
-import { TikTokNode } from "./TikTokNode";
+import { LinkedInComponent } from "./LinkedInComponent";
+import { EmailComponent } from "./EmailComponent";
+import { TikTokComponent } from "./TikTokComponent";
 import ZoomControls from "../ZoomControls";
 import AddPartMenu from "../AddPartMenu";
 import PartContextMenu from "../PartContextMenu";
 
 const nodeTypes: NodeTypes = {
-  linkedIn: LinkedInNode,
-  email: EmailNode,
-  tiktok: TikTokNode,
+  linkedIn: LinkedInComponent,
+  email: EmailComponent,
+  tiktok: TikTokComponent,
 };
 
 function CanvasContent() {
