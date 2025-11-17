@@ -1,7 +1,13 @@
 import React from 'react';
-import { Position } from '@xyflow/react';
 
-export function EmailComponent({ data }: { data: any }) {
+interface EmailNodeData {
+  content?: string;
+  subject?: string;
+  to?: string;
+  label?: string;
+}
+
+export function EmailComponent({ data }: { data: EmailNodeData }) {
   const content = data?.content || `Hi [First Name],
 
 I'm excited to introduce the brilliant people behind Micra—a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.

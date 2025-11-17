@@ -8,14 +8,10 @@ import {
   GripVertical,
   Layers,
   Mail,
-  Settings2,
-  Share2,
-  Sparkles,
-  Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type DragEvent, MouseEvent } from "react";
+import { useCallback, useRef, useState, type DragEvent, MouseEvent } from "react";
 import { Button } from "@/components/ui/button"; // Assuming you have a Button component
-import type { Edge, Node, NodeTypes, OnConnect, Viewport } from "@xyflow/react";
+import type { Edge, Node, NodeTypes, OnConnect, ReactFlowInstance } from "@xyflow/react";
 import { ReactFlowWrapper } from "./ReactFlowWrapper";
 import { LinkedInComponent } from "./LinkedInComponent";
 import { EmailComponent } from "./EmailComponent";
@@ -58,6 +54,17 @@ function CanvasContent() {
   );
 }
 
+interface ReactFlowComponents {
+  ReactFlow: React.ComponentType<Record<string, unknown>>;
+  ReactFlowProvider: React.ComponentType<{ children: React.ReactNode }>;
+  Background: React.ComponentType<Record<string, unknown>>;
+  Controls: React.ComponentType<Record<string, unknown>>;
+  MiniMap: React.ComponentType<Record<string, unknown>>;
+  useNodesState: <T extends Node = Node>(initial: T[]) => [T[], React.Dispatch<React.SetStateAction<T[]>>, (changes: unknown) => void];
+  useEdgesState: <T extends Edge = Edge>(initial: T[]) => [T[], React.Dispatch<React.SetStateAction<T[]>>, (changes: unknown) => void];
+  addEdge: (edgeParams: unknown, edges: Edge[]) => Edge[];
+}
+
 function InnerCanvas({
   ReactFlow,
   ReactFlowProvider,
@@ -67,23 +74,13 @@ function InnerCanvas({
   useNodesState,
   useEdgesState,
   addEdge,
-}: {
-  ReactFlow: any;
-  ReactFlowProvider: any;
-  Background: any;
-  Controls: any;
-  MiniMap: any;
-  useNodesState: any;
-  useEdgesState: any;
-  addEdge: any;
-}) {
+}: ReactFlowComponents) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
-  const [zoom, setZoom] = useState(1);
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
 
@@ -154,7 +151,7 @@ function InnerCanvas({
   );
 
   const addNode = (type: string) => {
-    if (!addMenu) return;
+    if (!addMenu || !reactFlowInstance) return;
     const position = reactFlowInstance.screenToFlowPosition({
       x: addMenu.x,
       y: addMenu.y,
@@ -295,7 +292,6 @@ function InnerCanvas({
             nodeTypes={nodeTypes}
             fitView
             proOptions={{ hideAttribution: true }}
-            onMove={(_: any, viewport: Viewport) => setZoom(viewport.zoom)}
             onPaneContextMenu={onPaneContextMenu}
             onNodeContextMenu={onNodeContextMenu}
             onPaneClick={onPaneClick}
@@ -305,7 +301,6 @@ function InnerCanvas({
             <MiniMap />
           </ReactFlow>
           <ZoomControls
-            scale={zoom}
             onZoomIn={() => reactFlowInstance?.zoomIn()}
             onZoomOut={() => reactFlowInstance?.zoomOut()}
             onFitView={() => reactFlowInstance?.fitView()}

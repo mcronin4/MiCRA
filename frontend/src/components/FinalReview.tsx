@@ -2,7 +2,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Plus, ArrowUp, PanelLeft, PanelRight } from 'lucide-react';
 import { ReactFlowWrapper } from './canvas/ReactFlowWrapper';
-import type { Node, Edge, OnConnect } from '@xyflow/react';
+import type { Node, Edge, OnConnect, ReactFlowInstance } from '@xyflow/react';
 import { LinkedInComponent } from './canvas/LinkedInComponent';
 import { TikTokComponent } from './canvas/TikTokComponent';
 import { EmailComponent } from './canvas/EmailComponent';
@@ -34,7 +34,16 @@ const FinalReview = () => {
   const [sidebarsVisible, setSidebarsVisible] = useState(true);
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState<{ user: string; text: string; isLoading?: boolean; showToneOptions?: boolean }[]>([]);
-  const [conversationState, setConversationState] = useState<any>({});
+  const [conversationState, setConversationState] = useState<{
+    generating_from_canvas?: boolean;
+    waiting_for_tone?: boolean;
+    waiting_for_context?: boolean;
+    content_type?: string;
+    user_instruction?: string;
+    from_canvas?: boolean;
+    show_tone_options?: boolean;
+    [key: string]: unknown;
+  }>({});
   const [sourceTexts, setSourceTexts] = useState<SourceText[]>([]);
   const [newSourceContent, setNewSourceContent] = useState('');
   const [tonePreference, setTonePreference] = useState<string>('');
@@ -46,7 +55,7 @@ const FinalReview = () => {
   const nextId = useRef(0);
   const sourceIdCounter = useRef(0);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const setNodesRef = useRef<React.Dispatch<React.SetStateAction<Node[]>> | null>(null);
@@ -62,18 +71,63 @@ const FinalReview = () => {
     }
   }, [chatHistory]);
 
+  interface NodeContent {
+    content?: string;
+    subject?: string;
+    to?: string;
+    username?: string;
+    caption?: string;
+    music?: string;
+    likes?: string;
+    comments?: string;
+    shares?: string;
+    bookmarks?: string;
+    label?: string;
+    [key: string]: unknown;
+  }
+
+  const addNodeToCanvas = useCallback((nodeType: 'LinkedIn' | 'TikTok' | 'Email', content: string | NodeContent) => {
+    if (!setNodesRef.current || !reactFlowInstance) return;
+
+    // Add node in the center of the canvas
+    const viewport = reactFlowInstance.getViewport();
+    const centerX = (window.innerWidth / 2 - viewport.x) / viewport.zoom;
+    const centerY = (window.innerHeight / 2 - viewport.y) / viewport.zoom;
+
+    // Handle both string content and structured content
+    let nodeData: NodeContent = { label: `${nodeType} node` };
+    
+    if (typeof content === 'string') {
+      nodeData.content = content;
+    } else if (typeof content === 'object' && content !== null) {
+      // Merge structured content into node data
+      nodeData = { ...nodeData, ...content };
+    }
+
+    const newNode: Node = {
+      id: `${nodeType}-${nextId.current++}`,
+      type: nodeType,
+      position: { x: centerX - 250, y: centerY - 200 }, // Offset to center the node
+      data: nodeData,
+    };
+
+    setNodesRef.current((nds: Node[]) => nds.concat(newNode));
+  }, [reactFlowInstance]);
+
   // Auto-generate when canvas triggers generation with source + tone
   useEffect(() => {
     const autoGenerate = async () => {
-      if (conversationState.generating_from_canvas && sourceTexts.length > 0 && tonePreference) {
-        const contentType = conversationState.content_type;
-        
+      const currentState = conversationState;
+      const currentSources = sourceTexts;
+      const currentTone = tonePreference;
+      
+      if (currentState.generating_from_canvas && currentSources.length > 0 && currentTone) {
         // Add loading message
         const loadingMessage = { user: 'MICRAi', text: '', isLoading: true };
         setChatHistory(prev => [...prev, loadingMessage]);
         
         try {
-          const sourceTextsForAPI = sourceTexts.map(source => ({
+          const sourceTextsForAPI = currentSources.map(source => ({
             id: source.id,
             title: source.title,
             content: source.content
@@ -86,9 +140,9 @@ const FinalReview = () => {
             },
             body: JSON.stringify({ 
               message: 'Generate content from source material',
-              conversation_state: conversationState,
+              conversation_state: currentState,
               source_texts: sourceTextsForAPI,
-              tone_preference: tonePreference
+              tone_preference: currentTone
             }),
           });
 
@@ -130,7 +184,8 @@ const FinalReview = () => {
     };
     
     autoGenerate();
-  }, [conversationState.generating_from_canvas]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationState.generating_from_canvas, sourceTexts.length, tonePreference, addNodeToCanvas]);
 
   const handleAddSource = () => {
     if (newSourceContent.trim() === '') return;
@@ -355,7 +410,7 @@ const FinalReview = () => {
     }
   };
 
-  const handleAddPart = (partType: 'LinkedIn' | 'TikTok' | 'Email', setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
+  const handleAddPart = (partType: 'LinkedIn' | 'TikTok' | 'Email') => {
     // Instead of adding empty node, trigger chat-based generation
     setMenuPosition(null);
     setNewPartPosition(null);
@@ -474,34 +529,6 @@ const FinalReview = () => {
       setNewPartPosition({ x, y });
     }
   };
-
-  const addNodeToCanvas = useCallback((nodeType: 'LinkedIn' | 'TikTok' | 'Email', content: string | any) => {
-    if (!setNodesRef.current || !reactFlowInstance) return;
-
-    // Add node in the center of the canvas
-    const viewport = reactFlowInstance.getViewport();
-    const centerX = (window.innerWidth / 2 - viewport.x) / viewport.zoom;
-    const centerY = (window.innerHeight / 2 - viewport.y) / viewport.zoom;
-
-    // Handle both string content and structured content
-    let nodeData: any = { label: `${nodeType} node` };
-    
-    if (typeof content === 'string') {
-      nodeData.content = content;
-    } else if (typeof content === 'object') {
-      // Merge structured content into node data
-      nodeData = { ...nodeData, ...content };
-    }
-
-    const newNode: Node = {
-      id: `${nodeType}-${nextId.current++}`,
-      type: nodeType,
-      position: { x: centerX - 250, y: centerY - 200 }, // Offset to center the node
-      data: nodeData,
-    };
-
-    setNodesRef.current((nds: Node[]) => nds.concat(newNode));
-  }, [reactFlowInstance]);
 
   const handleSendMessage = async (messageOverride?: string) => {
     const messageToSend = messageOverride || chatMessage;
@@ -757,7 +784,7 @@ const FinalReview = () => {
               </div>
               <button
                 className="bg-gray-200 text-gray-600 w-8 h-8 rounded-md flex items-center justify-center hover:bg-gray-300 disabled:opacity-50"
-                onClick={handleSendMessage}
+                onClick={() => handleSendMessage()}
                 disabled={!chatMessage.trim()}
               >
                 <ArrowUp size={16} />
@@ -770,10 +797,35 @@ const FinalReview = () => {
   );
 };
 
+interface CanvasAreaProps {
+  ReactFlow: React.ComponentType<Record<string, unknown>>;
+  Background: React.ComponentType<Record<string, unknown>>;
+  MiniMap: React.ComponentType<Record<string, unknown>>;
+  useNodesState: <T extends Node = Node>(initial: T[]) => [T[], React.Dispatch<React.SetStateAction<T[]>>, (changes: unknown) => void];
+  useEdgesState: <T extends Edge = Edge>(initial: T[]) => [T[], React.Dispatch<React.SetStateAction<T[]>>, (changes: unknown) => void];
+  addEdge: (edgeParams: unknown, edges: Edge[]) => Edge[];
+  menuPosition: { x: number; y: number } | null;
+  partContextMenu: { x: number; y: number; partId: string } | null;
+  copiedPart: Node | null;
+  handleAddPart: (partType: 'LinkedIn' | 'TikTok' | 'Email') => void;
+  handlePastePart: (setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => void;
+  handleDeletePart: (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => void;
+  handleDuplicatePart: (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>, nodes: Node[]) => void;
+  handleCopyPart: (partId: string, nodes: Node[]) => void;
+  setMenuPosition: (position: { x: number; y: number } | null) => void;
+  setPartContextMenu: (menu: { x: number; y: number; partId: string } | null) => void;
+  handleCanvasContextMenu: (e: React.MouseEvent) => void;
+  handlePartContextMenu: (e: React.MouseEvent<HTMLDivElement>, partId: string) => void;
+  setReactFlowInstance: (instance: ReactFlowInstance | null) => void;
+  reactFlowInstance: ReactFlowInstance | null;
+  isLocked: boolean;
+  setIsLocked: (locked: boolean) => void;
+  setNodesRef: React.MutableRefObject<React.Dispatch<React.SetStateAction<Node[]>> | null>;
+}
+
 const CanvasArea = ({
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   useNodesState,
   useEdgesState,
@@ -795,9 +847,9 @@ const CanvasArea = ({
   isLocked,
   setIsLocked,
   setNodesRef,
-}: any) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+}: CanvasAreaProps) => {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   
   // Store setNodes in the parent's ref
   useEffect(() => {
@@ -837,7 +889,7 @@ const CanvasArea = ({
 
       {menuPosition && (
         <AddPartMenu
-          onAddPart={(partType) => handleAddPart(partType, setNodes)}
+          onAddPart={(partType) => handleAddPart(partType)}
           onClose={() => setMenuPosition(null)}
           position={menuPosition}
           onPaste={() => handlePastePart(setNodes)}
@@ -854,7 +906,6 @@ const CanvasArea = ({
         />
       )}
       <ZoomControls
-        scale={reactFlowInstance ? reactFlowInstance.getZoom() : 1}
         onZoomIn={() => reactFlowInstance?.zoomIn()}
         onZoomOut={() => reactFlowInstance?.zoomOut()}
         onFitView={() => reactFlowInstance?.fitView()}

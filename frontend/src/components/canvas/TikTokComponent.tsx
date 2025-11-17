@@ -1,8 +1,19 @@
 import React from 'react';
 import { Heart, MessageCircle, Share2, Bookmark, Music2 } from 'lucide-react';
-import { Position } from '@xyflow/react';
 
-export function TikTokComponent({ data }: { data: any }) {
+interface TikTokNodeData {
+  username?: string;
+  content?: string;
+  caption?: string;
+  music?: string;
+  likes?: string;
+  comments?: string;
+  shares?: string;
+  bookmarks?: string;
+  label?: string;
+}
+
+export function TikTokComponent({ data }: { data: TikTokNodeData }) {
   const username = data?.username || '@micra_official';
   // If content is provided, use it as the caption, otherwise use default
   const caption = data?.content || data?.caption || 'Check out this amazing content! 🔥 #contentcreation #micra #innovation';

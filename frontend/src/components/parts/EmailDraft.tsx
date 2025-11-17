@@ -28,7 +28,7 @@ const EmailDraft = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTM
     <div className="p-4 border-t border-gray-200 text-sm text-gray-800 leading-relaxed">
         <p>Hi [First Name],</p>
         <br />
-        <p>I'm excited to introduce the brilliant people behind Micra—a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.</p>
+        <p>I&apos;m excited to introduce the brilliant people behind Micra—a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.</p>
         <br />
         <p>Best regards,</p>
         <p className="font-medium">[Your Name]</p>

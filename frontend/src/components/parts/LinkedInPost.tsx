@@ -16,7 +16,7 @@ const LinkedInPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<H
         <MoreHorizontal className="text-gray-500" />
     </div>
     <p className="text-sm mb-4">
-    Proud to introduce the brilliant people behind Micra. We're a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.
+    Proud to introduce the brilliant people behind Micra. We&apos;re a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.
     </p>
     <div className="bg-gray-100 rounded-lg p-4">
         <p className="text-center font-semibold text-purple-700 mb-2">MICRA</p>

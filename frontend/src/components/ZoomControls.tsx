@@ -3,7 +3,6 @@ import { Plus, Minus, Maximize, Lock, LockOpen } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface ZoomControlsProps {
-  scale: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitView: () => void;
@@ -12,7 +11,6 @@ interface ZoomControlsProps {
 }
 
 const ZoomControls: React.FC<ZoomControlsProps> = ({
-  scale,
   onZoomIn,
   onZoomOut,
   onFitView,
