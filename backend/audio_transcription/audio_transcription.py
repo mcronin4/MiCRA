@@ -6,6 +6,7 @@ from faster_whisper import WhisperModel
 import traceback  # print error
 import re
 import time
+import uuid
 
 # load vitual environment variables
 load_dotenv()
@@ -33,9 +34,12 @@ def download_audio(url: str) -> str:
 
       # Sanitize title for safe filenames (remove illegal characters)
       safe_title = re.sub(r'[\\/*?:"<>| ]', "_", title)
+      
+      # Create a unique ID
+      unique_id = uuid.uuid4().hex   # example: "a3c9ef24cf074f6fa4959f8331e8ac94"
 
       os.makedirs("mp3_files", exist_ok=True)
-      file_path = f"mp3_files/{safe_title}_audio.mp3"
+      file_path = f"mp3_files/{safe_title}_{unique_id}_audio.mp3"
 
       ydl_opts = {
           "format": "ba[ext=m4a]/bestaudio/best",
@@ -104,7 +108,7 @@ def transcribe_audio_or_video_file(audio_path: str):
       results = []
       for seg in segments:
         results.append({
-          "start:": seg.start,
+          "start": seg.start,
           "end": seg.end,
           "text": seg.text.strip()}) # .strip(): clean text, no extra space
         print(f"[{seg.start:.2f} - {seg.end:.2f}] {seg.text}")
