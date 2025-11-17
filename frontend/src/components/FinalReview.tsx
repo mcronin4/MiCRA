@@ -79,7 +79,7 @@ const FinalReview = () => {
             content: source.content
           }));
 
-          const response = await fetch('http://localhost:8000/api/v1/hitl/chat', {
+          const response = await fetch('/backend/v1/hitl/chat', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -532,7 +532,7 @@ const FinalReview = () => {
         content: source.content
       }));
 
-      const response = await fetch('http://localhost:8000/api/v1/hitl/chat', {
+      const response = await fetch('/backend/v1/hitl/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
