@@ -24,7 +24,7 @@ from .config import MatchingConfig
 # Configure Tesseract path for Windows
 import platform
 
-#added this bevause tesseract wasnt working
+#added this bevause tesseract wasnt working, works now if you have it installed
 def _configure_tesseract():
     """Configure tesseract path, especially for Windows systems."""
     # First check if explicitly set in config
@@ -133,7 +133,7 @@ class ImageTextMatcher:
         
         # Print the disabled features
         if disabled_features:
-            print(f"qDisable featuresd: {', '.join(disabled_features)}")
+            print(f"Disable features: {', '.join(disabled_features)}")
         
         # Renormalize weights to sum to 1.0
         total_weight = self.timestamp_weight + self.semantic_weight + self.detail_weight
@@ -150,6 +150,10 @@ class ImageTextMatcher:
                 "All scoring weights are 0. At least one scoring method must be enabled. "
                 "Check your timestamp_weight, semantic_weight, and detail_weight settings."
             )
+        
+        # Initialize caches for expensive operations
+        self._caption_cache = {}  # image_id -> caption
+        self._ocr_cache = {}      # image_id -> ocr_text
         
         # Config is all set up, load up the models!!!!!!
         self._load_siglip()
@@ -233,15 +237,15 @@ class ImageTextMatcher:
             
             # Tokenize and truncate text to max length
             tokens = tokenizer.encode(text, truncation=True, max_length=max_length, return_tensors="pt")
-            # Decode back to text (will be truncated if needed)
-            truncated_text = tokenizer.decode(tokens[0], skip_special_tokens=True)
-            
+
             # Process inputs with truncated text
             inputs = self.siglip_processor(
-                text=[truncated_text], 
+                text=[text], 
                 images=image, 
                 return_tensors="pt", 
-                padding=True
+                padding=True,
+                truncation=True,
+                max_length=getattr(self.siglip_model.config, 'max_position_embeddings', 64)
             ).to(self.device)
             
             # Get embeddings
@@ -263,12 +267,17 @@ class ImageTextMatcher:
             
         return score
     
-    def generate_image_caption(self, image: Image.Image) -> str:
+    def generate_image_caption(self, image: Image.Image, image_id: str) -> str:
         """
         If detail matching is enabled, we'll generate a caption for the image using BLIP-2.
-        Takes in a image outputs a caption
- 
+        Takes in a image and image_id, outputs a caption.
+        Uses cache to avoid recomputing captions for the same image.
         """
+        # Check cache first
+        if image_id in self._caption_cache:
+            return self._caption_cache[image_id]
+        
+        # Generate caption if not cached
         with torch.no_grad():
             inputs = self.blip2_processor(image, return_tensors="pt").to(self.device,torch.float16 if self.device == 'cuda' else torch.float32)
             
@@ -280,15 +289,25 @@ class ImageTextMatcher:
                 skip_special_tokens=True
             )[0].strip()
             #strip the whitespace from the caption
+        
+        # Cache the result
+        self._caption_cache[image_id] = caption
         return caption
     
-    def extract_text_from_image(self, image: Image.Image) -> str:
+    def extract_text_from_image(self, image: Image.Image, image_id: str) -> str:
         """
         Extract text from image using Tesseract OCR.
-        Takes in a image outputs a string of text
+        Takes in a image and image_id, outputs a string of text.
+        Uses cache to avoid recomputing OCR for the same image.
         """
         if not self.use_ocr:
             return ""
+        
+        # Check cache first
+        if image_id in self._ocr_cache:
+            return self._ocr_cache[image_id]
+        
+        # Extract OCR text if not cached
         try:
             # Convert to RGB if needed, tesseract only works with RGB images
             if image.mode != 'RGB':
@@ -296,12 +315,16 @@ class ImageTextMatcher:
             
             # Extract text
             text = pytesseract.image_to_string(image)
-            return text.strip()
+            ocr_text = text.strip()
         except Exception as e:
             print(f"OCR extraction failed: {e}")
-            return ""
+            ocr_text = ""
+        
+        # Cache the result
+        self._ocr_cache[image_id] = ocr_text
+        return ocr_text
     
-    def compute_detail_verification_score(self, image: Image.Image, text: str) -> float:
+    def compute_detail_verification_score(self, image: Image.Image, image_id: str, text: str) -> float:
         """
         Verify that content mentioned in text appears in the image.
         
@@ -310,11 +333,11 @@ class ImageTextMatcher:
         - specific visual indicators (chart, graph, etc.) if mentioned
         - quoted text that could should appear in OCR
         
-        takes in image and text and returns a score between 0 and 1
+        takes in image, image_id, and text and returns a score between 0 and 1
         """
-        # Generate caption and extract OCR text, the two functions above
-        caption = self.generate_image_caption(image)
-        ocr_text = self.extract_text_from_image(image)
+        # Generate caption and extract OCR text, the two functions above (with caching)
+        caption = self.generate_image_caption(image, image_id)
+        ocr_text = self.extract_text_from_image(image, image_id)
         
         # Combine visual information
         visual_info = f"{caption} {ocr_text}".lower()
@@ -326,9 +349,12 @@ class ImageTextMatcher:
         text_words = set(re.findall(r'\b\w{4,}\b', text_lower))
         visual_words = set(re.findall(r'\b\w{4,}\b', visual_info))
         
-        # Calculate base overlap score
+        # Calculate base overlap score, handled if 0
         overlap = len(text_words & visual_words)
-        base_score = overlap / len(text_words)
+        if len(text_words) > 0:
+            base_score = overlap / len(text_words)
+        else:
+            base_score = 0.0
         
         # BONUS: Check for specific visual indicators
         visual_keywords = MatchingConfig.VISUAL_KEYWORDS
@@ -368,10 +394,12 @@ class ImageTextMatcher:
         Match a single image to a single text summary.
         
         Takes in a image candidate and text summary
-        Computs all score metrics and returns a ImageMatch object with all scores
+        Computes all score metrics and returns a ImageMatch object with all scores
         """
         # Load image, opens the image from the filepath, and converts it to RGB
-        image = Image.open(image_candidate.filepath).convert('RGB')
+        image = Image.open(image_candidate.filepath)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
         
         # Compute timestamp score only if enabled AND timestamps are available
         if self.use_timestamp_matching and text_summary.start_time is not None and text_summary.end_time is not None:
@@ -384,7 +412,7 @@ class ImageTextMatcher:
         
         # Compute detail score only if enabled
         if self.use_detail_verification:
-            detail_score = self.compute_detail_verification_score(image, text_summary.text_content)
+            detail_score = self.compute_detail_verification_score(image, image_candidate.image_id, text_summary.text_content)
         else:
             detail_score = 0.0 #this gets weighted as 0 anyway        
         
@@ -409,7 +437,7 @@ class ImageTextMatcher:
         Find the best matching images for a single text summary.
         
         Given a text summary and a list of image candidates, it finds the best (top_k) matching images for the text summary.
-            
+        Note: BLIP-2 captions and OCR text are cached per image to avoid redundant computation (O(N) instead of O(N*M)).
         """
         #array to store the matches
         matches = []
@@ -440,6 +468,7 @@ class ImageTextMatcher:
         Match all text summaries to their best matching images.
         Given list of TextSummary objects, list of ImageCandidate objects and top_k
         Returns Dictionary mapping summary_id to list of top-k ImageMatch objects
+        Note: BLIP-2 captions and OCR text are cached per image to avoid redundant computation (O(N) instead of O(N*M)).
         """
         results = {}
         
@@ -455,6 +484,29 @@ class ImageTextMatcher:
                 top = matches[0]
                 print(f"Top match: {top.image_id} (score: {top.combined_score:.3f})")
         
+        # Print cache statistics
+        cache_stats = self.get_cache_stats()
+        print(f"\n✓ Processing complete. Cache stats: {cache_stats['cached_captions']} captions, {cache_stats['cached_ocr_texts']} OCR texts cached")
+        
         return results
+    
+    def clear_cache(self):
+        """
+        Clear the caption and OCR caches.
+        Useful when processing a new batch of images or to free memory.
+        """
+        self._caption_cache.clear()
+        self._ocr_cache.clear()
+        print(f"Cache cleared: {len(self._caption_cache)} captions, {len(self._ocr_cache)} OCR texts")
+    
+    def get_cache_stats(self) -> Dict[str, int]:
+        """
+        Get statistics about cache usage.
+        Returns dict with number of cached captions and OCR texts.
+        """
+        return {
+            "cached_captions": len(self._caption_cache),
+            "cached_ocr_texts": len(self._ocr_cache)
+        }
     
 #BAAAAAAANG!!!!

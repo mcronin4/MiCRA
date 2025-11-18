@@ -73,12 +73,7 @@ class MatchingConfig:
             'visual_keywords': cls.VISUAL_KEYWORDS
         }
     
-    @classmethod
-    def validate_weights(cls, timestamp_w: float, semantic_w: float, detail_w: float) -> bool:
-        
-        #Make sure the weights sum to 1.0, if not wont work
-        total = timestamp_w + semantic_w + detail_w
-        return abs(total - 1.0) < 1e-6
+    
 
 
 class PresetConfigurations:
