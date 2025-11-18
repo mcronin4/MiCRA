@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Linkedin, Mail, ClipboardPaste } from 'lucide-react';

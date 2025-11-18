@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { Edge, Node } from "@xyflow/react";
@@ -23,10 +25,7 @@ export function ReactFlowWrapper({ children }: ReactFlowWrapperProps) {
   useEffect(() => {
     // Only import ReactFlow on the client side
     if (typeof window !== "undefined") {
-      Promise.all([
-        import("@xyflow/react"),
-        import("@xyflow/react/dist/style.css"),
-      ]).then(([reactFlowModule]) => {
+      import("@xyflow/react").then((reactFlowModule) => {
         setComponents({
           ReactFlow: reactFlowModule.ReactFlow,
           ReactFlowProvider: reactFlowModule.ReactFlowProvider,
