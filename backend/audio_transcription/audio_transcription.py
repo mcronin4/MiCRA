@@ -10,7 +10,7 @@ import tempfile
 
 # load vitual environment variables
 load_dotenv()
-ASR_MODEL = os.getenv("ASR_MODEL", "small")
+ASR_MODEL = os.getenv("ASR_MODEL", "tiny")
 ASR_DEVICE = os.getenv("ASR_DEVICE", "cpu")  # cuda | metal | cpu | auto
 # float16 | int8_float16 | int8
 ASR_COMPUTE = os.getenv("ASR_COMPUTE", "int8_float16")
@@ -35,8 +35,8 @@ def download_audio(url: str) -> str:
         # Sanitize title for safe filenames (remove illegal characters)
         safe_title = re.sub(r"[^\w\-_.]", "_", title)
 
-        # Create a temporary file path with the sanitized title
-        temp_dir = tempfile.gettempdir()
+        # Create a unique temporary directory to avoid collisions during concurrent runs
+        temp_dir = tempfile.mkdtemp()
         file_path = os.path.join(temp_dir, f"{safe_title}.mp3")
 
         ydl_opts = {
