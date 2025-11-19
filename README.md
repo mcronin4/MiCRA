@@ -11,7 +11,7 @@ NOTE: If you haven’t done the “first-time setup” step, read and complete t
 3. From the `/backend/app` directory, run: `fastapi dev main.py`
 4. Alternatively, from the `/backend` directory, run: `python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 
-## 2) Running the backend locally
+## 2) Running the frontend locally
 
 1. If you’ve pulled new changes recently, you may have to rerun `npm install`
 2. From the `/frontend` directory, run: `npm run dev`
