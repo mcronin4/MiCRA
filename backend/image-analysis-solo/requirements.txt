@@ -4,3 +4,4 @@ torch
 torchvision
 pillow
 numpy
+tf-keras
