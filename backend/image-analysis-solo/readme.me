@@ -1,0 +1,83 @@
+
+# Frame Analyzer (Emotion & Scene)
+
+This script analyzes a single image for:
+
+1.  **Facial Emotion** (using DeepFace)
+2.  **Scene Classification** (using Places365)
+
+## Usage
+
+1.  **Clone the repository (or download the files).**
+
+2.  **Set up a Python virtual environment:**
+
+    ```sh
+    # Create the environment
+    python -m venv venv
+
+    # Activate it
+    # On Windows:
+    .\venv\Scripts\activate
+    # On macOS/Linux:
+    source venv/bin/activate
+    ```
+
+3.  **Install the required libraries:**
+
+    ```sh
+    pip install -r requirements.txt
+    ```
+
+4.  **Run the analysis:**
+    The script will download the Places365 models (approx. 50MB) on its first run.
+
+    ```sh
+    python analyze_frame.py --image my_test_photo.jpg
+    ```
+
+    You can use the `--topk` flag to change how many scene results are shown (default is 3):
+
+    ```sh
+    python analyze_frame.py --image my_test_photo.jpg --topk 5
+    ```
+
+## Output Example
+
+The script will print a JSON object with the results:
+
+```json
+--- ANALYSIS METADATA ---
+{
+  "frame_path": "my_test_photo.jpg",
+  "emotion_analysis": {
+    "face_detected": true,
+    "dominant_emotion": "happy",
+    "probabilities": {
+      "angry": 0.01,
+      "disgust": 0.0,
+      "fear": 0.02,
+      "happy": 98.5,
+      "sad": 0.1,
+      "surprise": 0.05,
+      "neutral": 1.32
+    }
+  },
+  "scene_analysis": {
+    "top_scene": "living_room",
+    "top_k_scenes": [
+      {
+        "label": "living_room",
+        "probability": 0.65
+      },
+      {
+        "label": "home_office",
+        "probability": 0.15
+      },
+      {
+        "label": "bedroom",
+        "probability": 0.10
+      }
+    ]
+  }
+}
