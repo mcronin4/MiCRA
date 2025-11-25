@@ -224,3 +224,4 @@ if __name__ == "__main__":
         # file_path = download_audio("https://www.bilibili.com/video/BV1NM1KB3EX5/?spm_id_from=333.40138.feed-card.all.click")
         # transcribe_audio_or_video_file(file_path)
         # transcribe_audio_or_video_file("C:\QMIND\MiCRA-clean\backend\audio-transcription\mp3_files\万能机位思路，5分钟讲透！拍什么都能用（不是套路，是思路_audio.mp3")
+        # https://www.youtube.com/watch?v=cAJBA31iu3g
