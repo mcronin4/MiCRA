@@ -103,6 +103,10 @@ def classify_scene(frame_bgr, places_model, places_classes, places_transform, to
         # Get top-k results
         top_scores, top_idx = torch.topk(probabilities, topk)
         
+        # Convert tensors to python lists to avoid indexing errors
+        top_scores = top_scores.tolist()
+        top_idx = top_idx.tolist()
+
         # Format results
         top_k_list = []
         for i in range(topk):
@@ -127,10 +131,13 @@ def classify_scene(frame_bgr, places_model, places_classes, places_transform, to
 def analyze_emotion(frame_bgr):
     # Get facial emotion analysis for a single frame
     try:
+        # Convert to RGB for accurate DeepFace analysis
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
         # DeepFace.analyze can take a numpy array directly
         # enforce_detection=False -> doesn't crash if no face is found
         results = DeepFace.analyze(
-            img_path=frame_bgr,
+            img_path=frame_rgb,
             actions=['emotion'],
             enforce_detection=False,
             detector_backend='retinaface',
