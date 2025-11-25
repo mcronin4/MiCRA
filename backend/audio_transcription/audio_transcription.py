@@ -87,12 +87,14 @@ def download_audio(url: str) -> str:
         return None
 
 
-def transcribe_audio_or_video_file(audio_path: str):
+def transcribe_audio_or_video_file(audio_path: str, model: WhisperModel = None):
     """
     Transcribes an audio file using Faster-Whisper.
 
     Args:
         audio_path (str): Path to the audio file.
+        model (WhisperModel, optional): Pre-loaded WhisperModel instance. 
+            If None, a new model will be loaded (expensive - not recommended for production).
 
     Returns:
         list: A list of transcription segments.
@@ -105,10 +107,12 @@ def transcribe_audio_or_video_file(audio_path: str):
             print(f"Audio file not found at: {audio_path}")
             return None
 
-        # load whisper model
-        print(f"Loading model...")
-        model = WhisperModel(ASR_MODEL, device=ASR_DEVICE,
-                             compute_type=ASR_COMPUTE)
+        # Use provided model or load a new one (for backward compatibility/testing)
+        if model is None:
+            print(
+                f"⚠️ Warning: Loading model on-the-fly (expensive). Consider using a shared model instance.")
+            model = WhisperModel(
+                ASR_MODEL, device=ASR_DEVICE, compute_type=ASR_COMPUTE)
 
         # transcribe video
         print("Transcribing audio...")
@@ -174,6 +178,14 @@ def get_user_choice():
 
 if __name__ == "__main__":
     file_path = None
+
+    print("Loading Whisper Model...")
+    model = WhisperModel(
+        ASR_MODEL,
+        device=ASR_DEVICE,
+        compute_type=ASR_COMPUTE)
+    print("Model loaded successfully")
+
     try:
         choice, input_value = get_user_choice()
 
