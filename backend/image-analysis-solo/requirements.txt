@@ -1,0 +1,7 @@
+deepface
+opencv-python
+torch
+torchvision
+pillow
+numpy
+tf-keras

@@ -25,6 +25,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "SF Pro Display", "SF UI Display", "SF UI Text", "Segoe UI", system-ui, Tahoma, Geneva, Verdana, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: all 0.2s ease-in-out;
 }
 
 @keyframes fade-in {
@@ -49,4 +50,25 @@ body {
   to {
     width: 70%;
   }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.chat-input-container {
+  border: 1px solid #E6E6E6;
 }
