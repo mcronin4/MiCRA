@@ -16,8 +16,8 @@ load_dotenv()
 # Configuration from environment variables
 ASR_MODEL = os.getenv("ASR_MODEL", "tiny")
 ASR_DEVICE = os.getenv("ASR_DEVICE", "cpu")  # cuda | metal | cpu | auto
-# float16 | int8_float16 | int8
-ASR_COMPUTE = os.getenv("ASR_COMPUTE", "int8_float16")
+# float16 | int8_float16 | int8 | float32
+ASR_COMPUTE = os.getenv("ASR_COMPUTE", "int8")  # int8 has wider compatibility
 
 
 class ASRService:

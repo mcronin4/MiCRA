@@ -9,6 +9,9 @@ import { EmailComponent } from './canvas/EmailComponent';
 import AddPartMenu from './AddPartMenu';
 import ZoomControls from './ZoomControls';
 import PartContextMenu from './PartContextMenu';
+import { QualityReviewPanel, RegenerationModal } from './quality';
+import { QualityFlag, FlaggedContent, StandardTermEntry } from '@/types/quality';
+import { checkQuality, standardizeTerm, applyTextEdit } from '@/lib/fastapi/quality';
 
 type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
 
@@ -59,6 +62,18 @@ const FinalReview = () => {
   const [isLocked, setIsLocked] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const setNodesRef = useRef<React.Dispatch<React.SetStateAction<Node[]>> | null>(null);
+  const nodesRef = useRef<Node[]>([]);
+
+  // Quality check state
+  const [flaggedContents, setFlaggedContents] = useState<FlaggedContent[]>([]);
+  const [standardDictionary, setStandardDictionary] = useState<StandardTermEntry[]>([]);
+  const [regenerationModal, setRegenerationModal] = useState<{
+    isOpen: boolean;
+    nodeId: string;
+    nodeType: 'LinkedIn' | 'Email' | 'TikTok';
+    content: string;
+    flaggedText?: string;
+  } | null>(null);
 
   useEffect(() => {
     setIsClient(true);
@@ -86,6 +101,321 @@ const FinalReview = () => {
     [key: string]: unknown;
   }
 
+  // Run quality check on content
+  const runQualityCheck = useCallback(async (nodeId: string, nodeType: 'LinkedIn' | 'Email' | 'TikTok', content: string) => {
+    // Mark as checking
+    setFlaggedContents(prev => {
+      const existing = prev.find(fc => fc.nodeId === nodeId);
+      if (existing) {
+        return prev.map(fc => fc.nodeId === nodeId ? { ...fc, isChecking: true } : fc);
+      }
+      return [...prev, {
+        nodeId,
+        nodeType,
+        content,
+        flags: [],
+        isChecking: true,
+        lastChecked: null,
+      }];
+    });
+
+    // Update node to show checking state
+    if (setNodesRef.current) {
+      setNodesRef.current(nodes => nodes.map(node => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: { ...node.data, isChecking: true }
+          };
+        }
+        return node;
+      }));
+    }
+
+    try {
+      const response = await checkQuality(content);
+      
+      setFlaggedContents(prev => prev.map(fc => {
+        if (fc.nodeId === nodeId) {
+          return {
+            ...fc,
+            content,
+            flags: response.flags,
+            isChecking: false,
+            lastChecked: new Date(),
+          };
+        }
+        return fc;
+      }));
+
+      // Update node with flags
+      if (setNodesRef.current) {
+        setNodesRef.current(nodes => nodes.map(node => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                flags: response.flags,
+                isChecking: false,
+                onApproveFlag: (flagId: string) => handleApproveFlag(nodeId, flagId),
+                onEditFlag: (flagId: string, newText: string) => handleEditFlag(nodeId, flagId, newText),
+                onSetStandard: (flagId: string, term: string, correction: string) => handleSetStandard(nodeId, flagId, term, correction),
+                onRequestRegeneration: (flagId: string) => handleRequestRegeneration(nodeId, flagId),
+              }
+            };
+          }
+          return node;
+        }));
+      }
+    } catch (error) {
+      console.error('Quality check failed:', error);
+      setFlaggedContents(prev => prev.map(fc => {
+        if (fc.nodeId === nodeId) {
+          return { ...fc, isChecking: false };
+        }
+        return fc;
+      }));
+
+      if (setNodesRef.current) {
+        setNodesRef.current(nodes => nodes.map(node => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: { ...node.data, isChecking: false }
+            };
+          }
+          return node;
+        }));
+      }
+    }
+  }, []);
+
+  // Handle approving a flag
+  const handleApproveFlag = useCallback((nodeId: string, flagId: string) => {
+    setFlaggedContents(prev => prev.map(fc => {
+      if (fc.nodeId === nodeId) {
+        return {
+          ...fc,
+          flags: fc.flags.map(f => f.id === flagId ? { ...f, status: 'approved' as const } : f)
+        };
+      }
+      return fc;
+    }));
+
+    // Update node
+    if (setNodesRef.current) {
+      setNodesRef.current(nodes => nodes.map(node => {
+        if (node.id === nodeId) {
+          const currentFlags = (node.data.flags as QualityFlag[]) || [];
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              flags: currentFlags.map(f => f.id === flagId ? { ...f, status: 'approved' } : f)
+            }
+          };
+        }
+        return node;
+      }));
+    }
+  }, []);
+
+  // Handle approving all flags for a node
+  const handleApproveAllFlags = useCallback((nodeId: string) => {
+    setFlaggedContents(prev => prev.map(fc => {
+      if (fc.nodeId === nodeId) {
+        return {
+          ...fc,
+          flags: fc.flags.map(f => f.status === 'pending' ? { ...f, status: 'approved' as const } : f)
+        };
+      }
+      return fc;
+    }));
+
+    if (setNodesRef.current) {
+      setNodesRef.current(nodes => nodes.map(node => {
+        if (node.id === nodeId) {
+          const currentFlags = (node.data.flags as QualityFlag[]) || [];
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              flags: currentFlags.map(f => f.status === 'pending' ? { ...f, status: 'approved' } : f)
+            }
+          };
+        }
+        return node;
+      }));
+    }
+  }, []);
+
+  // Handle editing a flagged text
+  const handleEditFlag = useCallback((nodeId: string, flagId: string, newText: string) => {
+    setFlaggedContents(prev => prev.map(fc => {
+      if (fc.nodeId === nodeId) {
+        const { newContent, updatedFlags } = applyTextEdit(fc.content, fc.flags, flagId, newText);
+        return {
+          ...fc,
+          content: newContent,
+          flags: updatedFlags
+        };
+      }
+      return fc;
+    }));
+
+    // Update node content and flags
+    if (setNodesRef.current) {
+      setNodesRef.current(nodes => nodes.map(node => {
+        if (node.id === nodeId) {
+          const currentFlags = (node.data.flags as QualityFlag[]) || [];
+          const currentContent = node.data.content as string || '';
+          const { newContent, updatedFlags } = applyTextEdit(currentContent, currentFlags, flagId, newText);
+          
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              content: newContent,
+              flags: updatedFlags
+            }
+          };
+        }
+        return node;
+      }));
+    }
+  }, []);
+
+  // Handle setting a standard term
+  const handleSetStandard = useCallback(async (nodeId: string, flagId: string, term: string, correction: string) => {
+    // Add to local dictionary
+    setStandardDictionary(prev => [
+      ...prev.filter(entry => entry.term.toLowerCase() !== term.toLowerCase()),
+      { term, correction, addedAt: new Date() }
+    ]);
+
+    // Save to backend
+    try {
+      await standardizeTerm(term, correction);
+    } catch (error) {
+      console.error('Failed to save standard term:', error);
+    }
+
+    // Approve the flag
+    handleApproveFlag(nodeId, flagId);
+  }, [handleApproveFlag]);
+
+  // Handle requesting regeneration
+  const handleRequestRegeneration = useCallback((nodeId: string, flagId?: string) => {
+    const flaggedContent = flaggedContents.find(fc => fc.nodeId === nodeId);
+    if (!flaggedContent) return;
+
+    const flag = flagId ? flaggedContent.flags.find(f => f.id === flagId) : undefined;
+    
+    setRegenerationModal({
+      isOpen: true,
+      nodeId,
+      nodeType: flaggedContent.nodeType,
+      content: flaggedContent.content,
+      flaggedText: flag?.text
+    });
+  }, [flaggedContents]);
+
+  // Handle flag click from review panel
+  const handleFlagClickFromPanel = useCallback((nodeId: string, flagId: string) => {
+    // Focus on the node in the canvas
+    if (reactFlowInstance) {
+      const node = nodesRef.current.find(n => n.id === nodeId);
+      if (node) {
+        reactFlowInstance.setCenter(node.position.x + 250, node.position.y + 200, { zoom: 1, duration: 500 });
+      }
+    }
+  }, [reactFlowInstance]);
+
+  // Handle regeneration with feedback
+  const handleRegenerate = useCallback(async (feedback: string) => {
+    if (!regenerationModal) return;
+
+    const { nodeId, nodeType } = regenerationModal;
+    
+    // Close modal
+    setRegenerationModal(null);
+
+    // Add chat message about regeneration
+    const userMessage = { user: 'You', text: `Regenerate ${nodeType} content: ${feedback}` };
+    setChatHistory(prev => [...prev, userMessage]);
+
+    // Add loading message
+    const loadingMessage = { user: 'MICRAi', text: '', isLoading: true };
+    setChatHistory(prev => [...prev, loadingMessage]);
+
+    try {
+      const contentTypeMap: Record<string, string> = {
+        'LinkedIn': 'linkedin',
+        'TikTok': 'tiktok',
+        'Email': 'email'
+      };
+
+      const sourceTextsForAPI = sourceTexts.map(source => ({
+        id: source.id,
+        title: source.title,
+        content: source.content
+      }));
+
+      const response = await fetch('/backend/v1/hitl/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Please regenerate this ${nodeType} content with these changes: ${feedback}`,
+          conversation_state: {
+            waiting_for_tone: false,
+            content_type: contentTypeMap[nodeType],
+            user_instruction: feedback
+          },
+          source_texts: sourceTextsForAPI.length > 0 ? sourceTextsForAPI : null,
+          tone_preference: tonePreference || null
+        }),
+      });
+
+      if (!response.ok) throw new Error('Regeneration failed');
+
+      const data = await response.json();
+
+      // Remove loading message
+      setChatHistory(prev => prev.filter(msg => !msg.isLoading));
+      
+      const botMessage = { user: 'MICRAi', text: data.message };
+      setChatHistory(prev => [...prev, botMessage]);
+
+      // Update the node with new content
+      if (data.content && setNodesRef.current) {
+        const newContent = typeof data.content === 'string' ? data.content : data.content.content;
+        
+        setNodesRef.current(nodes => nodes.map(node => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                ...(typeof data.content === 'object' ? data.content : { content: data.content }),
+                flags: [],
+                isChecking: false
+              }
+            };
+          }
+          return node;
+        }));
+
+        // Run quality check on new content
+        runQualityCheck(nodeId, nodeType, newContent);
+      }
+    } catch (error) {
+      console.error('Regeneration error:', error);
+      setChatHistory(prev => prev.filter(msg => !msg.isLoading));
+      setChatHistory(prev => [...prev, { user: 'MICRAi', text: 'Sorry, regeneration failed. Please try again.' }]);
+    }
+  }, [regenerationModal, sourceTexts, tonePreference, runQualityCheck]);
+
   const addNodeToCanvas = useCallback((nodeType: 'LinkedIn' | 'TikTok' | 'Email', content: string | NodeContent) => {
     if (!setNodesRef.current || !reactFlowInstance) return;
 
@@ -104,15 +434,29 @@ const FinalReview = () => {
       nodeData = { ...nodeData, ...content };
     }
 
+    const nodeId = `${nodeType}-${nextId.current++}`;
+    
+    // Add flag handlers to node data
+    nodeData.onApproveFlag = (flagId: string) => handleApproveFlag(nodeId, flagId);
+    nodeData.onEditFlag = (flagId: string, newText: string) => handleEditFlag(nodeId, flagId, newText);
+    nodeData.onSetStandard = (flagId: string, term: string, correction: string) => handleSetStandard(nodeId, flagId, term, correction);
+    nodeData.onRequestRegeneration = (flagId: string) => handleRequestRegeneration(nodeId, flagId);
+
     const newNode: Node = {
-      id: `${nodeType}-${nextId.current++}`,
+      id: nodeId,
       type: nodeType,
       position: { x: centerX - 250, y: centerY - 200 }, // Offset to center the node
       data: nodeData,
     };
 
     setNodesRef.current((nds: Node[]) => nds.concat(newNode));
-  }, [reactFlowInstance]);
+
+    // Run quality check on new content
+    const textContent = nodeData.content || '';
+    if (textContent) {
+      runQualityCheck(nodeId, nodeType, textContent);
+    }
+  }, [reactFlowInstance, handleApproveFlag, handleEditFlag, handleSetStandard, handleRequestRegeneration, runQualityCheck]);
 
   // Auto-generate when canvas triggers generation with source + tone
   useEffect(() => {
@@ -466,21 +810,41 @@ const FinalReview = () => {
 
   const handleDeletePart = (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
     setNodes((nds: Node[]) => nds.filter((node) => node.id !== partId));
+    // Also remove from flagged contents
+    setFlaggedContents(prev => prev.filter(fc => fc.nodeId !== partId));
     setPartContextMenu(null);
   };
 
   const handleDuplicatePart = (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>, nodes: Node[]) => {
     const partToDuplicate = nodes.find((node) => node.id === partId);
     if (partToDuplicate) {
+      const newNodeId = `${partToDuplicate.type}-${nextId.current++}`;
       const newNode: Node = {
         ...partToDuplicate,
-        id: `${partToDuplicate.type}-${nextId.current++}`,
+        id: newNodeId,
         position: {
           x: partToDuplicate.position.x + 20,
           y: partToDuplicate.position.y + 20,
         },
+        data: {
+          ...partToDuplicate.data,
+          onApproveFlag: (flagId: string) => handleApproveFlag(newNodeId, flagId),
+          onEditFlag: (flagId: string, newText: string) => handleEditFlag(newNodeId, flagId, newText),
+          onSetStandard: (flagId: string, term: string, correction: string) => handleSetStandard(newNodeId, flagId, term, correction),
+          onRequestRegeneration: (flagId: string) => handleRequestRegeneration(newNodeId, flagId),
+        }
       };
       setNodes((nds: Node[]) => nds.concat(newNode));
+      
+      // Also duplicate the flagged content if exists
+      const originalFlagged = flaggedContents.find(fc => fc.nodeId === partId);
+      if (originalFlagged) {
+        setFlaggedContents(prev => [...prev, {
+          ...originalFlagged,
+          nodeId: newNodeId,
+          flags: originalFlagged.flags.map(f => ({ ...f, id: `${f.id}-dup-${Date.now()}` }))
+        }]);
+      }
     }
     setPartContextMenu(null);
   };
@@ -499,10 +863,18 @@ const FinalReview = () => {
         x: newPartPosition.x,
         y: newPartPosition.y,
       });
+      const newNodeId = `${copiedPart.type}-${nextId.current++}`;
       const newNode: Node = {
         ...copiedPart,
-        id: `${copiedPart.type}-${nextId.current++}`,
+        id: newNodeId,
         position,
+        data: {
+          ...copiedPart.data,
+          onApproveFlag: (flagId: string) => handleApproveFlag(newNodeId, flagId),
+          onEditFlag: (flagId: string, newText: string) => handleEditFlag(newNodeId, flagId, newText),
+          onSetStandard: (flagId: string, term: string, correction: string) => handleSetStandard(newNodeId, flagId, term, correction),
+          onRequestRegeneration: (flagId: string) => handleRequestRegeneration(newNodeId, flagId),
+        }
       };
       setNodes((nds: Node[]) => nds.concat(newNode));
     }
@@ -616,7 +988,7 @@ const FinalReview = () => {
 
   return (
     <div className="h-screen flex font-sans text-[#1d1d1f] overflow-hidden">
-      {/* Left Column: Source Media */}
+      {/* Left Column: Source Media & Quality Review */}
       {sidebarsVisible && (
         <div className="w-[300px] h-full bg-white/80 backdrop-blur-lg p-6 shadow-lg flex flex-col">
           <div className="flex-grow overflow-y-auto space-y-6 pb-4">
@@ -639,36 +1011,14 @@ const FinalReview = () => {
             <div>{SourceMediaContent()}</div>
           </div>
 
-          <div>
-            <h2 className="text-lg font-semibold mb-4">Auto-Checks & Flags</h2>
-            <ul className="space-y-4 text-sm">
-              <li className="flex justify-between items-center">
-                <span className="text-gray-600">Image–text match score</span>
-                <span className="font-medium text-gray-900">85%</span>
-              </li>
-              <li className="flex justify-between items-center">
-                <span className="text-gray-600">Proper noun checker</span>
-                <span className="text-blue-500 font-medium cursor-pointer">Review</span>
-              </li>
-              <li className="flex justify-between items-center">
-                <span className="text-gray-600">Spell/grammar suggestions</span>
-                <span className="font-medium text-gray-900">2 Found</span>
-              </li>
-              <li className="space-y-2">
-                <span className="text-gray-600">Platform-limit meter</span>
-                <div className="w-full bg-gray-200/70 rounded-full h-1.5">
-                  <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: '45%' }}></div>
-                </div>
-              </li>
-              <li className="space-y-2">
-                <span className="text-gray-600">Risks</span>
-                <div className="flex flex-wrap gap-2">
-                  <span className="bg-yellow-400/30 text-yellow-900 text-xs font-medium px-2.5 py-1 rounded-full">
-                    Brand Reputation
-                  </span>
-                </div>
-              </li>
-            </ul>
+          {/* Quality Review Panel - replaces placeholder */}
+          <div className="border-t border-gray-200 pt-4">
+            <QualityReviewPanel
+              flaggedContents={flaggedContents}
+              onFlagClick={handleFlagClickFromPanel}
+              onApproveAll={handleApproveAllFlags}
+              onApproveFlag={handleApproveFlag}
+            />
           </div>
         </div>
       )}
@@ -699,6 +1049,7 @@ const FinalReview = () => {
               isLocked={isLocked}
               setIsLocked={setIsLocked}
               setNodesRef={setNodesRef}
+              nodesRef={nodesRef}
             />
           )}
         </ReactFlowWrapper>
@@ -793,6 +1144,18 @@ const FinalReview = () => {
           </div>}
         </div>
       )}
+
+      {/* Regeneration Modal */}
+      {regenerationModal && (
+        <RegenerationModal
+          isOpen={regenerationModal.isOpen}
+          nodeType={regenerationModal.nodeType}
+          originalContent={regenerationModal.content}
+          flaggedText={regenerationModal.flaggedText}
+          onRegenerate={handleRegenerate}
+          onClose={() => setRegenerationModal(null)}
+        />
+      )}
     </div>
   );
 };
@@ -821,6 +1184,7 @@ interface CanvasAreaProps {
   isLocked: boolean;
   setIsLocked: (locked: boolean) => void;
   setNodesRef: React.MutableRefObject<React.Dispatch<React.SetStateAction<Node[]>> | null>;
+  nodesRef: React.MutableRefObject<Node[]>;
 }
 
 const CanvasArea = ({
@@ -847,6 +1211,7 @@ const CanvasArea = ({
   isLocked,
   setIsLocked,
   setNodesRef,
+  nodesRef,
 }: CanvasAreaProps) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -857,6 +1222,11 @@ const CanvasArea = ({
       setNodesRef.current = setNodes;
     }
   }, [setNodesRef, setNodes]);
+
+  // Keep nodesRef in sync
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes, nodesRef]);
   
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),

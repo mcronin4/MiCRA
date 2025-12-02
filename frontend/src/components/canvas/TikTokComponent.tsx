@@ -1,5 +1,9 @@
+'use client';
+
 import React from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, Music2 } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, Music2, AlertCircle } from 'lucide-react';
+import { QualityFlag } from '@/types/quality';
+import { FlaggedText } from '@/components/quality/FlaggedText';
 
 interface TikTokNodeData {
   username?: string;
@@ -11,6 +15,12 @@ interface TikTokNodeData {
   shares?: string;
   bookmarks?: string;
   label?: string;
+  flags?: QualityFlag[];
+  isChecking?: boolean;
+  onApproveFlag?: (flagId: string) => void;
+  onEditFlag?: (flagId: string, newText: string) => void;
+  onSetStandard?: (flagId: string, term: string, correction: string) => void;
+  onRequestRegeneration?: (flagId: string) => void;
 }
 
 export function TikTokComponent({ data }: { data: TikTokNodeData }) {
@@ -22,9 +32,33 @@ export function TikTokComponent({ data }: { data: TikTokNodeData }) {
   const comments = data?.comments || '40.2K';
   const shares = data?.shares || '12.5K';
   const bookmarks = data?.bookmarks || '89.3K';
+  const flags = data?.flags || [];
+  const isChecking = data?.isChecking || false;
+  const pendingFlagsCount = flags.filter(f => f.status === 'pending').length;
+
+  // Default handlers if not provided
+  const handleApprove = data?.onApproveFlag || (() => {});
+  const handleEdit = data?.onEditFlag || (() => {});
+  const handleSetStandard = data?.onSetStandard || (() => {});
+  const handleRegenerate = data?.onRequestRegeneration || (() => {});
 
   return (
-    <div className="w-min">
+    <div className="w-min relative">
+      {/* Flag count badge */}
+      {pendingFlagsCount > 0 && (
+        <div className="absolute -top-2 -right-2 bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-md z-20">
+          <AlertCircle size={12} />
+          {pendingFlagsCount}
+        </div>
+      )}
+      
+      {/* Checking indicator */}
+      {isChecking && (
+        <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs font-medium px-3 py-1 rounded-full animate-pulse z-20">
+          Checking...
+        </div>
+      )}
+
       {/* TikTok Draft */}
       <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-black w-80 h-[580px] rounded-[28px] shadow-2xl overflow-hidden border border-gray-700">
         {/* Video Background with Gradient Overlay */}
@@ -53,9 +87,20 @@ export function TikTokComponent({ data }: { data: TikTokNodeData }) {
               </div>
               
               {/* Caption */}
-              <p className="text-sm leading-relaxed line-clamp-3 break-words">
-                {caption}
-              </p>
+              <div className="text-sm leading-relaxed line-clamp-3 break-words">
+                {flags.length > 0 ? (
+                  <FlaggedText
+                    content={caption}
+                    flags={flags}
+                    onApproveFlag={handleApprove}
+                    onEditFlag={handleEdit}
+                    onSetStandard={handleSetStandard}
+                    onRequestRegeneration={handleRegenerate}
+                  />
+                ) : (
+                  <p>{caption}</p>
+                )}
+              </div>
               
               {/* Music */}
               <div className="flex items-center space-x-2">
