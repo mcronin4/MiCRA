@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
       { source: "/backend/:path*", destination: `${BACKEND_URL}/api/:path*` },
     ];
   },
-};
 
+  experimental: {
+    proxyTimeout: 300000
+  },
+};
 export default nextConfig;
