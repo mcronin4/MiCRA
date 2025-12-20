@@ -43,3 +43,4 @@ scikit-learn
 pytesseract
 numpy
 tqdm
+openai

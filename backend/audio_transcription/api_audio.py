@@ -2,15 +2,16 @@
 import os
 from dotenv import load_dotenv
 import yt_dlp
-from faster_whisper import WhisperModel
 import traceback  # print error
 import re
 import time
 import tempfile
+from openai import OpenAI
 
 # load vitual environment variables
 load_dotenv()
-ASR_MODEL = os.getenv("ASR_MODEL", "tiny")
+ASR_MODEL = os.getenv("ASR_MODEL", "whisper-1")
+
 ASR_DEVICE = os.getenv("ASR_DEVICE", "cpu")  # cuda | metal | cpu | auto
 # float16 | int8_float16 | int8
 ASR_COMPUTE = os.getenv("ASR_COMPUTE", "int8_float16")
@@ -87,17 +88,16 @@ def download_audio(url: str) -> str:
         return None
 
 
-def transcribe_audio_or_video_file(audio_path: str, model: WhisperModel = None):
+def transcribe_audio_or_video_file(audio_path: str, client: OpenAI):
     """
-    Transcribes an audio file using Faster-Whisper.
+    Transcribes an audio file using OpenAI API.
 
     Args:
         audio_path (str): Path to the audio file.
-        model (WhisperModel, optional): Pre-loaded WhisperModel instance. 
-            If None, a new model will be loaded (expensive - not recommended for production).
+        client (OpenAI): The OpenAI client instance.
 
     Returns:
-        list: A list of transcription segments.
+        list: A list of transcription segments with start/end timestamps.
     """
     # normalize path
     audio_path = os.path.normpath(audio_path)
@@ -107,32 +107,43 @@ def transcribe_audio_or_video_file(audio_path: str, model: WhisperModel = None):
             print(f"Audio file not found at: {audio_path}")
             return None
 
-        # Use provided model or load a new one (for backward compatibility/testing)
-        if model is None:
-            print(
-                f"⚠️ Warning: Loading model on-the-fly (expensive). Consider using a shared model instance.")
-            model = WhisperModel(
-                ASR_MODEL, device=ASR_DEVICE, compute_type=ASR_COMPUTE)
-
         # transcribe video
         print("Transcribing audio...")
         start_time = time.time()
 
-        # return timestamped segments (start, end, text) and metadata
-        segments, info = model.transcribe(audio_path, vad_filter=ASR_VAD)
+        # CHANGED: Open file in binary mode and call OpenAI API
+        with open(audio_path, "rb") as audio_file:
+            # We use response_format="verbose_json" to get timestamps (segments)
+            transcript = client.audio.transcriptions.create(
+                model=ASR_MODEL, 
+                file=audio_file, 
+                response_format="verbose_json"
+            )
 
         end_time = time.time()
         elapsed = end_time - start_time
 
-        print(f"Detected lanuaguge: {info.language}")
+        print(f"Detected lanuaguge: {transcript.language}")
         results = []
-        for seg in segments:
+        # CHANGED: Parse OpenAI 'segments' object to match your old output format
+        # OpenAI segments come as objects, accessing via dot notation
+        if hasattr(transcript, 'segments'):
+            for seg in transcript.segments:
+                results.append({
+                    "start": seg['start'],
+                    "end": seg['end'],
+                    "text": seg['text'].strip()
+                })
+                print(f"[{seg['start']:.2f} - {seg['end']:.2f}] {seg['text']}")
+        else:
+            # Fallback if no segments returned (rare with verbose_json)
             results.append({
-                "start": seg.start,
-                "end": seg.end,
-                "text": seg.text.strip()})  # .strip(): clean text, no extra space
-            print(f"[{seg.start:.2f} - {seg.end:.2f}] {seg.text}")
-
+                "start": 0.0,
+                "end": transcript.duration,
+                "text": transcript.text
+            })
+            print(f"{transcript.text}")
+            
         print(f"Transcription completed in {elapsed:.2f} seconds.")
         return results  # return a list
 
@@ -179,19 +190,21 @@ def get_user_choice():
 if __name__ == "__main__":
     file_path = None
 
-    print("Loading Whisper Model...")
-    model = WhisperModel(
-        ASR_MODEL,
-        device=ASR_DEVICE,
-        compute_type=ASR_COMPUTE)
-    print("Model loaded successfully")
-
+    # CHANGED: Initialize OpenAI client instead of loading local WhisperModel
+    # Ensure OPENAI_API_KEY is in your .env file
+    try:
+        client = OpenAI()
+        print("OpenAI Client initialized successfully.")
+    except Exception as e:
+        print(f"Failed to initialize OpenAI Client: {e}")
+        exit(1)
+        
     try:
         choice, input_value = get_user_choice()
 
         if choice == "file":
             print(f"\nTranscribing: {input_value}")
-            results = transcribe_audio_or_video_file(input_value)
+            results = transcribe_audio_or_video_file(input_value, client=client)
             if not results:
                 print("Transcription failed.")
 
@@ -199,7 +212,7 @@ if __name__ == "__main__":
             print(f"\nDownloading and transcribing: {input_value}")
             file_path = download_audio(input_value)
             if file_path:
-                results = transcribe_audio_or_video_file(file_path)
+                results = transcribe_audio_or_video_file(file_path, client=client)
                 if not results:
                     print("Transcription failed.")
             else:
@@ -224,4 +237,3 @@ if __name__ == "__main__":
         # file_path = download_audio("https://www.bilibili.com/video/BV1NM1KB3EX5/?spm_id_from=333.40138.feed-card.all.click")
         # transcribe_audio_or_video_file(file_path)
         # transcribe_audio_or_video_file("C:\QMIND\MiCRA-clean\backend\audio-transcription\mp3_files\万能机位思路，5分钟讲透！拍什么都能用（不是套路，是思路_audio.mp3")
-        # https://www.youtube.com/watch?v=cAJBA31iu3g
