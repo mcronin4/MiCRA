@@ -32,7 +32,6 @@ websockets
 
 # New dependencies
 yt-dlp
-faster-whisper
 torch
 torchvision
 transformers
@@ -43,4 +42,4 @@ scikit-learn
 pytesseract
 numpy
 tqdm
-openai
+python-multipart
