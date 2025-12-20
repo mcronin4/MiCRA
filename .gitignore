@@ -1,5 +1,9 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# mp4 files
+*.mp4
+*.mp3
+
 # python
 venv/
 .venv/
