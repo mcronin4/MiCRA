@@ -23,10 +23,6 @@ if str(backend_root) not in sys.path:
 # 3. Now import cleanly
 from audio_transcription.audio_transcription import download_audio, transcribe_audio_or_video_file
 
-# Import the service that main.py initialized
-# Adjust the dots (..) depending on your folder structure relative to v1/transcription.py
-from ...agents.transcription.asr_service import ASRService
-
 router = APIRouter(prefix="/transcription")
 
 class TranscriptionRequest(BaseModel):
@@ -47,15 +43,7 @@ class TranscriptionResponse(BaseModel):
 async def transcribe_url(request: TranscriptionRequest):
     file_path = None
     try:
-        # 1. GET THE PRE-LOADED MODEL INSTANCE
-        # Since ASRService is a singleton initialized in main.py, this gets the same object
-        asr_service = ASRService.get_instance()
-        model = asr_service.get_model()
-
-        if not model:
-            raise HTTPException(status_code=500, detail="ASR Model not initialized")
-
-        # 2. Validate and Download
+        # 1. Validate and Download
         if not request.url or not request.url.strip():
             raise HTTPException(status_code=400, detail="URL cannot be empty")
 
@@ -66,10 +54,9 @@ async def transcribe_url(request: TranscriptionRequest):
         if not file_path:
             raise HTTPException(status_code=500, detail="Failed to download audio")
 
-        # 3. TRANSCRIBE USING THE LOADED MODEL
+        # 2. TRANSCRIBE USING FIREWORK API
         print(f"Transcribing audio file: {file_path}")
-        # Pass the model we got from ASRService
-        segments = transcribe_audio_or_video_file(file_path, model=model)
+        segments = transcribe_audio_or_video_file(file_path)
 
         if segments is None:
             raise HTTPException(status_code=500, detail="Failed to transcribe audio file")
@@ -101,14 +88,7 @@ async def transcribe_url(request: TranscriptionRequest):
 async def transcribe_file(file: UploadFile = File(...)):
     file_path = None
     try:
-        # 1. GET THE PRE-LOADED MODEL INSTANCE
-        asr_service = ASRService.get_instance()
-        model = asr_service.get_model()
-
-        if not model:
-            raise HTTPException(status_code=500, detail="ASR Model not initialized")
-
-        # 2. Save File
+        # 1. Save File
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
         
@@ -118,9 +98,9 @@ async def transcribe_file(file: UploadFile = File(...)):
             content = await file.read()
             temp_file.write(content)
         
-        # 3. TRANSCRIBE
+        # 2. TRANSCRIBE USING FIREWORK API
         print(f"Transcribing uploaded file: {file_path}")
-        segments = transcribe_audio_or_video_file(file_path, model=model)
+        segments = transcribe_audio_or_video_file(file_path)
         
         if segments is None:
             raise HTTPException(status_code=500, detail="Failed to transcribe audio file")

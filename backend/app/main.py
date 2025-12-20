@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from .api.routes import api_router
-from .agents.transcription.asr_service import ASRService
 import os
 
 
@@ -10,21 +9,15 @@ import os
 async def lifespan(app: FastAPI):
     """
     Manage application lifespan: startup and shutdown events.
-    Loads the ASR model at startup and closes it at shutdown.
     """
-    # Startup: Load the ASR model
+    # Startup
     print("🚀 Starting MiCRA application...")
-    asr_service = ASRService.get_instance()
-    # Pre-load the model at startup (optional, but ensures it's ready)
-    # Model will be loaded lazily on first use if you comment this out
-    asr_service.get_model()
     print("✅ Application startup complete")
 
     yield
 
-    # Shutdown: Close the ASR model
+    # Shutdown
     print("🛑 Shutting down MiCRA application...")
-    asr_service.close()
     print("✅ Application shutdown complete")
 
 app = FastAPI(

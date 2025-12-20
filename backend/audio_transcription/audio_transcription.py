@@ -2,19 +2,17 @@
 import os
 from dotenv import load_dotenv
 import yt_dlp
-from faster_whisper import WhisperModel
 import traceback  # print error
 import re
 import time
 import tempfile
+import requests
+from typing import Optional, List, Dict, Any
 
 # load vitual environment variables
 load_dotenv()
-ASR_MODEL = os.getenv("ASR_MODEL", "tiny")
-ASR_DEVICE = os.getenv("ASR_DEVICE", "cpu")  # cuda | metal | cpu | auto
-# float16 | int8_float16 | int8
-ASR_COMPUTE = os.getenv("ASR_COMPUTE", "int8_float16")
-ASR_VAD = os.getenv("ASR_VAD", "true").lower() == "true"
+FIREWORK_API_KEY = os.getenv("FIREWORK_API_KEY")
+FIREWORK_API_URL = "https://audio-turbo.api.fireworks.ai/v1/audio/transcriptions"
 
 
 def download_audio(url: str) -> str:
@@ -87,51 +85,97 @@ def download_audio(url: str) -> str:
         return None
 
 
-def transcribe_audio_or_video_file(audio_path: str, model: WhisperModel = None):
+def transcribe_audio_or_video_file(audio_path: str, model: Any = None):
     """
-    Transcribes an audio file using Faster-Whisper.
+    Transcribes an audio file using Firework API.
 
     Args:
         audio_path (str): Path to the audio file.
-        model (WhisperModel, optional): Pre-loaded WhisperModel instance. 
-            If None, a new model will be loaded (expensive - not recommended for production).
+        model: Ignored (kept for backward compatibility with existing API calls).
 
     Returns:
-        list: A list of transcription segments.
+        list: A list of transcription segments with 'start', 'end', and 'text' keys.
     """
     # normalize path
     audio_path = os.path.normpath(audio_path)
+    
+    if not FIREWORK_API_KEY:
+        print("Error: FIREWORK_API_KEY not found in environment variables")
+        return None
+    
     try:
         # if the file does not exist at file path, exit
         if not os.path.exists(audio_path):
             print(f"Audio file not found at: {audio_path}")
             return None
 
-        # Use provided model or load a new one (for backward compatibility/testing)
-        if model is None:
-            print(
-                f"⚠️ Warning: Loading model on-the-fly (expensive). Consider using a shared model instance.")
-            model = WhisperModel(
-                ASR_MODEL, device=ASR_DEVICE, compute_type=ASR_COMPUTE)
-
-        # transcribe video
-        print("Transcribing audio...")
+        # transcribe video using Firework API
+        print("Transcribing audio with Firework API...")
         start_time = time.time()
 
-        # return timestamped segments (start, end, text) and metadata
-        segments, info = model.transcribe(audio_path, vad_filter=ASR_VAD)
+        # Open the file and send to Firework API
+        with open(audio_path, "rb") as f:
+            response = requests.post(
+                FIREWORK_API_URL,
+                headers={"Authorization": f"Bearer {FIREWORK_API_KEY}"},
+                files={"file": f},
+                data={
+                    "model": "whisper-v3-turbo",
+                    "temperature": "0",
+                    "vad_model": "silero",
+                    "response_format": "verbose_json",
+                    "timestamp_granularities": "segment"
+                },
+            )
 
         end_time = time.time()
         elapsed = end_time - start_time
 
-        print(f"Detected lanuaguge: {info.language}")
+        if response.status_code != 200:
+            print(f"Error: Firework API returned status {response.status_code}")
+            print(f"Response: {response.text}")
+            return None
+
+        # Parse the response
+        result = response.json()
+        
+        # Extract language if available
+        detected_language = result.get("language", "unknown")
+        print(f"Detected language: {detected_language}")
+        
+        # Extract segments from verbose_json response
+        # Firework API returns segments in the verbose_json format
+        segments = result.get("segments", [])
+        
+        # If no segments but there's text, create a single segment (fallback)
+        if not segments and result.get("text"):
+            print("Warning: No segments found, but text is available. Creating single segment.")
+            duration = result.get("duration", 0.0)
+            segments = [{
+                "start": 0.0,
+                "end": duration,
+                "text": result.get("text", "")
+            }]
+        
+        if not segments:
+            print("Warning: No segments found in Firework API response")
+            return []
+        
         results = []
         for seg in segments:
-            results.append({
-                "start": seg.start,
-                "end": seg.end,
-                "text": seg.text.strip()})  # .strip(): clean text, no extra space
-            print(f"[{seg.start:.2f} - {seg.end:.2f}] {seg.text}")
+            # Firework API segments should have 'start', 'end', and 'text' fields
+            # Handle both direct values and nested structures
+            start = seg.get("start") if isinstance(seg.get("start"), (int, float)) else 0.0
+            end = seg.get("end") if isinstance(seg.get("end"), (int, float)) else 0.0
+            text = seg.get("text", "") if seg.get("text") else ""
+            
+            segment_result = {
+                "start": float(start),
+                "end": float(end),
+                "text": str(text).strip()
+            }
+            results.append(segment_result)
+            print(f"[{segment_result['start']:.2f} - {segment_result['end']:.2f}] {segment_result['text']}")
 
         print(f"Transcription completed in {elapsed:.2f} seconds.")
         return results  # return a list
@@ -179,12 +223,13 @@ def get_user_choice():
 if __name__ == "__main__":
     file_path = None
 
-    print("Loading Whisper Model...")
-    model = WhisperModel(
-        ASR_MODEL,
-        device=ASR_DEVICE,
-        compute_type=ASR_COMPUTE)
-    print("Model loaded successfully")
+    print("Using Firework API for transcription...")
+    
+    if not FIREWORK_API_KEY:
+        print("Error: FIREWORK_API_KEY not found in environment variables")
+        exit(1)
+    
+    print("API key loaded successfully")
 
     try:
         choice, input_value = get_user_choice()
