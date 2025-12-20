@@ -12,12 +12,25 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 import numpy as np
 from PIL import Image
-import torch
-from sklearn.preprocessing import MinMaxScaler
-import pytesseract
 import re
-#The models we are using the transformers library from HuggingFace
-from transformers import AutoProcessor, AutoModel, Blip2Processor, Blip2ForConditionalGeneration
+
+# Lazy import heavy ML dependencies to avoid deployment issues if not needed
+try:
+    import torch
+    from sklearn.preprocessing import MinMaxScaler
+    import pytesseract
+    from transformers import AutoProcessor, AutoModel, Blip2Processor, Blip2ForConditionalGeneration
+    ML_DEPS_AVAILABLE = True
+except ImportError as e:
+    ML_DEPS_AVAILABLE = False
+    # Create dummy classes for type hints when ML deps are not available
+    torch = None  # type: ignore
+    MinMaxScaler = None  # type: ignore
+    pytesseract = None  # type: ignore
+    AutoProcessor = None  # type: ignore
+    AutoModel = None  # type: ignore
+    Blip2Processor = None  # type: ignore
+    Blip2ForConditionalGeneration = None  # type: ignore
 
 from .config import MatchingConfig
 
@@ -103,6 +116,12 @@ class ImageTextMatcher:
         use_timestamp_matching: bool = None,
         use_detail_verification: bool = None
     ):
+        if not ML_DEPS_AVAILABLE:
+            raise ImportError(
+                "ML dependencies (torch, transformers, scikit-learn, pytesseract) are not installed. "
+                "Install them with: pip install torch transformers scikit-learn pytesseract"
+            )
+        
         #from my understanding this is where the models are loaded, cuda if gpu is available that's what we want
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Initializing ImageTextMatcher on device: {self.device}")

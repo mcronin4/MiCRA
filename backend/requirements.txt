@@ -32,14 +32,15 @@ websockets
 
 # New dependencies
 yt-dlp
-torch
-torchvision
-transformers
-sentencepiece
-protobuf
-Pillow
-scikit-learn
-pytesseract
 numpy
 tqdm
 python-multipart
+Pillow
+
+# Optional ML dependencies (uncomment if needed for image_text_matching)
+# torch
+# torchvision
+# transformers
+# sentencepiece
+# scikit-learn
+# pytesseract
