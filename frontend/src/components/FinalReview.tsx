@@ -354,6 +354,19 @@ const FinalReview = () => {
                       }
                       if (response.success && response.segments) {
                         setTranscriptionResult({ segments: response.segments });
+                        
+                        // Automatically add transcription as a source
+                        const fullText = response.segments.map(seg => seg.text).join(' ').trim();
+                        if (fullText) {
+                          const title = fullText.slice(0, 30) + (fullText.length > 30 ? '...' : '');
+                          const newSource: SourceText = {
+                            id: `source-${sourceIdCounter.current++}`,
+                            title,
+                            content: fullText,
+                            createdAt: new Date(),
+                          };
+                          setSourceTexts(prev => [...prev, newSource]);
+                        }
                       } else {
                         setTranscriptionError(response.error || 'Transcription failed');
                       }

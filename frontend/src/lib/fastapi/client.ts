@@ -1,4 +1,15 @@
 // Base configuration
+
+class HttpError extends Error {
+    status: number;
+    
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = 'HttpError';
+        this.status = status;
+    }
+}
+
 class ApiClient {
     private baseUrl = '/backend'; // We have a rewrite in next.config.ts to handle this, anything with /backend will be rewritten to the FastAPI backend URL
 
@@ -35,9 +46,7 @@ class ApiClient {
                 // If we can't parse the error, use the status message
                 errorMessage = `HTTP error! status: ${response.status} ${response.statusText}`;
             }
-            const error = new Error(errorMessage);
-            (error as any).status = response.status;
-            throw error;
+            throw new HttpError(errorMessage, response.status);
         }
         return response.json();
     }
