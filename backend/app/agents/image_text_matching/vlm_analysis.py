@@ -24,7 +24,7 @@ from .utils_vlm import (
 )
 
 
-class ImageTextMatcherVLM_Staged:
+class ImageTextMatcherVLM:
     """
     Multi-stage VLM matcher that makes separate API calls for each scoring component.
     
@@ -72,7 +72,7 @@ class ImageTextMatcherVLM_Staged:
         self._ocr_cache: Dict[str, str] = {}
         self._caption_cache: Dict[str, str] = {}
         
-        print(f"✓ ImageTextMatcherVLM_Staged initialized")
+        print(f"✓ ImageTextMatcherVLM initialized")
         print(f"  Model: {VLMConfig.FIREWORKS_MODEL}")
         print(f"  Weights: semantic={self.semantic_weight:.2f}, detail={self.detail_weight:.2f}")
         if self.max_image_dimension:

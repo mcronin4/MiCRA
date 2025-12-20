@@ -26,7 +26,7 @@ from app.agents.image_text_matching.embeddings import (
     ImageCandidate,
     ImageMatch
 )
-from app.agents.image_text_matching.embeddings_vlm_staged import ImageTextMatcherVLM_Staged
+from app.agents.image_text_matching.vlm_analysis import ImageTextMatcherVLM
 
 
 # ============================================================================
@@ -197,7 +197,7 @@ def run_staged_vlm_matcher(
     print("="*80)
     
     try:
-        matcher = ImageTextMatcherVLM_Staged(
+        matcher = ImageTextMatcherVLM(
             api_key=api_key,
             max_image_dimension=max_dimension
         )

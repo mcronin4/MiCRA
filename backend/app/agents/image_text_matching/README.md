@@ -7,7 +7,7 @@ Multi-modal system for matching video frames to text summaries using vision-lang
 This module provides two approaches for matching images to text summaries:
 
 1. **Original (embeddings.py)**: Uses SigLIP, BLIP-2, and Tesseract OCR (requires heavy ML dependencies)
-2. **VLM Staged (embeddings_vlm_staged.py)**: Uses Fireworks Qwen 2.5 VL with separate API calls (recommended)
+2. **VLM Staged (vlm_analysis.py)**: Uses Fireworks Qwen 2.5 VL with separate API calls (recommended)
 
 ## Setup
 
@@ -83,11 +83,11 @@ Use `--detailed` flag to see per-summary results with ✓/✗ indicators.
 ### Using VLM Staged Matcher
 
 ```python
-from app.agents.image_text_matching.embeddings_vlm_staged import ImageTextMatcherVLM_Staged
+from app.agents.image_text_matching.vlm_analysis import ImageTextMatcherVLM
 from app.agents.image_text_matching.embeddings import TextSummary, ImageCandidate
 
 # Initialize
-matcher = ImageTextMatcherVLM_Staged(
+matcher = ImageTextMatcherVLM(
     max_image_dimension=1024,  # Optional downsampling
     weights={'semantic': 0.6, 'detail': 0.4}
 )
@@ -124,7 +124,7 @@ Key settings:
 To reduce token costs, you can downsample images before sending to the VLM:
 
 ```python
-matcher = ImageTextMatcherVLM_Staged(
+matcher = ImageTextMatcherVLM(
     max_image_dimension=1024  # Downsample to 1024px max
 )
 ```
@@ -136,7 +136,7 @@ This maintains aspect ratio and can significantly reduce costs with minimal accu
 ```
 image_text_matching/
 ├── embeddings.py                 # Original: SigLIP/BLIP-2/OCR
-├── embeddings_vlm_staged.py      # VLM Staged: Multi-stage API calls (recommended)
+├── vlm_analysis.py      # VLM Staged: Multi-stage API calls (recommended)
 ├── config.py                     # Config for original implementation
 ├── config_vlm.py                 # Config for VLM implementation
 ├── utils_vlm.py                  # Shared VLM utilities
@@ -147,7 +147,7 @@ image_text_matching/
 
 ## Approaches Comparison
 
-### VLM Staged (embeddings_vlm_staged.py) - Recommended
+### VLM Staged (vlm_analysis.py) - Recommended
 
 **How it works:**
 - Makes 3 separate API calls per image-text pair
@@ -235,7 +235,7 @@ The original matcher requires heavy dependencies. Either:
 
 Use downsampling:
 ```python
-matcher = ImageTextMatcherVLM_Staged(max_image_dimension=512)
+matcher = ImageTextMatcherVLM(max_image_dimension=512)
 ```
 
 Or in test script:
