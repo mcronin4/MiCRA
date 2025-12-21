@@ -16,7 +16,7 @@ export interface TranscriptionResponse {
 }
 
 export async function transcribeUrl(url: string): Promise<TranscriptionResponse> {
-  return apiClient.request<TranscriptionResponse>('/v1/transcription/', {
+  return apiClient.request<TranscriptionResponse>('/v1/transcription', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -30,7 +30,7 @@ export async function transcribeFile(file: File): Promise<TranscriptionResponse>
   formData.append('file', file);
   
   // Don't set Content-Type header for FormData - browser will set it with boundary
-  return apiClient.request<TranscriptionResponse>('/v1/transcription/upload/', {
+  return apiClient.request<TranscriptionResponse>('/v1/transcription/upload', {
     method: 'POST',
     body: formData,
     // Note: Don't set Content-Type header - browser will set it automatically with boundary

@@ -11,7 +11,18 @@ class HttpError extends Error {
 }
 
 class ApiClient {
-    private baseUrl = '/backend'; // We have a rewrite in next.config.ts to handle this, anything with /backend will be rewritten to the FastAPI backend URL
+    private getBaseUrl(): string {
+        // Use NEXT_PUBLIC_BACKEND_URL if available (for production)
+        // Otherwise use rewrite for development
+        if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_BACKEND_URL) {
+            const url = process.env.NEXT_PUBLIC_BACKEND_URL;
+            const cleanUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+            // Add /api prefix since backend routes are under /api
+            return `${cleanUrl}/api`;
+        }
+        // Development: use Next.js rewrite
+        return '/backend';
+    }
 
     async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
         // Don't set Content-Type for FormData - browser will set it with boundary
@@ -24,7 +35,10 @@ class ApiClient {
             Object.assign(headers, options.headers);
         }
         
-        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        const baseUrl = this.getBaseUrl();
+        const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        
+        const response = await fetch(`${baseUrl}${cleanEndpoint}`, {
             ...options,
             headers: isFormData ? {} : headers, // Let browser set headers for FormData
         });
