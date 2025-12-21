@@ -27,16 +27,13 @@ app = FastAPI(
 )
 
 # Add CORS middleware
-# Use regex to allow all Vercel domains and localhost
+# Allow all origins - simplified for debugging
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[],  # Empty list - use regex instead
-    # Allow Vercel preview deployments and localhost
-    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$|^http:\/\/localhost:\d+$|^http:\/\/127\.0\.0\.1:\d+$",
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_origins=["*"],
+    allow_credentials=False,  # Can't use * with credentials
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 app.include_router(api_router)
