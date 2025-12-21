@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from contextlib import asynccontextmanager
 from .api.routes import api_router
 import os
@@ -26,15 +27,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
-# Allow all origins - simplified for debugging
+# Add CORS middleware - must be first middleware
+# Allow all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # Can't use * with credentials
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(api_router)
-# Add routes here
