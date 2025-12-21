@@ -37,7 +37,10 @@ tqdm
 python-multipart
 Pillow
 
-# Optional ML dependencies (uncomment if needed for image_text_matching)
+# VLM dependencies for image_text_matching (VLM approaches)
+fireworks-ai>=0.10.0
+
+# Optional ML dependencies (uncomment if needed for original image_text_matching implementation)
 # torch
 # torchvision
 # transformers
