@@ -12,6 +12,13 @@ import PartContextMenu from './PartContextMenu';
 import { transcribeUrl, transcribeFile } from '@/lib/fastapi/transcription';
 import { apiClient } from '@/lib/fastapi/client';
 
+interface ChatResponse {
+  message: string;
+  action?: string | null;
+  content?: string | Record<string, unknown> | null;
+  conversation_state?: Record<string, unknown> | null;
+}
+
 type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
 
 const nodeTypes = {
@@ -141,7 +148,7 @@ const FinalReview = () => {
             content: source.content
           }));
 
-          const data = await apiClient.request('/v1/hitl/chat', {
+          const data = await apiClient.request<ChatResponse>('/v1/hitl/chat', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -700,7 +707,7 @@ const FinalReview = () => {
         content: source.content
       }));
 
-      const data = await apiClient.request('/v1/hitl/chat', {
+      const data = await apiClient.request<ChatResponse>('/v1/hitl/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -714,8 +721,8 @@ const FinalReview = () => {
       });
       
       // Update conversation state
-      if (data.conversation_state !== undefined) {
-        setConversationState(data.conversation_state);
+      if (data.conversation_state !== undefined && data.conversation_state !== null) {
+        setConversationState(data.conversation_state as typeof conversationState);
       }
       
       // Remove loading message
@@ -724,7 +731,7 @@ const FinalReview = () => {
       const botMessage = { 
         user: 'MICRAi', 
         text: data.message,
-        showToneOptions: data.conversation_state?.show_tone_options || false
+        showToneOptions: Boolean(data.conversation_state?.show_tone_options)
       };
       setChatHistory(prev => [...prev, botMessage]);
 
