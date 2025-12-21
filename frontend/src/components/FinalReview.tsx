@@ -10,6 +10,14 @@ import AddPartMenu from './AddPartMenu';
 import ZoomControls from './ZoomControls';
 import PartContextMenu from './PartContextMenu';
 import { transcribeUrl, transcribeFile } from '@/lib/fastapi/transcription';
+import { apiClient } from '@/lib/fastapi/client';
+
+interface ChatResponse {
+  message: string;
+  action?: string | null;
+  content?: string | Record<string, unknown> | null;
+  conversation_state?: Record<string, unknown> | null;
+}
 
 type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
 
@@ -140,7 +148,7 @@ const FinalReview = () => {
             content: source.content
           }));
 
-          const response = await fetch('/backend/v1/hitl/chat', {
+          const data = await apiClient.request<ChatResponse>('/v1/hitl/chat', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -152,14 +160,6 @@ const FinalReview = () => {
               tone_preference: currentTone
             }),
           });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Backend error:', response.status, errorText);
-            throw new Error(`Network response was not ok: ${response.status}`);
-          }
-
-          const data = await response.json();
           
           // Remove loading message
           setChatHistory(prev => prev.filter(msg => !msg.isLoading));
@@ -707,7 +707,7 @@ const FinalReview = () => {
         content: source.content
       }));
 
-      const response = await fetch('/backend/v1/hitl/chat', {
+      const data = await apiClient.request<ChatResponse>('/v1/hitl/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -719,18 +719,10 @@ const FinalReview = () => {
           tone_preference: tonePreference || null
         }),
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Backend error:', response.status, errorText);
-        throw new Error(`Network response was not ok: ${response.status}`);
-      }
-
-      const data = await response.json();
       
       // Update conversation state
-      if (data.conversation_state !== undefined) {
-        setConversationState(data.conversation_state);
+      if (data.conversation_state !== undefined && data.conversation_state !== null) {
+        setConversationState(data.conversation_state as typeof conversationState);
       }
       
       // Remove loading message
@@ -739,7 +731,7 @@ const FinalReview = () => {
       const botMessage = { 
         user: 'MICRAi', 
         text: data.message,
-        showToneOptions: data.conversation_state?.show_tone_options || false
+        showToneOptions: Boolean(data.conversation_state?.show_tone_options)
       };
       setChatHistory(prev => [...prev, botMessage]);
 

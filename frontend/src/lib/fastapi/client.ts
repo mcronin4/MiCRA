@@ -12,15 +12,12 @@ class HttpError extends Error {
 
 class ApiClient {
     private getBaseUrl(): string {
-        // Use NEXT_PUBLIC_BACKEND_URL if available (for production)
-        // Otherwise use rewrite for development
-        if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_BACKEND_URL) {
-            const url = process.env.NEXT_PUBLIC_BACKEND_URL;
-            const cleanUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-            // Add /api prefix since backend routes are under /api
+        // Simple: use environment variable if set, otherwise use rewrite
+        const envUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+        if (envUrl) {
+            const cleanUrl = envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl;
             return `${cleanUrl}/api`;
         }
-        // Development: use Next.js rewrite
         return '/backend';
     }
 
