@@ -33,16 +33,18 @@ allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     frontend_origin,
+    "https://mi-cra.vercel.app",  # Explicitly add production frontend
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    # allow Vercel preview deployments
+    # allow Vercel preview deployments (both frontend and backend domains)
     allow_origin_regex=r"^https:\/\/.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 app.include_router(api_router)
