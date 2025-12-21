@@ -26,13 +26,12 @@ app = FastAPI(
 )
 
 # Add CORS middleware - must be first middleware
-# Simple: allow all origins
+# Don't specify allow_headers to allow all common headers (including Content-Type for FormData)
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r".*",
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],
+    allow_methods=["*"],
 )
 
 app.include_router(api_router)
