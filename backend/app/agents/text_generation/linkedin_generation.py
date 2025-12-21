@@ -4,7 +4,6 @@ from typing import Optional
 
 
 def generate_linkedin_post(
-    topic: str,
     source_texts: Optional[list[dict]] = None,
     tone_preference: Optional[str] = None
 ):
@@ -26,7 +25,7 @@ def generate_linkedin_post(
     prompt = f"""
 Create a concise, engaging LinkedIn post about the following topic:
 
-Topic: {topic}
+CONTENT:
 {source_context}
 
 STRICT REQUIREMENTS:

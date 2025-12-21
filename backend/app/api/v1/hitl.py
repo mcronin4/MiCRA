@@ -292,9 +292,10 @@ def is_simple_greeting(message: str) -> bool:
     return True
 
 
+
+
 def generate_content_response(
     content_type: str,
-    instruction: str,
     source_texts: Optional[list[dict]],
     tone: Optional[str],
     message_override: Optional[str] = None
@@ -307,7 +308,7 @@ def generate_content_response(
     parser = config["parser"]
     action = config["action"]
 
-    raw_content = generator(instruction, source_texts, tone)
+    raw_content = generator(source_texts, tone)
     parsed_content = parser(raw_content)
 
     if message_override is not None:
@@ -360,7 +361,6 @@ async def chat(request: ChatRequest):
                 message_override = CONTENT_CONFIG[content_type]["success_messages"]["with_source"]
                 return generate_content_response(
                     content_type,
-                    "Create content from source material",
                     combined_source_texts,
                     default_tone,
                     message_override=message_override
@@ -377,7 +377,6 @@ async def chat(request: ChatRequest):
             if content_type in CONTENT_CONFIG:
                 return generate_content_response(
                     content_type,
-                    user_instruction,
                     effective_source_texts,
                     tone_selection
                 )
@@ -426,7 +425,6 @@ async def chat(request: ChatRequest):
                 message_override = CONTENT_CONFIG[selected_intent]["success_messages"]["with_source"] if effective_sources else None
                 return generate_content_response(
                     selected_intent,
-                    request.message,
                     effective_sources,
                     updated_tone,
                     message_override=message_override
@@ -483,7 +481,6 @@ async def chat(request: ChatRequest):
                 if tone_to_use:
                     return generate_content_response(
                         intent,
-                        request.message,
                         effective_source_texts,
                         tone_to_use
                     )
@@ -517,6 +514,14 @@ async def chat(request: ChatRequest):
         
         # Default chatbot response with source context
         fallback_tone = default_tone or extract_tone_from_message(request.message)
+
+# def generate_chatbot_response(
+#     user_message: str,
+#     source_texts: Optional[list[dict]] = None,
+#     tone_preference: Optional[str] = None
+# ):
+
+
         response = generate_chatbot_response(request.message, combined_source_texts, fallback_tone)
         return ChatResponse(message=response, conversation_state={})
     except ServerError:

@@ -2,10 +2,12 @@
 
 import React, { useEffect, useRef } from 'react';
 import { Button } from './ui/button';
-import { Linkedin, Mail, ClipboardPaste } from 'lucide-react';
+import { Linkedin, Mail, ClipboardPaste, Image } from 'lucide-react';
 import { FaTiktok } from 'react-icons/fa';
 
-type PartType = 'LinkedIn' | 'TikTok' | 'Email';
+type OutputNodeType = 'LinkedIn' | 'TikTok' | 'Email';
+type WorkflowNodeType = 'ImageMatching' | 'Transcription' | 'TextGeneration' | 'TextSummarization' | 'ImageExtraction';
+type PartType = OutputNodeType | WorkflowNodeType;
 
 interface AddPartMenuProps {
   onAddPart: (partType: PartType) => void;
@@ -38,6 +40,7 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position,
     { name: 'LinkedIn', label: 'Generate LinkedIn Post', icon: <Linkedin size={16} className="mr-2" /> },
     { name: 'TikTok', label: 'Generate TikTok', icon: <FaTiktok size={16} className="mr-2" /> },
     { name: 'Email', label: 'Generate Email', icon: <Mail size={16} className="mr-2" /> },
+    { name: 'ImageMatching', label: 'Image-Text Matching', icon: <Image size={16} className="mr-2" /> },
   ];
 
   const handleAction = (action: () => void) => {

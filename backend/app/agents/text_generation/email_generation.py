@@ -3,11 +3,8 @@ from typing import Optional, List, Dict
 
 from ...llm.gemini import query_gemini
 
-#  raw_content = generator(instruction, source_texts, tone)
-
 
 def generate_email(
-    topic: Optional[str] = None,
     source_texts: Optional[List[Dict]] = None,
     tone_preference: Optional[str] = None
 ):
@@ -21,8 +18,6 @@ def generate_email(
         tone_preference: Optional tone/style instruction.
     """
 
-    topic_text = topic or "Update based on provided context"
-
     # Build source context section
     source_context = ""
     if source_texts and len(source_texts) > 0:
@@ -32,7 +27,7 @@ def generate_email(
             content = source.get('content', '')
             source_context += f"\n--- {title} ---\n{content}\n"
         source_context += "\nImportant: Use the source context as your primary reference. Extract key points and details from it. Do NOT fabricate information not present in the source. Maintain consistency with source facts."
-        
+
     # Build tone section
     tone_guidance = "Use a professional yet friendly tone"
     if tone_preference:
@@ -41,7 +36,6 @@ def generate_email(
     prompt = f"""
 Create a professional email about the following topic:
 
-Topic: {topic_text}
 {source_context}
 
 STRICT REQUIREMENTS:
