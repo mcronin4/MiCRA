@@ -18,10 +18,11 @@ from .embeddings import TextSummary, ImageCandidate, ImageMatch
 from .config_vlm import VLMConfig
 from .utils_vlm import (
     image_to_base64,
-    create_fireworks_client,
+    create_async_fireworks_client,
     parse_numeric_response,
     format_image_content
 )
+from fireworks import AsyncFireworks
 
 
 class ImageTextMatcherVLM:
@@ -38,7 +39,8 @@ class ImageTextMatcherVLM:
         self,
         api_key: Optional[str] = None,
         max_image_dimension: Optional[int] = None,
-        weights: Optional[Dict[str, float]] = None
+        weights: Optional[Dict[str, float]] = None,
+        client: Optional[AsyncFireworks] = None
     ):
         """
         Initialize multi-stage VLM matcher.
@@ -47,12 +49,13 @@ class ImageTextMatcherVLM:
             api_key: Fireworks API key (uses VLMConfig.get_api_key() if None)
             max_image_dimension: Optional max dimension for image downsampling
             weights: Dict with 'semantic_weight' and 'detail_weight' (must sum to 1.0)
+            client: Optional AsyncFireworks client (creates new one if None)
         """
         # Get API key
         self.api_key = api_key or VLMConfig.get_api_key()
         
-        # Initialize Fireworks client
-        self.client = create_fireworks_client(self.api_key)
+        # Initialize Fireworks client (use provided or create new)
+        self.client = client or create_async_fireworks_client(self.api_key)
         
         # Image processing settings
         self.max_image_dimension = max_image_dimension or VLMConfig.MAX_IMAGE_DIMENSION
@@ -78,7 +81,7 @@ class ImageTextMatcherVLM:
         if self.max_image_dimension:
             print(f"  Max image dimension: {self.max_image_dimension}px")
     
-    def _extract_text(self, image_base64: str, image_id: str) -> str:
+    async def _extract_text(self, image_base64: str, image_id: str) -> str:
         """
         Extract text from image using VLM (OCR replacement).
         
@@ -101,7 +104,7 @@ class ImageTextMatcherVLM:
         )
         
         # Make API call
-        response = self.client.chat.completions.create(
+        response = await self.client.chat.completions.create(
             model=VLMConfig.FIREWORKS_MODEL,
             messages=[{
                 "role": "user",
@@ -122,7 +125,7 @@ class ImageTextMatcherVLM:
         
         return extracted_text
     
-    def _generate_caption(self, image_base64: str, image_id: str) -> str:
+    async def _generate_caption(self, image_base64: str, image_id: str) -> str:
         """
         Generate image caption using VLM (BLIP-2 replacement).
         
@@ -145,7 +148,7 @@ class ImageTextMatcherVLM:
         )
         
         # Make API call
-        response = self.client.chat.completions.create(
+        response = await self.client.chat.completions.create(
             model=VLMConfig.FIREWORKS_MODEL,
             messages=[{
                 "role": "user",
@@ -162,7 +165,7 @@ class ImageTextMatcherVLM:
         
         return caption
     
-    def _compute_similarity_score(self, image_base64: str, text: str) -> float:
+    async def _compute_similarity_score(self, image_base64: str, text: str) -> float:
         """
         Compute semantic similarity score using VLM (SigLIP replacement).
         
@@ -185,7 +188,7 @@ class ImageTextMatcherVLM:
         
         try:
             # Make API call
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=VLMConfig.FIREWORKS_MODEL,
                 messages=[{
                     "role": "user",
@@ -196,6 +199,7 @@ class ImageTextMatcherVLM:
             )
         except Error as e:
             print(f"Fireworks API error: {e}")
+            return 0.5  # Default to neutral score on error
         
         response_text = response.choices[0].message.content.strip()
         
@@ -212,7 +216,7 @@ class ImageTextMatcherVLM:
         
         return score
     
-    def compute_detail_verification_score(
+    async def compute_detail_verification_score(
         self,
         image_base64: str,
         image_id: str,
@@ -232,8 +236,8 @@ class ImageTextMatcherVLM:
             Detail verification score in 0-1 range
         """
         # Get caption and OCR text
-        caption = self._generate_caption(image_base64, image_id)
-        ocr_text = self._extract_text(image_base64, image_id)
+        caption = await self._generate_caption(image_base64, image_id)
+        ocr_text = await self._extract_text(image_base64, image_id)
         
         # Combine visual information
         visual_info = f"{caption} {ocr_text}".lower()
@@ -248,28 +252,7 @@ class ImageTextMatcherVLM:
         overlap = len(text_words & visual_words)
         base_score = overlap / len(text_words) if len(text_words) > 0 else 0.0
         
-        # BONUS: Check for specific visual indicators
-        visual_keywords = [
-            'chart', 'graph', 'slide', 'diagram', 'table', 'screen',
-            'presenter', 'speaker', 'stage', 'logo', 'image', 'photo',
-            'dashboard', 'report', 'visualization', 'plot', 'figure'
-        ]
-        
-        visual_indicator_matches = 0
-        visual_indicators_found = 0
-        
-        for keyword in visual_keywords:
-            if keyword in text_lower:
-                visual_indicators_found += 1
-                if keyword in visual_info:
-                    visual_indicator_matches += 1
-        
-        # Bonus points if visual indicators match (up to 20% boost)
-        visual_indicator_bonus = 0.0
-        if visual_indicators_found > 0:
-            visual_indicator_bonus = 0.2 * (visual_indicator_matches / visual_indicators_found)
-        
-        # BONUS 2: Check for quoted text in OCR (should match exactly)
+        # BONUS: Check for quoted text in OCR (should match exactly)
         quoted_pattern = r'["\']([^"\']{3,})["\']'
         quoted_texts = re.findall(quoted_pattern, text)
         quoted_bonus = 0.0
@@ -280,11 +263,11 @@ class ImageTextMatcherVLM:
             quoted_bonus = 0.3 * (quoted_matches / len(quoted_texts))
         
         # Combine scores
-        final_score = min(base_score + visual_indicator_bonus + quoted_bonus, 1.0)
+        final_score = min(base_score + quoted_bonus, 1.0)
         
         return final_score
     
-    def match_single_pair(
+    async def match_single_pair(
         self,
         candidate: ImageCandidate,
         summary: TextSummary
@@ -303,10 +286,10 @@ class ImageTextMatcherVLM:
         image_base64 = image_to_base64(candidate.filepath, self.max_image_dimension)
         
         # Compute semantic score
-        semantic_score = self._compute_similarity_score(image_base64, summary.text_content)
+        semantic_score = await self._compute_similarity_score(image_base64, summary.text_content)
         
         # Compute detail score
-        detail_score = self.compute_detail_verification_score(
+        detail_score = await self.compute_detail_verification_score(
             image_base64,
             candidate.image_id,
             summary.text_content

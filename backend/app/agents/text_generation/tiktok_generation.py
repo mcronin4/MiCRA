@@ -4,7 +4,6 @@ from typing import Optional
 
 
 def generate_tiktok_script(
-    topic: str,
     source_texts: Optional[list[dict]] = None,
     tone_preference: Optional[str] = None
 ):
@@ -24,9 +23,9 @@ def generate_tiktok_script(
         tone_guidance = f"{tone_preference}, while remaining engaging for TikTok"
     
     prompt = f"""
-Create a TikTok caption about the following topic:
+Create a TikTok caption about the following content:
 
-Topic: {topic}
+CONTENT:
 {source_context}
 
 STRICT REQUIREMENTS:

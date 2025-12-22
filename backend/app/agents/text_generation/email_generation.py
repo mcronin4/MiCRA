@@ -5,8 +5,6 @@ from ...llm.gemini import query_gemini
 
 
 def generate_email(
-    topic: Optional[str] = None,
-    summary: Optional[str] = None,
     source_texts: Optional[List[Dict]] = None,
     tone_preference: Optional[str] = None
 ):
@@ -19,10 +17,6 @@ def generate_email(
         source_texts: Optional structured sources with `title` and `content`.
         tone_preference: Optional tone/style instruction.
     """
-    if not topic and not summary and not source_texts:
-        raise ValueError("Provide at least a topic, summary, or source texts to generate an email.")
-
-    topic_text = topic or "Update based on provided context"
 
     # Build source context section
     source_context = ""
@@ -33,11 +27,7 @@ def generate_email(
             content = source.get('content', '')
             source_context += f"\n--- {title} ---\n{content}\n"
         source_context += "\nImportant: Use the source context as your primary reference. Extract key points and details from it. Do NOT fabricate information not present in the source. Maintain consistency with source facts."
-    elif summary:
-        source_context = "\n\nSOURCE CONTEXT (use as primary reference):\n"
-        source_context += f"\n--- Summary ---\n{summary}\n"
-        source_context += "\nImportant: Use the summary as your primary reference. Do NOT fabricate information not present in the summary."
-    
+
     # Build tone section
     tone_guidance = "Use a professional yet friendly tone"
     if tone_preference:
@@ -46,7 +36,6 @@ def generate_email(
     prompt = f"""
 Create a professional email about the following topic:
 
-Topic: {topic_text}
 {source_context}
 
 STRICT REQUIREMENTS:

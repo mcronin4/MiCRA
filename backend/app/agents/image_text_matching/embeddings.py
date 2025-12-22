@@ -74,8 +74,8 @@ _configure_tesseract()
 class TextSummary:
     #Represents a text summary segment with optional timestamps.
     summary_id: str
-    video_id: str
     text_content: str
+    video_id: Optional[str] = None
     start_time: Optional[float] = None  # in seconds (None if timestamps unavailable)
     end_time: Optional[float] = None    # in seconds (None if timestamps unavailable)
 
@@ -84,9 +84,10 @@ class TextSummary:
 class ImageCandidate:
     #Represents a candidate image/frame with metadata
     image_id: str
-    video_id: str
-    timestamp: float  # in seconds
-    filepath: str
+    timestamp: Optional[float] = None # in seconds
+    filepath: Optional[str] = None
+    video_id: Optional[str] = None
+
 
 
 @dataclass

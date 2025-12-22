@@ -55,7 +55,7 @@ const PartContextMenu: React.FC<PartContextMenuProps> = ({
       </Button>
       <Button variant="ghost" className="w-full justify-start px-3" onClick={() => handleAction(onCopy)}>
         <Copy size={16} className="mr-2" />
-        Copy
+        Copy Content
       </Button>
       <Button variant="ghost" className="w-full justify-start px-3 text-red-500 hover:text-red-500" onClick={() => handleAction(onDelete)}>
         <Trash2 size={16} className="mr-2" />

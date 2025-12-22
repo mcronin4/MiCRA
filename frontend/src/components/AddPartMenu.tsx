@@ -2,20 +2,17 @@
 
 import React, { useEffect, useRef } from 'react';
 import { Button } from './ui/button';
-import { Linkedin, Mail, ClipboardPaste } from 'lucide-react';
+import { Linkedin, Mail, Image } from 'lucide-react';
 import { FaTiktok } from 'react-icons/fa';
-
-type PartType = 'LinkedIn' | 'TikTok' | 'Email';
+import { NodeType } from './final-review/types';
 
 interface AddPartMenuProps {
-  onAddPart: (partType: PartType) => void;
+  onAddPart: (nodeType: NodeType) => void;
   onClose: () => void;
   position: { x: number; y: number };
-  onPaste?: () => void;
-  canPaste?: boolean;
 }
 
-const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position, onPaste, canPaste }) => {
+const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,10 +31,11 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position,
     };
   }, [onClose]);
 
-  const parts: { name: PartType; label: string; icon: React.ReactNode }[] = [
+  const parts: { name: NodeType; label: string; icon: React.ReactNode }[] = [
     { name: 'LinkedIn', label: 'Generate LinkedIn Post', icon: <Linkedin size={16} className="mr-2" /> },
     { name: 'TikTok', label: 'Generate TikTok', icon: <FaTiktok size={16} className="mr-2" /> },
     { name: 'Email', label: 'Generate Email', icon: <Mail size={16} className="mr-2" /> },
+    { name: 'ImageMatching', label: 'Image-Text Matching', icon: <Image size={16} className="mr-2" /> },
   ];
 
   const handleAction = (action: () => void) => {
@@ -62,19 +60,6 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position,
           {part.label}
         </Button>
       ))}
-      {canPaste && onPaste && (
-        <>
-          <div className="w-full border-t border-gray-200/80 my-1"></div>
-          <Button
-            variant="ghost"
-            className="w-full justify-start px-3"
-            onClick={() => handleAction(onPaste)}
-          >
-            <ClipboardPaste size={16} className="mr-2" />
-            Paste
-          </Button>
-        </>
-      )}
     </div>
   );
 };
