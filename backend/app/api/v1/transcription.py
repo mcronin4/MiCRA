@@ -39,7 +39,7 @@ class TranscriptionResponse(BaseModel):
     error: Optional[str] = None
     message: Optional[str] = None
 
-@router.post("/", response_model=TranscriptionResponse)
+@router.post("", response_model=TranscriptionResponse)
 async def transcribe_url(request: TranscriptionRequest):
     file_path = None
     try:
@@ -49,7 +49,13 @@ async def transcribe_url(request: TranscriptionRequest):
 
         url = request.url.strip()
         print(f"Downloading audio from URL: {url}")
-        file_path = download_audio(url)
+        try:
+            file_path = download_audio(url)
+        except ImportError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"URL transcription requires yt-dlp: {str(e)}"
+            )
 
         if not file_path:
             raise HTTPException(status_code=500, detail="Failed to download audio")

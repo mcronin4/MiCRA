@@ -5,7 +5,7 @@ import base64
 import tempfile
 import os
 import asyncio
-from fireworks import AsyncFireworks
+from fireworks.client import AsyncFireworks
 
 router = APIRouter(prefix="/image-matching")
 
@@ -50,7 +50,7 @@ async def process_single_image(
     """Process a single image asynchronously and return result with status and temp file path."""
     temp_path = None
     try:
-        from ...agents.image_text_matching.embeddings import ImageCandidate
+        from ...agents.image_text_matching.types import ImageCandidate
         
         # Convert base64 to temp file
         temp_path = base64_to_temp_file(image_with_id.base64)
@@ -80,13 +80,13 @@ async def process_single_image(
         )
         return (result, temp_path)
 
-@router.post("/", response_model=ImageMatchResponse)
+@router.post("", response_model=ImageMatchResponse)
 async def match_images_to_text(request: ImageMatchRequest):
     temp_files = []
     
     try:
         from ...agents.image_text_matching.vlm_analysis import ImageTextMatcherVLM
-        from ...agents.image_text_matching.embeddings import TextSummary
+        from ...agents.image_text_matching.types import TextSummary
         from ...agents.image_text_matching.config_vlm import VLMConfig
         
         # Create text summary

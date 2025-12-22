@@ -1,13 +1,20 @@
 # interacte with operating system, create folders, handle file path...
 import os
 from dotenv import load_dotenv
-import yt_dlp
 import traceback  # print error
 import re
 import time
 import tempfile
 import requests
 from typing import Optional, List, Dict, Any
+
+# Lazy import yt-dlp to reduce deployment size (only needed for URL transcription)
+try:
+    import yt_dlp
+    YT_DLP_AVAILABLE = True
+except ImportError:
+    YT_DLP_AVAILABLE = False
+    yt_dlp = None
 
 # load vitual environment variables
 load_dotenv()
@@ -24,7 +31,15 @@ def download_audio(url: str) -> str:
 
       Returns:
           str: The path to the downloaded audio file.
+      
+      Raises:
+          ImportError: If yt-dlp is not installed.
       """
+    if not YT_DLP_AVAILABLE:
+        raise ImportError(
+            "yt-dlp is not installed. Install it with: pip install yt-dlp\n"
+            "Note: yt-dlp is a large dependency (~50MB+) and is optional for deployment."
+        )
     try:
         with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
             info = ydl.extract_info(url, download=False)
