@@ -14,7 +14,7 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 from uu import Error
 
-from .embeddings import TextSummary, ImageCandidate, ImageMatch
+from .types import TextSummary, ImageCandidate, ImageMatch
 from .config_vlm import VLMConfig
 from .utils_vlm import (
     image_to_base64,

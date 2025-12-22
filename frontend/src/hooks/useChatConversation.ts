@@ -1,5 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ChatMessage, ConversationState, SourceText, NodeContent } from '@/components/final-review/types';
+import { apiClient } from '@/lib/fastapi/client';
+
+interface ChatResponse {
+  message: string;
+  action?: string | null;
+  content?: string | Record<string, unknown> | null;
+  conversation_state?: Record<string, unknown> | null;
+}
 
 interface UseChatConversationProps {
   sourceTexts: SourceText[];
@@ -40,7 +48,7 @@ export const useChatConversation = ({ sourceTexts, onAddNodeToCanvas }: UseChatC
             content: source.content
           }));
 
-          const response = await fetch('/backend/v1/hitl/chat', {
+          const data = await apiClient.request<ChatResponse>('/v1/hitl/chat', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -52,14 +60,6 @@ export const useChatConversation = ({ sourceTexts, onAddNodeToCanvas }: UseChatC
               tone_preference: currentTone
             }),
           });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Backend error:', response.status, errorText);
-            throw new Error(`Network response was not ok: ${response.status}`);
-          }
-
-          const data = await response.json();
           
           // Remove loading message
           setChatHistory(prev => prev.filter(msg => !msg.isLoading));
@@ -122,7 +122,7 @@ export const useChatConversation = ({ sourceTexts, onAddNodeToCanvas }: UseChatC
         content: source.content
       }));
 
-      const response = await fetch('/backend/v1/hitl/chat', {
+      const data = await apiClient.request<ChatResponse>('/v1/hitl/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -134,14 +134,6 @@ export const useChatConversation = ({ sourceTexts, onAddNodeToCanvas }: UseChatC
           tone_preference: tonePreference || null
         }),
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Backend error:', response.status, errorText);
-        throw new Error(`Network response was not ok: ${response.status}`);
-      }
-
-      const data = await response.json();
       
       // Update conversation state
       if (data.conversation_state !== undefined) {

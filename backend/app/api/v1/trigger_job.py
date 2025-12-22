@@ -20,7 +20,7 @@ class JobResponse(BaseModel):
     job_id: str
     status: str
 
-@router.post("/", response_model=JobResponse, status_code=200) #This handles the POST REQUEST, sends back jobResponse
+@router.post("", response_model=JobResponse, status_code=200) #This handles the POST REQUEST, sends back jobResponse
 async def trigger_job(job_request: JobRequest):
     """
     Trigger a job with the provided job_id and text content.

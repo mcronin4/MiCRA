@@ -39,7 +39,7 @@ class TranscriptionResponse(BaseModel):
     error: Optional[str] = None
     message: Optional[str] = None
 
-@router.post("/", response_model=TranscriptionResponse)
+@router.post("", response_model=TranscriptionResponse)
 async def transcribe_url(request: TranscriptionRequest):
     file_path = None
     try:

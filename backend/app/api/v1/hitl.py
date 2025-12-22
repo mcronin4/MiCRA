@@ -324,7 +324,7 @@ def generate_content_response(
         conversation_state={}
     )
 
-@router.get("/", status_code=200, response_model=HITLResponse)
+@router.get("", status_code=200, response_model=HITLResponse)
 async def hitl():
     return HITLResponse(
         message="Dummy HITL response",
