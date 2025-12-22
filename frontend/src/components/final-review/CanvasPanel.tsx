@@ -31,15 +31,13 @@ interface CanvasPanelProps {
   setMenuPosition: (position: { x: number; y: number } | null) => void;
   partContextMenu: { x: number; y: number; partId: string } | null;
   setPartContextMenu: (menu: { x: number; y: number; partId: string } | null) => void;
-  copiedPart: Node | null;
   canvasContainerRef: React.RefObject<HTMLDivElement | null>;
   handleCanvasContextMenu: (e: React.MouseEvent) => void;
   handlePartContextMenu: (e: React.MouseEvent<HTMLDivElement>, partId: string) => void;
   handleAddPart: (partType: OutputNodeType | WorkflowNodeType) => void;
-  handlePastePart: (setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => void;
   handleDeletePart: (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => void;
   handleDuplicatePart: (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>, nodes: Node[]) => void;
-  handleCopyPart: (partId: string, nodes: Node[]) => void;
+  handleCopyContent: (partId: string, nodes: Node[]) => void;
   reactFlowInstance: ReactFlowInstance | null;
   setReactFlowInstance: (instance: ReactFlowInstance | null) => void;
   isLocked: boolean;
@@ -60,15 +58,13 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   setMenuPosition,
   partContextMenu,
   setPartContextMenu,
-  copiedPart,
   canvasContainerRef,
   handleCanvasContextMenu,
   handlePartContextMenu,
   handleAddPart,
-  handlePastePart,
   handleDeletePart,
   handleDuplicatePart,
-  handleCopyPart,
+  handleCopyContent,
   reactFlowInstance,
   setReactFlowInstance,
   isLocked,
@@ -122,8 +118,6 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
           onAddPart={(partType) => handleAddPart(partType)}
           onClose={() => setMenuPosition(null)}
           position={menuPosition}
-          onPaste={() => handlePastePart(setNodes)}
-          canPaste={!!copiedPart}
         />
       )}
       {partContextMenu && (
@@ -131,7 +125,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
           position={{ x: partContextMenu.x, y: partContextMenu.y }}
           onDelete={() => handleDeletePart(partContextMenu.partId, setNodes)}
           onDuplicate={() => handleDuplicatePart(partContextMenu.partId, setNodes, nodes)}
-          onCopy={() => handleCopyPart(partContextMenu.partId, nodes)}
+          onCopy={() => handleCopyContent(partContextMenu.partId, nodes)}
           onClose={() => setPartContextMenu(null)}
         />
       )}

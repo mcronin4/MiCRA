@@ -10,7 +10,7 @@ import re
 from typing import Optional
 from PIL import Image
 import io
-from fireworks.client import Fireworks
+from fireworks import AsyncFireworks
 
 
 def image_to_base64(filepath: str, max_dimension: Optional[int] = None) -> str:
@@ -52,20 +52,20 @@ def image_to_base64(filepath: str, max_dimension: Optional[int] = None) -> str:
     return f"data:image/jpeg;base64,{base64_str}"
 
 
-def create_fireworks_client(api_key: str) -> Fireworks:
+def create_async_fireworks_client(api_key: str) -> AsyncFireworks:
     """
-    Create and return a configured Fireworks client.
+    Create and return a configured AsyncFireworks client.
     
     Args:
         api_key: Fireworks API key
     
     Returns:
-        Configured Fireworks client instance
+        Configured AsyncFireworks client instance
     
     Example:
-        >>> client = create_fireworks_client(os.getenv("FIREWORK_API_KEY"))
+        >>> client = create_async_fireworks_client(os.getenv("FIREWORK_API_KEY"))
     """
-    return Fireworks(api_key=api_key)
+    return AsyncFireworks(api_key=api_key)
 
 
 def parse_numeric_response(response: str) -> float:

@@ -1,27 +1,38 @@
 import { apiClient } from './client'
 
+export interface ImageWithId {
+  id: string
+  base64: string
+}
+
 export interface ImageMatchResult {
-  image_index: number
-  score: number
-  semantic_score: number
-  detail_scores: Record<string, number>
+  image_id: string
+  status: 'success' | 'failed'
+  combined_score?: number
+  semantic_score?: number
+  detail_score?: number
+  error?: string
 }
 
 export interface ImageMatchResponse {
   success: boolean
-  matches: ImageMatchResult[]
+  results: ImageMatchResult[]
   error?: string
 }
 
 export async function matchImagesToText(
-  images: string[],
+  images: ImageWithId[],
   text: string,
   maxDimension = 1024
 ): Promise<ImageMatchResponse> {
-  return apiClient.request<ImageMatchResponse>('/api/v1/image-matching/', {
+  return apiClient.request<ImageMatchResponse>('/v1/image-matching/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ images, text, max_dimension: maxDimension })
+    body: JSON.stringify({ 
+      images: images.map(img => ({ id: img.id, base64: img.base64 })),
+      text, 
+      max_dimension: maxDimension 
+    })
   })
 }
 

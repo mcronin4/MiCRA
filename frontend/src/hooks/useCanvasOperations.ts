@@ -5,8 +5,6 @@ import { WORKFLOW_NODES } from '@/components/final-review/types';
 import { useWorkflowStore } from '@/lib/stores/workflowStore';
 
 export const useCanvasOperations = () => {
-  const [copiedPart, setCopiedPart] = useState<Node | null>(null);
-  const [newPartPosition, setNewPartPosition] = useState<{ x: number; y: number } | null>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const nextId = useRef(0);
@@ -74,32 +72,20 @@ export const useCanvasOperations = () => {
     }
   };
 
-  const handleCopyPart = (partId: string, nodes: Node[]) => {
+  const handleCopyContent = (partId: string, nodes: Node[]) => {
     const partToCopy = nodes.find((node) => node.id === partId);
     if (partToCopy) {
-      setCopiedPart(partToCopy);
-    }
-  };
-
-  const handlePastePart = (setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
-    if (copiedPart && newPartPosition && reactFlowInstance) {
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: newPartPosition.x,
-        y: newPartPosition.y,
-      });
-      const newNode: Node = {
-        ...copiedPart,
-        id: `${copiedPart.type}-${nextId.current++}`,
-        position,
-      };
-      setNodes((nds: Node[]) => nds.concat(newNode));
+      // Copy the actual text content to clipboard
+      const content = partToCopy.data?.content;
+      if (content && typeof content === 'string') {
+        navigator.clipboard.writeText(content).catch((err) => {
+          console.error('Failed to copy text to clipboard:', err);
+        });
+      }
     }
   };
 
   return {
-    copiedPart,
-    newPartPosition,
-    setNewPartPosition,
     reactFlowInstance,
     setReactFlowInstance,
     isLocked,
@@ -108,8 +94,7 @@ export const useCanvasOperations = () => {
     addNodeToCanvas,
     handleDeletePart,
     handleDuplicatePart,
-    handleCopyPart,
-    handlePastePart,
+    handleCopyContent,
   };
 };
 

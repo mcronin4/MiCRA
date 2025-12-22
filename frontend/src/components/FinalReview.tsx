@@ -33,13 +33,11 @@ const FinalReview = () => {
     if (WORKFLOW_NODES.includes(partType as WorkflowNodeType)) {
       canvasOps.addNodeToCanvas(partType);
       contextMenus.setMenuPosition(null);
-      canvasOps.setNewPartPosition(null);
       return;
     }
 
     // For output nodes, trigger chat-based generation
     contextMenus.setMenuPosition(null);
-    canvasOps.setNewPartPosition(null);
     
     // Ensure sidebar is visible
     if (!sidebarsVisible) {
@@ -135,15 +133,13 @@ const FinalReview = () => {
             setMenuPosition={contextMenus.setMenuPosition}
             partContextMenu={contextMenus.partContextMenu}
             setPartContextMenu={contextMenus.setPartContextMenu}
-            copiedPart={canvasOps.copiedPart}
             canvasContainerRef={contextMenus.canvasContainerRef}
             handleCanvasContextMenu={contextMenus.handleCanvasContextMenu}
             handlePartContextMenu={contextMenus.handlePartContextMenu}
             handleAddPart={handleAddPart}
-            handlePastePart={canvasOps.handlePastePart}
             handleDeletePart={canvasOps.handleDeletePart}
             handleDuplicatePart={canvasOps.handleDuplicatePart}
-            handleCopyPart={canvasOps.handleCopyPart}
+            handleCopyContent={canvasOps.handleCopyContent}
             reactFlowInstance={canvasOps.reactFlowInstance}
             setReactFlowInstance={canvasOps.setReactFlowInstance}
             isLocked={canvasOps.isLocked}
