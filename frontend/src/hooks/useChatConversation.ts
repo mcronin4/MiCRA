@@ -136,8 +136,8 @@ export const useChatConversation = ({ sourceTexts, onAddNodeToCanvas }: UseChatC
       });
       
       // Update conversation state
-      if (data.conversation_state !== undefined) {
-        setConversationState(data.conversation_state);
+      if (data.conversation_state !== undefined && data.conversation_state !== null) {
+        setConversationState(data.conversation_state as ConversationState);
       }
       
       // Remove loading message
@@ -146,7 +146,7 @@ export const useChatConversation = ({ sourceTexts, onAddNodeToCanvas }: UseChatC
       const botMessage: ChatMessage = { 
         user: 'MICRAi', 
         text: data.message,
-        showToneOptions: data.conversation_state?.show_tone_options || false
+        showToneOptions: Boolean(data.conversation_state?.show_tone_options)
       };
       setChatHistory(prev => [...prev, botMessage]);
 
