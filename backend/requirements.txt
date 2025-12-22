@@ -31,8 +31,10 @@ uvicorn
 websockets
 
 # New dependencies
-yt-dlp
-numpy
+# yt-dlp - Large dependency (~50MB+), only needed for URL transcription
+#   Install separately: pip install yt-dlp
+# numpy - Only needed for old image matching (embeddings.py). VLM approach doesn't need it.
+#   Install separately: pip install numpy
 tqdm
 python-multipart
 Pillow
