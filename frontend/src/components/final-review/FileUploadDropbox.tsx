@@ -10,7 +10,6 @@ interface FileUploadDropboxProps {
 
 export const FileUploadDropbox: React.FC<FileUploadDropboxProps> = ({ className }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; name: string; status: 'uploading' | 'success' | 'error' }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -140,7 +139,7 @@ export const FileUploadDropbox: React.FC<FileUploadDropboxProps> = ({ className 
     fileInputRef.current?.click();
   }, []);
 
-  const hasActiveUploads = uploading || uploadedFiles.length > 0;
+  const hasActiveUploads = uploadedFiles.length > 0;
 
   return (
     <div className={cn("space-y-3", className)}>

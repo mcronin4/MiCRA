@@ -11,7 +11,7 @@ export interface InitUploadRequest {
   contentType: string;
   name: string;
   parentId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface FileResponse {
@@ -24,7 +24,7 @@ export interface FileResponse {
   parentId?: string;
   contentType: string;
   status: 'pending' | 'uploaded' | 'failed' | 'deleted';
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   createdAt: string;
   uploadedAt?: string;
   deletedAt?: string;
