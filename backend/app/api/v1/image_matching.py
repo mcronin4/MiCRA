@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Optional, Literal, Tuple
 import base64
@@ -138,6 +138,6 @@ async def match_images_to_text(request: ImageMatchRequest):
             try:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-            except:
+            except Exception:
                 pass
 

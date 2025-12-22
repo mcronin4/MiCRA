@@ -50,7 +50,7 @@ export function ImageMatchingNode({ id }: NodeProps) {
   // Syncing to Zustand store
   useEffect(() => {
     // prevent unnecessary changes if nothing changed
-    if (node && (node.inputs.text != text || JSON.stringify(node.inputs.images) !== JSON.stringify(images))) {
+    if (node && (node.inputs.text !== text || JSON.stringify(node.inputs.images) !== JSON.stringify(images))) {
       updateNode(id, {
         inputs: {
           ...node.inputs,

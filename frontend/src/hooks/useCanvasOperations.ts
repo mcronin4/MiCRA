@@ -10,13 +10,21 @@ export const useCanvasOperations = () => {
   const nextId = useRef(0);
   const setNodesRef = useRef<React.Dispatch<React.SetStateAction<Node[]>> | null>(null);
 
-  const addNodeToCanvas = useCallback((nodeType: NodeType, content?: string | NodeContent) => {
-    if (!setNodesRef.current || !reactFlowInstance) return;
+  const addNodeToCanvas = useCallback((nodeType: NodeType, content?: string | NodeContent, position?: { x: number, y: number}): string | undefined => {
+    if (!setNodesRef.current || !reactFlowInstance) return undefined;
 
-    // Add node in the center of the canvas
-    const viewport = reactFlowInstance.getViewport();
-    const centerX = (window.innerWidth / 2 - viewport.x) / viewport.zoom;
-    const centerY = (window.innerHeight / 2 - viewport.y) / viewport.zoom;
+
+    let nodePosition;
+    if (position) {
+      nodePosition = position;
+    }
+    else {
+      // Add node in the center of the canvas if no position passed
+      const viewport = reactFlowInstance.getViewport();
+      const centerX = (window.innerWidth / 2 - viewport.x) / viewport.zoom;
+      const centerY = (window.innerHeight / 2 - viewport.y) / viewport.zoom;
+      nodePosition =  { x: centerX - 250, y: centerY - 200 };
+    }
 
     const newNodeId = `${nodeType}-${nextId.current++}`;
 
@@ -46,29 +54,30 @@ export const useCanvasOperations = () => {
     const newNode: Node = {
       id: newNodeId,
       type: nodeType,
-      position: { x: centerX - 250, y: centerY - 200 }, // Offset to center the node
+      position: nodePosition, // Offset to center the node
       data: nodeData,
     };
 
     setNodesRef.current((nds: Node[]) => nds.concat(newNode));
+    return newNodeId
   }, [reactFlowInstance]);
 
   const handleDeletePart = (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
+    // Remove from React Flow canvas
     setNodes((nds: Node[]) => nds.filter((node) => node.id !== partId));
+
+    // Also delete from Zustand store (safe to call even if node doesn't exist in store)
+    useWorkflowStore.getState().removeNode(partId);
   };
 
   const handleDuplicatePart = (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>, nodes: Node[]) => {
     const partToDuplicate = nodes.find((node) => node.id === partId);
     if (partToDuplicate) {
-      const newNode: Node = {
-        ...partToDuplicate,
-        id: `${partToDuplicate.type}-${nextId.current++}`,
-        position: {
-          x: partToDuplicate.position.x + 20,
-          y: partToDuplicate.position.y + 20,
-        },
-      };
-      setNodes((nds: Node[]) => nds.concat(newNode));
+      addNodeToCanvas(
+        partToDuplicate.type as NodeType, 
+        partToDuplicate.data, 
+        { x: partToDuplicate.position.x + 20, y: partToDuplicate.position.y + 20 }
+      );
     }
   };
 
