@@ -16,7 +16,7 @@ export interface TranscriptionResponse {
 }
 
 export async function transcribeUrl(url: string): Promise<TranscriptionResponse> {
-  return apiClient.request<TranscriptionResponse>('/v1/transcription/', {
+  return apiClient.request<TranscriptionResponse>('/v1/transcription', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

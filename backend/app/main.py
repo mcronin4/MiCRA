@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from .api.routes import api_router
-import os
 
 
 @asynccontextmanager
@@ -26,24 +25,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
-# Allow localhost for dev, the configured production frontend origin, and Vercel preview domains
-frontend_origin = os.getenv("FRONTEND_ORIGIN", "https://mi-cra.vercel.app")
-allowed_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    frontend_origin,
-]
-
+# Add CORS middleware - must be first middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    # allow Vercel preview deployments
-    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$",
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
 )
 
 app.include_router(api_router)
-# Add routes here
