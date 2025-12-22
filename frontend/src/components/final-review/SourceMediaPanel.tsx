@@ -4,6 +4,7 @@ import { VideoTab } from './tabs/VideoTab';
 import { AudioTab } from './tabs/AudioTab';
 import { ImagesTab } from './tabs/ImagesTab';
 import { TextTab } from './tabs/TextTab';
+import { FileUploadDropbox } from './FileUploadDropbox';
 
 interface SourceMediaPanelProps {
   activeTab: SourceType;
@@ -126,6 +127,11 @@ export const SourceMediaPanel: React.FC<SourceMediaPanelProps> = ({
           ))}
         </div>
         <div>{renderTabContent()}</div>
+        
+        {/* File Upload Dropbox */}
+        <div className="pt-4 border-t border-gray-200/80">
+          <FileUploadDropbox />
+        </div>
       </div>
 
       <div>

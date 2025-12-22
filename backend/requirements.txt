@@ -31,14 +31,20 @@ uvicorn
 websockets
 
 # New dependencies
-yt-dlp
-numpy
+# yt-dlp - Large dependency (~50MB+), only needed for URL transcription
+#   Install separately: pip install yt-dlp
+# numpy - Only needed for old image matching (embeddings.py). VLM approach doesn't need it.
+#   Install separately: pip install numpy
 tqdm
 python-multipart
 Pillow
 
 # VLM dependencies for image_text_matching (VLM approaches)
-fireworks-ai>=0.10.0
+fireworks-ai
+
+# Supabase Storage integration
+supabase
+asyncpg
 
 # Optional ML dependencies (uncomment if needed for original image_text_matching implementation)
 # torch

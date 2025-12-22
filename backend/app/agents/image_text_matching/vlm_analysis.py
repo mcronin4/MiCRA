@@ -22,7 +22,7 @@ from .utils_vlm import (
     parse_numeric_response,
     format_image_content
 )
-from fireworks import AsyncFireworks
+from fireworks.client import AsyncFireworks
 
 
 class ImageTextMatcherVLM:
@@ -103,8 +103,8 @@ class ImageTextMatcherVLM:
             "If no text is visible, respond with 'NONE'."
         )
         
-        # Make API call
-        response = await self.client.chat.completions.create(
+        # Make API call (AsyncFireworks.create() is synchronous, returns response directly)
+        response = self.client.chat.completions.create(
             model=VLMConfig.FIREWORKS_MODEL,
             messages=[{
                 "role": "user",
@@ -147,8 +147,8 @@ class ImageTextMatcherVLM:
             "Be concise and factual."
         )
         
-        # Make API call
-        response = await self.client.chat.completions.create(
+        # Make API call (AsyncFireworks.create() is synchronous, returns response directly)
+        response = self.client.chat.completions.create(
             model=VLMConfig.FIREWORKS_MODEL,
             messages=[{
                 "role": "user",
@@ -187,8 +187,8 @@ class ImageTextMatcherVLM:
         )
         
         try:
-            # Make API call
-            response = await self.client.chat.completions.create(
+            # Make API call (AsyncFireworks.create() is synchronous, returns response directly)
+            response = self.client.chat.completions.create(
                 model=VLMConfig.FIREWORKS_MODEL,
                 messages=[{
                     "role": "user",
