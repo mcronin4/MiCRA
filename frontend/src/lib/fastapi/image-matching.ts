@@ -25,7 +25,7 @@ export async function matchImagesToText(
   text: string,
   maxDimension = 1024
 ): Promise<ImageMatchResponse> {
-  return apiClient.request<ImageMatchResponse>('/v1/image-matching/', {
+  return apiClient.request<ImageMatchResponse>('/v1/image-matching', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ 

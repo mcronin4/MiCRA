@@ -5,27 +5,24 @@ This module provides functionality for matching video frames to text summaries
 using multimodal vision-language models.
 """
 
-from .embeddings import (
-    ImageTextMatcher,
+# Import lightweight types (no numpy dependency)
+from .types import (
     TextSummary,
     ImageCandidate,
     ImageMatch
 )
 
-from .config import (
-    MatchingConfig,
-    PresetConfigurations,
-    get_config_for_content_type
-)
+# Import VLM-based matcher (no numpy dependency)
+from .vlm_analysis import ImageTextMatcherVLM
+
+# Note: ImageTextMatcher from embeddings.py requires numpy and is not imported by default
+# Use ImageTextMatcherVLM instead for Vercel deployment
 
 __all__ = [
-    'ImageTextMatcher',
     'TextSummary',
     'ImageCandidate',
     'ImageMatch',
-    'MatchingConfig',
-    'PresetConfigurations',
-    'get_config_for_content_type',
+    'ImageTextMatcherVLM',
 ]
 
 __version__ = '0.1.0'
