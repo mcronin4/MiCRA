@@ -7,6 +7,7 @@ import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { matchImagesToText, fileToBase64, ImageWithId, ImageMatchResult } from '@/lib/fastapi/image-matching'
 import { NodeConfig } from '@/types/workflow'
 import { X, Upload, ImagePlus, RefreshCw, AlertCircle } from 'lucide-react'
+import Image from 'next/image';
 
 // Config for this node type
 const config: NodeConfig = {
@@ -28,8 +29,8 @@ export function ImageMatchingNode({ id }: NodeProps) {
   const updateNode = useWorkflowStore(state => state.updateNode)
 
   // If there are already inputs associated with the node, use them as initial state
-  const initialText = node?.inputs?.text || '';
-  const initialImagesRaw = node?.inputs?.images || [];
+  const initialText = typeof node?.inputs?.text === 'string' ? node.inputs.text : '';
+  const initialImagesRaw = Array.isArray(node?.inputs?.images) ? node.inputs.images : [];
   
   // Convert legacy string[] to ImageWithId[] if needed
   const initialImages: ImageWithId[] = initialImagesRaw.length > 0 && typeof initialImagesRaw[0] === 'string'
@@ -39,7 +40,7 @@ export function ImageMatchingNode({ id }: NodeProps) {
       }))
     : initialImagesRaw as ImageWithId[];
 
-  const [text, setText] = useState(initialText)
+  const [text, setText] = useState<string>(initialText)
   const [images, setImages] = useState<ImageWithId[]>(initialImages)
   const [imageResults, setImageResults] = useState<Map<string, ImageMatchResult>>(new Map())
 
@@ -143,10 +144,11 @@ export function ImageMatchingNode({ id }: NodeProps) {
           return next
         })
       }
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       setImageResults(prev => {
         const next = new Map(prev)
-        next.set(imageId, { image_id: imageId, status: 'failed', error: error.message })
+        next.set(imageId, { image_id: imageId, status: 'failed', error: errorMessage })
         return next
       })
     }
@@ -180,8 +182,9 @@ export function ImageMatchingNode({ id }: NodeProps) {
         outputs: { results: response.results },
         inputs: { images: images, text }
       })
-    } catch (error: any) {
-      updateNode(id, { status: 'error', error: error.message })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      updateNode(id, { status: 'error', error: errorMessage })
     }
   }
   
@@ -264,12 +267,15 @@ export function ImageMatchingNode({ id }: NodeProps) {
                         className="relative group"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <img 
+                        <Image 
                           src={image.base64} 
                           alt={`Preview ${image.id}`}
+                          width={100}
+                          height={64}
                           className={`w-full h-16 object-cover rounded border ${
                             result?.status === 'failed' ? 'opacity-50' : ''
                           }`}
+                          unoptimized
                         />
                         <button
                           onClick={(e) => {

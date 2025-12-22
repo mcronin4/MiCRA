@@ -6,8 +6,8 @@ export interface WorkflowNodeState {
   id: string
   type: string
   status: NodeStatus
-  inputs: Record<string, any>
-  outputs: Record<string, any> | null
+  inputs: Record<string, unknown>
+  outputs: Record<string, unknown> | null
   error?: string
 }
 
@@ -27,6 +27,7 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
   })),
   
   removeNode: (nodeId) => set((state) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [nodeId]: _, ...rest } = state.nodes
     return { nodes: rest }
   }),

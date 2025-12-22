@@ -10,7 +10,7 @@ import { useChatConversation } from '@/hooks/useChatConversation';
 import { useCanvasOperations } from '@/hooks/useCanvasOperations';
 import { useContextMenus } from '@/hooks/useContextMenus';
 import type { SourceType, OutputNodeType, WorkflowNodeType } from './final-review/types';
-import { WORKFLOW_NODES, OUTPUT_NODES } from './final-review/types';
+import { WORKFLOW_NODES } from './final-review/types';
 
 const FinalReview = () => {
   const [activeTab, setActiveTab] = useState<SourceType>('Video');
