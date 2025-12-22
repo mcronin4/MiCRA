@@ -10,7 +10,7 @@ import re
 from typing import Optional
 from PIL import Image
 import io
-from fireworks import AsyncFireworks
+from fireworks.client import AsyncFireworks
 
 
 def image_to_base64(filepath: str, max_dimension: Optional[int] = None) -> str:

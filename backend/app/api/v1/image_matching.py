@@ -8,7 +8,7 @@ import base64
 import tempfile
 import os
 import asyncio
-from fireworks import AsyncFireworks
+from fireworks.client import AsyncFireworks
 
 router = APIRouter(prefix="/image-matching")
 
