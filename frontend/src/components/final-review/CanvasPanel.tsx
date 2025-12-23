@@ -8,6 +8,7 @@ import { LinkedInComponent } from '../canvas/LinkedInComponent';
 import { TikTokComponent } from '../canvas/TikTokComponent';
 import { EmailComponent } from '../canvas/EmailComponent';
 import { ImageMatchingNode } from '../workflow/nodes/ImageMatchingNode';
+import { TextGenerationNode } from '../workflow/nodes/TextGenerationNode';
 import type { OutputNodeType, WorkflowNodeType } from './types';
 
 const nodeTypes = {
@@ -15,7 +16,8 @@ const nodeTypes = {
   TikTok: TikTokComponent,
   Email: EmailComponent,
   ImageMatching: ImageMatchingNode,
-  // Add more nodes here as they are created! (e.g., 'Transcription', 'TextGeneration', 'ImageExtraction')
+  TextGeneration: TextGenerationNode,
+  // Add more nodes here as they are created! (e.g., 'Transcription', 'ImageExtraction')
 };
 
 interface CanvasPanelProps {
