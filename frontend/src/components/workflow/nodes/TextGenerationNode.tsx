@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { NodeProps } from '@xyflow/react'
 import { WorkflowNodeWrapper } from '../WorkflowNodeWrapper'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
@@ -42,12 +42,33 @@ export function TextGenerationNode({ id }: NodeProps) {
   const [isLoadingPresets, setIsLoadingPresets] = useState(true)
   const [showPresetManager, setShowPresetManager] = useState(false)
   const [editingPreset, setEditingPreset] = useState<TextGenerationPreset | null>(null)
-  const [generatedOutput, setGeneratedOutput] = useState<Record<string, any> | null>(null)
+  const [generatedOutput, setGeneratedOutput] = useState<Record<string, unknown> | null>(null)
+
+  const loadPresets = useCallback(async () => {
+    try {
+      setIsLoadingPresets(true)
+      const loadedPresets = await getPresets()
+      setPresets(loadedPresets)
+      
+      // If no preset selected and there are presets, select the first default or first one
+      setSelectedPresetId((currentId) => {
+        if (!currentId && loadedPresets.length > 0) {
+          const defaultPreset = loadedPresets.find(p => p.is_default) || loadedPresets[0]
+          return defaultPreset.id
+        }
+        return currentId
+      })
+    } catch (error) {
+      console.error('Failed to load presets:', error)
+    } finally {
+      setIsLoadingPresets(false)
+    }
+  }, [])
 
   // Load presets on mount
   useEffect(() => {
     loadPresets()
-  }, [])
+  }, [loadPresets])
 
   // Sync inputs to Zustand store
   useEffect(() => {
@@ -61,24 +82,6 @@ export function TextGenerationNode({ id }: NodeProps) {
       })
     }
   }, [text, selectedPresetId, id, updateNode, node])
-
-  const loadPresets = async () => {
-    try {
-      setIsLoadingPresets(true)
-      const loadedPresets = await getPresets()
-      setPresets(loadedPresets)
-      
-      // If no preset selected and there are presets, select the first default or first one
-      if (!selectedPresetId && loadedPresets.length > 0) {
-        const defaultPreset = loadedPresets.find(p => p.is_default) || loadedPresets[0]
-        setSelectedPresetId(defaultPreset.id)
-      }
-    } catch (error) {
-      console.error('Failed to load presets:', error)
-    } finally {
-      setIsLoadingPresets(false)
-    }
-  }
 
   const handleCreatePreset = () => {
     setEditingPreset(null)

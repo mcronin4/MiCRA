@@ -4,7 +4,7 @@ export interface TextGenerationPreset {
   id: string
   name: string
   prompt: string
-  output_format?: Record<string, any>
+  output_format?: Record<string, unknown>
   max_length?: number
   tone_guidance?: string
   structure_template?: string
@@ -17,7 +17,7 @@ export interface TextGenerationPreset {
 export interface CreatePresetRequest {
   name: string
   prompt: string
-  output_format?: Record<string, any>
+  output_format?: Record<string, unknown>
   max_length?: number
   tone_guidance?: string
   structure_template?: string
@@ -28,7 +28,7 @@ export interface CreatePresetRequest {
 export interface UpdatePresetRequest {
   name?: string
   prompt?: string
-  output_format?: Record<string, any>
+  output_format?: Record<string, unknown>
   max_length?: number
   tone_guidance?: string
   structure_template?: string
@@ -44,7 +44,7 @@ export interface GenerateTextRequest {
 
 export interface GenerateTextResponse {
   success: boolean
-  output: Record<string, any>
+  output: Record<string, unknown>
   error?: string
 }
 

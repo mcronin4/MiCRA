@@ -52,15 +52,15 @@ export function PresetManager({ preset, onSave, onCancel }: PresetManagerProps) 
     }
   }, [preset])
 
-  const validateOutputFormat = (): Record<string, any> | null => {
+  const validateOutputFormat = (): Record<string, unknown> | null => {
     try {
       const parsed = JSON.parse(outputFormatJson)
       if (typeof parsed !== 'object' || Array.isArray(parsed)) {
         setError('Output format must be a JSON object')
         return null
       }
-      return parsed
-    } catch (e) {
+      return parsed as Record<string, unknown>
+    } catch {
       setError('Invalid JSON format')
       return null
     }
