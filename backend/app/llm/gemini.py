@@ -1,7 +1,15 @@
 from google import genai
 from dotenv import load_dotenv
-load_dotenv()
+from pathlib import Path
 import os
+
+# Load .env from the backend directory (parent of app/)
+_backend_dir = Path(__file__).parent.parent.parent
+_env_path = _backend_dir / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
+else:
+    load_dotenv()  # Fallback to default behavior
 from typing import Optional, Dict, Any
 import json
 

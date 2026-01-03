@@ -6,7 +6,7 @@ using multimodal vision-language models.
 """
 
 # Import lightweight types (no numpy dependency)
-from .types import (
+from .matching_types import (
     TextSummary,
     ImageCandidate,
     ImageMatch

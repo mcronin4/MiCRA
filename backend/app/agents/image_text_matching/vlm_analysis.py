@@ -12,11 +12,10 @@ Combines results using same scoring logic as original implementation.
 import re
 from typing import List, Dict, Optional
 from dataclasses import dataclass
-from uu import Error
 
-from .types import TextSummary, ImageCandidate, ImageMatch
-from .config_vlm import VLMConfig
-from .utils_vlm import (
+from .matching_types import TextSummary, ImageCandidate, ImageMatch
+from .config_vlm_v2 import VLMConfig
+from .utils_vlm_v2 import (
     image_to_base64,
     create_async_fireworks_client,
     parse_numeric_response,
@@ -197,7 +196,7 @@ class ImageTextMatcherVLM:
                 max_tokens=VLMConfig.MAX_TOKENS_SIMILARITY,
                 temperature=VLMConfig.DEFAULT_TEMPERATURE
             )
-        except Error as e:
+        except Exception as e:
             print(f"Fireworks API error: {e}")
             return 0.5  # Default to neutral score on error
         
@@ -313,7 +312,7 @@ class ImageTextMatcherVLM:
             combined_score=combined_score
         )
     
-    def match_images_to_summary(
+    async def match_images_to_summary(
         self,
         summary: TextSummary,
         candidates: List[ImageCandidate],
@@ -340,7 +339,7 @@ class ImageTextMatcherVLM:
                 continue
             
             try:
-                match = self.match_single_pair(candidate, summary)
+                match = await self.match_single_pair(candidate, summary)
                 matches.append(match)
                 print(f"  {candidate.image_id}: score={match.combined_score:.3f}")
             except Exception as e:
@@ -352,7 +351,7 @@ class ImageTextMatcherVLM:
         
         return matches[:top_k]
     
-    def match_summaries_to_images(
+    async def match_summaries_to_images(
         self,
         summaries: List[TextSummary],
         candidates: List[ImageCandidate],
@@ -374,7 +373,7 @@ class ImageTextMatcherVLM:
         print(f"\nMatching {len(summaries)} summaries to {len(candidates)} images...")
         
         for summary in summaries:
-            matches = self.match_images_to_summary(summary, candidates, top_k)
+            matches = await self.match_images_to_summary(summary, candidates, top_k)
             results[summary.summary_id] = matches
             
             if matches:
