@@ -44,6 +44,11 @@ fireworks-ai
 supabase
 asyncpg
 
+# Testing dependencies
+pytest
+pytest-asyncio
+httpx
+
 # Optional ML dependencies (uncomment if needed for original image_text_matching implementation)
 # torch
 # torchvision

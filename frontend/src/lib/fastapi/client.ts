@@ -25,21 +25,21 @@ class ApiClient {
         // Don't set Content-Type for FormData - browser will set it with boundary
         const isFormData = options.body instanceof FormData;
         const headers: HeadersInit = {};
-        
+
         if (!isFormData && options.headers) {
             Object.assign(headers, options.headers);
         } else if (options.headers && !isFormData) {
             Object.assign(headers, options.headers);
         }
-        
+
         const baseUrl = this.getBaseUrl();
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        
+
         const response = await fetch(`${baseUrl}${cleanEndpoint}`, {
             ...options,
             headers: isFormData ? {} : headers, // Let browser set headers for FormData
         });
-        
+
         if (!response.ok) {
             // Try to extract error details from FastAPI response
             let errorMessage = `HTTP error! status: ${response.status}`;
@@ -59,6 +59,12 @@ class ApiClient {
             }
             throw new HttpError(errorMessage, response.status);
         }
+
+        // Handle 204 No Content responses (common for DELETE operations)
+        if (response.status === 204) {
+            return undefined as T;
+        }
+
         return response.json();
     }
 }
