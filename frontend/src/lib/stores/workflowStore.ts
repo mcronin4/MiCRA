@@ -63,8 +63,10 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       id: node.id,
       type: node.type || 'default',
       position: node.position,
-      // Only preserve label from data if present, ignore everything else
-      data: node.data?.label ? { label: node.data.label } : undefined,
+      // Only preserve label from data if present and is a string, ignore everything else
+      data: (node.data?.label && typeof node.data.label === 'string') 
+        ? { label: node.data.label } 
+        : undefined,
       // Preserve other ReactFlow node properties generically (width, height, etc.)
       // but exclude anything that looks like workflow-specific state
     }))
@@ -74,8 +76,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
+      sourceHandle: edge.sourceHandle ?? undefined,
+      targetHandle: edge.targetHandle ?? undefined,
       // Preserve other ReactFlow edge properties generically
     }))
 
@@ -129,7 +131,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       sourceHandle: savedEdge.sourceHandle,
       targetHandle: savedEdge.targetHandle,
       // Preserve other edge properties if present
-      ...(savedEdge.type && { type: savedEdge.type as string }),
+      ...(savedEdge.type && typeof savedEdge.type === 'string' ? { type: savedEdge.type } : {}),
     }))
     
     return {

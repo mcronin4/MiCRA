@@ -15,7 +15,6 @@ import {
   createWorkflow,
   updateWorkflow,
   deleteWorkflow,
-  type Workflow,
   type CreateWorkflowRequest,
 } from '@/lib/fastapi/workflows'
 
@@ -64,7 +63,8 @@ export function useWorkflowPersistence() {
               const response = await createWorkflow(request)
               return { success: true, workflowId: response.id }
             }
-          } catch (fetchErr) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          } catch (_fetchErr) {
             // If workflow doesn't exist or can't be fetched, create a new one
             const request: CreateWorkflowRequest = {
               name,
@@ -78,7 +78,7 @@ export function useWorkflowPersistence() {
           }
 
           // Update existing workflow (only reaches here if it's not a system workflow)
-          const response = await updateWorkflow(existingWorkflowId, {
+          await updateWorkflow(existingWorkflowId, {
             name,
             description,
             workflow_data: workflowData,

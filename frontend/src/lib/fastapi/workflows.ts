@@ -65,7 +65,7 @@ export interface UpdateWorkflowRequest {
  * List all workflows accessible to the user (user workflows + system templates).
  */
 export async function listWorkflows(includeSystem = true): Promise<Workflow[]> {
-  return apiClient.request<Workflow[]>('/v1/workflows', {
+  return apiClient.request<Workflow[]>(`/v1/workflows?include_system=${includeSystem}`, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   })
