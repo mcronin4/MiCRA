@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import type { Node, Edge, OnConnect, ReactFlowInstance } from '@xyflow/react';
 import { PanelLeft, PanelRight } from 'lucide-react';
 import AddPartMenu from '../AddPartMenu';
@@ -9,6 +9,7 @@ import { TikTokComponent } from '../canvas/TikTokComponent';
 import { EmailComponent } from '../canvas/EmailComponent';
 import { ImageMatchingNode } from '../workflow/nodes/ImageMatchingNode';
 import { TextGenerationNode } from '../workflow/nodes/TextGenerationNode';
+import { WorkflowManager } from '../workflow/WorkflowManager';
 import type { OutputNodeType, WorkflowNodeType } from './types';
 
 const nodeTypes = {
@@ -75,6 +76,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
 }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [currentWorkflowId, setCurrentWorkflowId] = useState<string | undefined>();
   
   // Store setNodes in the parent's ref
   useEffect(() => {
@@ -144,6 +146,17 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       >
         {sidebarsVisible ? <PanelLeft size={20} /> : <PanelRight size={20} />}
       </button>
+      
+      {/* Workflow Manager - Save/Load functionality */}
+      <WorkflowManager
+        reactFlowNodes={nodes}
+        reactFlowEdges={edges}
+        reactFlowInstance={reactFlowInstance}
+        setNodes={setNodes}
+        setEdges={setEdges}
+        currentWorkflowId={currentWorkflowId}
+        onWorkflowChanged={setCurrentWorkflowId}
+      />
     </div>
   );
 };
