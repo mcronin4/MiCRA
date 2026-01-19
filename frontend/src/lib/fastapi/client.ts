@@ -1,5 +1,7 @@
 // Base configuration
 
+import { supabase } from '@/lib/supabase/client';
+
 class HttpError extends Error {
     status: number;
     
@@ -21,10 +23,28 @@ class ApiClient {
         return '/backend';
     }
 
+    private async getAuthHeaders(): Promise<HeadersInit> {
+        const headers: HeadersInit = {};
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+                headers['Authorization'] = `Bearer ${session.access_token}`;
+            }
+        } catch (error) {
+            // If we can't get session, continue without auth header
+            console.warn('Failed to get auth session for API request:', error);
+        }
+        return headers;
+    }
+
     async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
         // Don't set Content-Type for FormData - browser will set it with boundary
         const isFormData = options.body instanceof FormData;
         const headers: HeadersInit = {};
+        
+        // Get auth headers (includes Bearer token if available)
+        const authHeaders = await this.getAuthHeaders();
+        Object.assign(headers, authHeaders);
         
         if (!isFormData && options.headers) {
             Object.assign(headers, options.headers);
@@ -37,7 +57,7 @@ class ApiClient {
         
         const response = await fetch(`${baseUrl}${cleanEndpoint}`, {
             ...options,
-            headers: isFormData ? {} : headers, // Let browser set headers for FormData
+            headers: isFormData ? authHeaders : headers, // Preserve auth headers even for FormData
         });
         
         if (!response.ok) {
