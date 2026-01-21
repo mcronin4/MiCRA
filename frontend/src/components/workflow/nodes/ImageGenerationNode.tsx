@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { NodeProps } from "@xyflow/react";
-import { WorkflowNodeWrapper } from "../WorkflowNodeWrapper";
+import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import {
   generateImage,
@@ -181,29 +181,33 @@ export function ImageGenerationNode({ id }: NodeProps) {
   };
 
   return (
-    <WorkflowNodeWrapper nodeId={id} config={config} onExecute={handleExecute}>
+    <WorkflowNodeWrapper
+      nodeId={id}
+      config={config}
+      onExecute={handleExecute}
+      theme={nodeThemes.indigo}
+    >
       <div className="space-y-4">
         {/* Prompt Section */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Sparkles size={14} className="text-purple-500" />
-            <label className="text-xs font-medium text-gray-700">Prompt</label>
-          </div>
+          <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+            Prompt
+          </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe your image... e.g., 'A vibrant YouTube thumbnail with bold text'"
-            className="nodrag w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg resize-none bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all placeholder:text-gray-400"
+            placeholder="Describe your image..."
+            className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all placeholder:text-slate-400"
             rows={3}
           />
         </div>
 
         {/* Aspect Ratio Pills */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-gray-700">
+          <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
             Aspect Ratio
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {ASPECT_RATIOS.map((ratio) => {
               const Icon = ratio.icon;
               const isSelected = aspectRatio === ratio.value;
@@ -212,15 +216,15 @@ export function ImageGenerationNode({ id }: NodeProps) {
                   key={ratio.value}
                   onClick={() => setAspectRatio(ratio.value)}
                   className={`
-                    nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all
+                    nodrag flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all
                     ${
                       isSelected
-                        ? "bg-purple-500 text-white shadow-md"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }
                   `}
                 >
-                  <Icon size={12} />
+                  <Icon size={14} strokeWidth={isSelected ? 2.5 : 2} />
                   {ratio.label}
                 </button>
               );
@@ -231,11 +235,12 @@ export function ImageGenerationNode({ id }: NodeProps) {
         {/* Reference Image Upload */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <ImageIcon size={14} className="text-gray-500" />
-            <label className="text-xs font-medium text-gray-700">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
               Reference Image
             </label>
-            <span className="text-xs text-gray-400">(optional)</span>
+            <span className="text-[10px] text-slate-400 font-medium">
+              Optional
+            </span>
           </div>
 
           <input
@@ -252,38 +257,39 @@ export function ImageGenerationNode({ id }: NodeProps) {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             className={`
-              nodrag relative w-full border-2 border-dashed rounded-xl transition-all duration-200 cursor-pointer overflow-hidden
+              nodrag relative w-full border border-dashed rounded-xl transition-all duration-200 cursor-pointer overflow-hidden
               ${
                 isDragging
-                  ? "border-purple-500 bg-purple-50"
-                  : "border-gray-200 bg-gray-50/50 hover:border-purple-300 hover:bg-purple-50/30"
+                  ? "border-indigo-400 bg-indigo-50"
+                  : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-slate-100"
               }
-              ${inputImage ? "p-0" : "p-5"}
+              ${inputImage ? "p-0" : "p-6"}
             `}
           >
             {!inputImage ? (
               <div className="flex flex-col items-center justify-center text-center">
                 <div
-                  className={`p-2 rounded-full mb-2 ${
-                    isDragging ? "bg-purple-100" : "bg-gray-100"
+                  className={`p-2.5 rounded-xl mb-2 ${
+                    isDragging ? "bg-indigo-100" : "bg-slate-100"
                   }`}
                 >
                   <Upload
-                    size={18}
-                    className={isDragging ? "text-purple-500" : "text-gray-400"}
+                    size={20}
+                    strokeWidth={1.5}
+                    className={
+                      isDragging ? "text-indigo-500" : "text-slate-400"
+                    }
                   />
                 </div>
                 <p
-                  className={`text-xs font-medium ${
-                    isDragging ? "text-purple-600" : "text-gray-600"
+                  className={`text-sm font-medium ${
+                    isDragging ? "text-indigo-600" : "text-slate-600"
                   }`}
                 >
-                  {isDragging
-                    ? "Drop image here"
-                    : "Drop image or click to browse"}
+                  {isDragging ? "Drop image here" : "Drop or click to upload"}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Use for image editing or style reference
+                <p className="text-xs text-slate-400 mt-1">
+                  For style reference or editing
                 </p>
               </div>
             ) : (
@@ -329,7 +335,7 @@ export function ImageGenerationNode({ id }: NodeProps) {
               </div>
               <button
                 onClick={handleDownload}
-                className="nodrag flex items-center gap-1 px-2 py-1 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-md transition-colors"
+                className="nodrag flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors"
               >
                 <Download size={12} />
                 Download
