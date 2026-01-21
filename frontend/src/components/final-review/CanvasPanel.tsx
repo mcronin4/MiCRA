@@ -1,16 +1,17 @@
-import React, { useEffect, useCallback, useState } from 'react';
-import type { Node, Edge, OnConnect, ReactFlowInstance } from '@xyflow/react';
-import { PanelLeft, PanelRight } from 'lucide-react';
-import AddPartMenu from '../AddPartMenu';
-import ZoomControls from '../ZoomControls';
-import PartContextMenu from '../PartContextMenu';
-import { LinkedInComponent } from '../canvas/LinkedInComponent';
-import { TikTokComponent } from '../canvas/TikTokComponent';
-import { EmailComponent } from '../canvas/EmailComponent';
-import { ImageMatchingNode } from '../workflow/nodes/ImageMatchingNode';
-import { TextGenerationNode } from '../workflow/nodes/TextGenerationNode';
-import { WorkflowManager } from '../workflow/WorkflowManager';
-import type { OutputNodeType, WorkflowNodeType } from './types';
+import React, { useEffect, useCallback, useState } from "react";
+import type { Node, Edge, OnConnect, ReactFlowInstance } from "@xyflow/react";
+import { PanelRight, Plus } from "lucide-react";
+import AddPartMenu from "../AddPartMenu";
+import ZoomControls from "../ZoomControls";
+import PartContextMenu from "../PartContextMenu";
+import { LinkedInComponent } from "../canvas/LinkedInComponent";
+import { TikTokComponent } from "../canvas/TikTokComponent";
+import { EmailComponent } from "../canvas/EmailComponent";
+import { ImageMatchingNode } from "../workflow/nodes/ImageMatchingNode";
+import { TextGenerationNode } from "../workflow/nodes/TextGenerationNode";
+import { ImageGenerationNode } from "../workflow/nodes/ImageGenerationNode";
+import { WorkflowManager } from "../workflow/WorkflowManager";
+import type { OutputNodeType, WorkflowNodeType } from "./types";
 
 const nodeTypes = {
   LinkedIn: LinkedInComponent,
@@ -18,34 +19,60 @@ const nodeTypes = {
   Email: EmailComponent,
   ImageMatching: ImageMatchingNode,
   TextGeneration: TextGenerationNode,
-  // Add more nodes here as they are created! (e.g., 'Transcription', 'ImageExtraction')
+  ImageGeneration: ImageGenerationNode,
 };
 
 interface CanvasPanelProps {
   ReactFlow: React.ComponentType<Record<string, unknown>>;
   Background: React.ComponentType<Record<string, unknown>>;
   MiniMap: React.ComponentType<Record<string, unknown>>;
-  useNodesState: <T extends Node = Node>(initial: T[]) => [T[], React.Dispatch<React.SetStateAction<T[]>>, (changes: unknown) => void];
-  useEdgesState: <T extends Edge = Edge>(initial: T[]) => [T[], React.Dispatch<React.SetStateAction<T[]>>, (changes: unknown) => void];
+  useNodesState: <T extends Node = Node>(
+    initial: T[],
+  ) => [
+    T[],
+    React.Dispatch<React.SetStateAction<T[]>>,
+    (changes: unknown) => void,
+  ];
+  useEdgesState: <T extends Edge = Edge>(
+    initial: T[],
+  ) => [
+    T[],
+    React.Dispatch<React.SetStateAction<T[]>>,
+    (changes: unknown) => void,
+  ];
   addEdge: (edgeParams: unknown, edges: Edge[]) => Edge[];
-  sidebarsVisible: boolean;
-  setSidebarsVisible: (visible: boolean) => void;
+  isChatOpen: boolean;
+  setIsChatOpen: (visible: boolean) => void;
   menuPosition: { x: number; y: number } | null;
   setMenuPosition: (position: { x: number; y: number } | null) => void;
   partContextMenu: { x: number; y: number; partId: string } | null;
-  setPartContextMenu: (menu: { x: number; y: number; partId: string } | null) => void;
+  setPartContextMenu: (
+    menu: { x: number; y: number; partId: string } | null,
+  ) => void;
   canvasContainerRef: React.RefObject<HTMLDivElement | null>;
   handleCanvasContextMenu: (e: React.MouseEvent) => void;
-  handlePartContextMenu: (e: React.MouseEvent<HTMLDivElement>, partId: string) => void;
+  handlePartContextMenu: (
+    e: React.MouseEvent<HTMLDivElement>,
+    partId: string,
+  ) => void;
   handleAddPart: (partType: OutputNodeType | WorkflowNodeType) => void;
-  handleDeletePart: (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => void;
-  handleDuplicatePart: (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>, nodes: Node[]) => void;
+  handleDeletePart: (
+    partId: string,
+    setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
+  ) => void;
+  handleDuplicatePart: (
+    partId: string,
+    setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
+    nodes: Node[],
+  ) => void;
   handleCopyContent: (partId: string, nodes: Node[]) => void;
   reactFlowInstance: ReactFlowInstance | null;
   setReactFlowInstance: (instance: ReactFlowInstance | null) => void;
   isLocked: boolean;
   setIsLocked: (locked: boolean) => void;
-  setNodesRef: React.MutableRefObject<React.Dispatch<React.SetStateAction<Node[]>> | null>;
+  setNodesRef: React.MutableRefObject<React.Dispatch<
+    React.SetStateAction<Node[]>
+  > | null>;
 }
 
 export const CanvasPanel: React.FC<CanvasPanelProps> = ({
@@ -55,8 +82,8 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   useNodesState,
   useEdgesState,
   addEdge,
-  sidebarsVisible,
-  setSidebarsVisible,
+  isChatOpen,
+  setIsChatOpen,
   menuPosition,
   setMenuPosition,
   partContextMenu,
@@ -76,18 +103,20 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
 }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [currentWorkflowId, setCurrentWorkflowId] = useState<string | undefined>();
-  
+  const [currentWorkflowId, setCurrentWorkflowId] = useState<
+    string | undefined
+  >();
+
   // Store setNodes in the parent's ref
   useEffect(() => {
     if (setNodesRef) {
       setNodesRef.current = setNodes;
     }
   }, [setNodesRef, setNodes]);
-  
+
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),
-    [setEdges, addEdge]
+    [setEdges, addEdge],
   );
 
   return (
@@ -104,7 +133,10 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
         onPaneContextMenu={handleCanvasContextMenu}
-        onNodeContextMenu={(event: React.MouseEvent<HTMLDivElement>, node: Node) => handlePartContextMenu(event, node.id)}
+        onNodeContextMenu={(
+          event: React.MouseEvent<HTMLDivElement>,
+          node: Node,
+        ) => handlePartContextMenu(event, node.id)}
         fitView
         nodesDraggable={!isLocked}
         nodesConnectable={!isLocked}
@@ -128,7 +160,9 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         <PartContextMenu
           position={{ x: partContextMenu.x, y: partContextMenu.y }}
           onDelete={() => handleDeletePart(partContextMenu.partId, setNodes)}
-          onDuplicate={() => handleDuplicatePart(partContextMenu.partId, setNodes, nodes)}
+          onDuplicate={() =>
+            handleDuplicatePart(partContextMenu.partId, setNodes, nodes)
+          }
           onCopy={() => handleCopyContent(partContextMenu.partId, nodes)}
           onClose={() => setPartContextMenu(null)}
         />
@@ -141,12 +175,26 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         isLocked={isLocked}
       />
       <button
-        onClick={() => setSidebarsVisible(!sidebarsVisible)}
-        className="absolute top-4 left-4 bg-white/80 backdrop-blur-lg p-2 rounded-lg shadow-lg"
+        onClick={(e) => {
+          // Open menu near the button
+          const rect = e.currentTarget.getBoundingClientRect();
+          setMenuPosition({ x: rect.left, y: rect.bottom + 10 });
+        }}
+        className="absolute top-4 left-4 bg-black text-white p-3 rounded-full shadow-lg hover:bg-gray-800 transition-colors z-10"
       >
-        {sidebarsVisible ? <PanelLeft size={20} /> : <PanelRight size={20} />}
+        <Plus size={24} />
       </button>
-      
+
+      <button
+        onClick={() => setIsChatOpen(!isChatOpen)}
+        className="absolute top-4 right-4 bg-white/80 backdrop-blur-lg p-2 rounded-lg shadow-lg z-10"
+      >
+        <PanelRight
+          size={20}
+          className={isChatOpen ? "text-blue-500" : "text-gray-600"}
+        />
+      </button>
+
       {/* Workflow Manager - Save/Load functionality */}
       <WorkflowManager
         reactFlowNodes={nodes}
@@ -160,4 +208,3 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
     </div>
   );
 };
-

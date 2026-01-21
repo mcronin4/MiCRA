@@ -1,11 +1,11 @@
 export type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
 
 export type OutputNodeType = 'LinkedIn' | 'TikTok' | 'Email';
-export type WorkflowNodeType = 'ImageMatching' | 'Transcription' | 'TextGeneration' | 'TextSummarization' | 'ImageExtraction';
+export type WorkflowNodeType = 'ImageMatching' | 'Transcription' | 'TextGeneration' | 'TextSummarization' | 'ImageExtraction' | 'ImageGeneration';
 export type NodeType = OutputNodeType | WorkflowNodeType;
 
 export const OUTPUT_NODES: readonly OutputNodeType[] = ['LinkedIn', 'TikTok', 'Email'];
-export const WORKFLOW_NODES: readonly WorkflowNodeType[] = ['ImageMatching', 'Transcription', 'TextGeneration', 'TextSummarization', 'ImageExtraction'];
+export const WORKFLOW_NODES: readonly WorkflowNodeType[] = ['ImageMatching', 'Transcription', 'TextGeneration', 'TextSummarization', 'ImageExtraction', 'ImageGeneration'];
 
 export interface SourceText {
   id: string;
