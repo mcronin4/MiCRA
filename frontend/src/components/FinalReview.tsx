@@ -15,9 +15,10 @@ import type {
   SourceType,
   OutputNodeType,
   WorkflowNodeType,
+  FlowNodeType,
   NodeType,
 } from "./final-review/types";
-import { WORKFLOW_NODES } from "./final-review/types";
+import { WORKFLOW_NODES, FLOW_NODES } from "./final-review/types";
 
 const FinalReview = () => {
   const [activeTab, setActiveTab] = useState<SourceType>("Video");
@@ -54,10 +55,13 @@ const FinalReview = () => {
     },
   });
 
-  const handleAddPart = (partType: OutputNodeType | WorkflowNodeType) => {
-    // Check if it's a workflow node - if so, just add it directly to canvas
-    if (WORKFLOW_NODES.includes(partType as WorkflowNodeType)) {
-      canvasOps.addNodeToCanvas(partType);
+  const handleAddPart = (partType: NodeType) => {
+    // Check if it's a workflow node or flow node - if so, just add it directly to canvas
+    if (
+      WORKFLOW_NODES.includes(partType as WorkflowNodeType) ||
+      FLOW_NODES.includes(partType as FlowNodeType)
+    ) {
+      canvasOps.addNodeToCanvas(partType as WorkflowNodeType);
       contextMenus.setMenuPosition(null);
       return;
     }
@@ -133,7 +137,7 @@ const FinalReview = () => {
   };
 
   const handleAddNodeFromSidebar = (nodeType: NodeType) => {
-    handleAddPart(nodeType as OutputNodeType | WorkflowNodeType);
+    handleAddPart(nodeType);
   };
 
   const handleExecuteWorkflow = async () => {

@@ -3,13 +3,12 @@
 import React, { useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import {
-  Play,
-  Loader2,
   CheckCircle2,
   XCircle,
   Sparkles,
   Type,
   Images,
+  Loader2,
 } from "lucide-react";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import { NodeConfig } from "@/types/workflow";
@@ -178,7 +177,7 @@ export function WorkflowNodeWrapper({
               shadow-sm ring-1 ring-inset ring-black/5
             `}
             >
-              <ThemeIcon size={20} strokeWidth={2} />
+              <ThemeIcon size={20} />
             </div>
             <div>
               <h3 className="font-semibold text-[16px] text-slate-900 leading-tight">
@@ -258,40 +257,6 @@ export function WorkflowNodeWrapper({
             <span>{node.error}</span>
           </div>
         )}
-
-        <button
-          onClick={onExecute}
-          disabled={node?.status === "running"}
-          className={`
-            mt-6 w-full flex items-center justify-center gap-2 
-            px-4 py-3 
-            ${theme.accentColor} ${theme.accentHover}
-            text-white rounded-xl 
-            disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed 
-            text-sm font-semibold tracking-wide
-            shadow-md shadow-black/5
-            transition-all duration-200
-            hover:shadow-lg hover:shadow-black/10 hover:-translate-y-0.5
-            active:shadow-none active:translate-y-0
-          `}
-        >
-          {node?.status === "running" ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <Play
-                size={16}
-                strokeWidth={2.5}
-                fill="currentColor"
-                className="opacity-90"
-              />
-              Run Action
-            </>
-          )}
-        </button>
       </div>
 
       {/* Output handles with minimalist tooltips */}

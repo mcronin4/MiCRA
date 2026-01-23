@@ -10,8 +10,10 @@ import { EmailComponent } from "../canvas/EmailComponent";
 import { ImageMatchingNode } from "../workflow/nodes/ImageMatchingNode";
 import { TextGenerationNode } from "../workflow/nodes/TextGenerationNode";
 import { ImageGenerationNode } from "../workflow/nodes/ImageGenerationNode";
+import { StartNode } from "../workflow/nodes/StartNode";
+import { EndNode } from "../workflow/nodes/EndNode";
 import { WorkflowManager } from "../workflow/WorkflowManager";
-import type { OutputNodeType, WorkflowNodeType } from "./types";
+import type { NodeType } from "./types";
 
 const nodeTypes = {
   LinkedIn: LinkedInComponent,
@@ -20,6 +22,8 @@ const nodeTypes = {
   ImageMatching: ImageMatchingNode,
   TextGeneration: TextGenerationNode,
   ImageGeneration: ImageGenerationNode,
+  Start: StartNode,
+  End: EndNode,
 };
 
 interface CanvasPanelProps {
@@ -55,7 +59,7 @@ interface CanvasPanelProps {
     e: React.MouseEvent<HTMLDivElement>,
     partId: string,
   ) => void;
-  handleAddPart: (partType: OutputNodeType | WorkflowNodeType) => void;
+  handleAddPart: (partType: NodeType) => void;
   handleDeletePart: (
     partId: string,
     setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
