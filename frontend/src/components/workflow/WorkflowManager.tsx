@@ -23,6 +23,9 @@ interface WorkflowManagerProps {
   setEdges: (edges: Edge[] | ((edges: Edge[]) => Edge[])) => void;
   currentWorkflowId?: string;
   onWorkflowChanged?: (workflowId: string | undefined) => void;
+  showSaveDialogExternal?: boolean;
+  showLoadDialogExternal?: boolean;
+  onDialogClose?: () => void;
 }
 
 export function WorkflowManager({
@@ -33,6 +36,9 @@ export function WorkflowManager({
   setEdges,
   currentWorkflowId,
   onWorkflowChanged,
+  showSaveDialogExternal,
+  showLoadDialogExternal,
+  onDialogClose,
 }: WorkflowManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -51,6 +57,32 @@ export function WorkflowManager({
     fetchTemplates,
     removeWorkflow,
   } = useWorkflowPersistence();
+
+  // Handle external dialog triggers
+  useEffect(() => {
+    if (showSaveDialogExternal) {
+      setShowSaveDialog(true);
+    }
+  }, [showSaveDialogExternal]);
+
+  useEffect(() => {
+    if (showLoadDialogExternal) {
+      setIsOpen(true);
+    }
+  }, [showLoadDialogExternal]);
+
+  // Notify parent when dialogs close
+  const handleCloseSaveDialog = () => {
+    setShowSaveDialog(false);
+    setWorkflowName("");
+    setWorkflowDescription("");
+    onDialogClose?.();
+  };
+
+  const handleCloseLoadDialog = () => {
+    setIsOpen(false);
+    onDialogClose?.();
+  };
 
   // Load workflows on mount when dialog opens
   const loadWorkflows = useCallback(async () => {
@@ -93,9 +125,7 @@ export function WorkflowManager({
     );
 
     if (result.success) {
-      setShowSaveDialog(false);
-      setWorkflowName("");
-      setWorkflowDescription("");
+      handleCloseSaveDialog();
       if (onWorkflowChanged && result.workflowId) {
         onWorkflowChanged(result.workflowId);
       }
@@ -127,7 +157,7 @@ export function WorkflowManager({
         if (result.success && result.nodes && result.edges) {
           setNodes(result.nodes);
           setEdges(result.edges);
-          setIsOpen(false);
+          handleCloseLoadDialog();
           if (onWorkflowChanged) {
             // Don't set currentWorkflowId for system workflows/templates
             // This allows users to modify and save as a new workflow
@@ -181,28 +211,6 @@ export function WorkflowManager({
 
   return (
     <>
-      {/* Save/Load Button */}
-      <div className="absolute top-4 right-16 z-10 flex gap-2">
-        <Button
-          onClick={() => setShowSaveDialog(true)}
-          disabled={reactFlowNodes.length === 0 || isLoading}
-          size="sm"
-          title="Save workflow"
-        >
-          <Save size={16} className="mr-2" />
-          Save
-        </Button>
-        <Button
-          onClick={() => setIsOpen(true)}
-          variant="outline"
-          size="sm"
-          title="Load workflow"
-        >
-          <FolderOpen size={16} className="mr-2" />
-          Load
-        </Button>
-      </div>
-
       {/* Save Dialog Modal */}
       {showSaveDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

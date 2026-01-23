@@ -73,6 +73,10 @@ interface CanvasPanelProps {
   setNodesRef: React.MutableRefObject<React.Dispatch<
     React.SetStateAction<Node[]>
   > | null>;
+  showSaveDialog?: boolean;
+  showLoadDialog?: boolean;
+  onDialogClose?: () => void;
+  interactionMode?: "select" | "pan";
 }
 
 export const CanvasPanel: React.FC<CanvasPanelProps> = ({
@@ -100,6 +104,10 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   isLocked,
   setIsLocked,
   setNodesRef,
+  showSaveDialog,
+  showLoadDialog,
+  onDialogClose,
+  interactionMode = "select",
 }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -122,8 +130,25 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   return (
     <div
       ref={canvasContainerRef}
-      className="flex-1 h-full relative bg-[#f0f2f5] overflow-hidden"
+      className={`flex-1 h-full relative bg-[#f0f2f5] overflow-hidden ${
+        interactionMode === "pan" ? "view-only-mode" : ""
+      }`}
+      style={interactionMode === "pan" ? { cursor: "grab" } : undefined}
     >
+      {/* Style to disable all node interactions in pan/view mode */}
+      {interactionMode === "pan" && (
+        <style>{`
+          .view-only-mode .react-flow__node * {
+            pointer-events: none !important;
+          }
+          .view-only-mode .react-flow__node {
+            cursor: grab !important;
+          }
+          .view-only-mode:active {
+            cursor: grabbing !important;
+          }
+        `}</style>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -138,12 +163,13 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
           node: Node,
         ) => handlePartContextMenu(event, node.id)}
         fitView
-        nodesDraggable={!isLocked}
-        nodesConnectable={!isLocked}
-        panOnDrag={!isLocked}
-        zoomOnScroll={!isLocked}
+        nodesDraggable={!isLocked && interactionMode === "select"}
+        nodesConnectable={!isLocked && interactionMode === "select"}
+        panOnDrag={interactionMode === "pan" ? true : [1, 2]}
+        selectionOnDrag={!isLocked && interactionMode === "select"}
+        zoomOnScroll={true}
         zoomOnDoubleClick={!isLocked}
-        panOnScroll={!isLocked}
+        panOnScroll={true}
       >
         <Background />
         <MiniMap position="bottom-left" />
@@ -167,33 +193,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
           onClose={() => setPartContextMenu(null)}
         />
       )}
-      <ZoomControls
-        onZoomIn={() => reactFlowInstance?.zoomIn()}
-        onZoomOut={() => reactFlowInstance?.zoomOut()}
-        onFitView={() => reactFlowInstance?.fitView()}
-        onToggleLock={() => setIsLocked(!isLocked)}
-        isLocked={isLocked}
-      />
-      <button
-        onClick={(e) => {
-          // Open menu near the button
-          const rect = e.currentTarget.getBoundingClientRect();
-          setMenuPosition({ x: rect.left, y: rect.bottom + 10 });
-        }}
-        className="absolute top-4 left-4 bg-black text-white p-3 rounded-full shadow-lg hover:bg-gray-800 transition-colors z-10"
-      >
-        <Plus size={24} />
-      </button>
-
-      <button
-        onClick={() => setIsChatOpen(!isChatOpen)}
-        className="absolute top-4 right-4 bg-white/80 backdrop-blur-lg p-2 rounded-lg shadow-lg z-10"
-      >
-        <PanelRight
-          size={20}
-          className={isChatOpen ? "text-blue-500" : "text-gray-600"}
-        />
-      </button>
+      {/* Removed: ZoomControls, floating + button, chat toggle - now in ExecutionBar */}
 
       {/* Workflow Manager - Save/Load functionality */}
       <WorkflowManager
@@ -204,6 +204,9 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         setEdges={setEdges}
         currentWorkflowId={currentWorkflowId}
         onWorkflowChanged={setCurrentWorkflowId}
+        showSaveDialogExternal={showSaveDialog}
+        showLoadDialogExternal={showLoadDialog}
+        onDialogClose={onDialogClose}
       />
     </div>
   );
