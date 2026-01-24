@@ -12,6 +12,7 @@ Usage:
 import os
 import sys
 import argparse
+import asyncio
 import json
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -58,7 +59,25 @@ CUSTOM_TEXT_SUMMARIES = [
         start_time=940.0,
         end_time=1770.0,
         text_content="""
-        Agents get production-ready building blocks: Agent Builder (visual node editor), Chat Kit (embeddable chat UI), guardrails, evals, and connector registry. In an eight-minute live demo, a DevDay site adds an "Ask Froge" agent that routes queries, pulls session info, renders widgets, and enforces PII guardrails—then publishes with a single workflow ID. The takeaway: complex orchestration without the scaffolding slog.
+    Agents get production-ready building blocks: Agent Builder (visual node editor), Chat Kit (embeddable chat UI), guardrails, evals, and connector registry. In an eight-minute live demo, a DevDay site adds an “Ask Froge” agent that routes queries, pulls session info, renders widgets, and enforces PII guardrails—then publishes with a single workflow ID. The takeaway: complex orchestration without the scaffolding slog.
+        """
+    ),
+    TextSummary(
+        summary_id="CodeX on GPT-5 Code",
+        video_id="openai_devday_2025",
+        start_time=1770.0,
+        end_time=2600.0,
+        text_content="""
+        CodeX leaves research preview and becomes a team-grade coding partner powered by GPT-5 Code. Demos include auto-wiring a Sony camera over VISCA, adding Xbox controller support, voice control via the real-time API, and even live venue light control through an MCP server—without hand-coding. New features (Slack integration, SDK, admin analytics) push CodeX from assistant to autonomous collaborator for refactoring, reviews, and rapid prototyping.
+        """
+    ),
+    TextSummary(
+        summary_id="New Models & Closing",
+        video_id="openai_devday_2025",
+        start_time=2600.0,
+        end_time=2900.0,
+        text_content="""
+    GPT-5 Pro lands in the API for tougher reasoning tasks; Sora 2 brings controllable, cinematic video with synchronized audio (including product concepting workflows, shown with Mattel). The keynote closes on a builder’s note: software timelines are collapsing. With apps in ChatGPT, agent tooling, team-ready coding agents, and new models, the barrier to shipping meaningful AI products has never been lower
         """
     ),
 ]
@@ -82,6 +101,8 @@ GROUND_TRUTH = {
     "Opening and Vision": ["TI1"],
     "Apps SDK": ["TI2"],
     "Agent Kit": ["TI3"],
+    "CodeX on GPT-5 Code": ["TI4"],
+    "New Models & Closing": ["TI5"],
 }
 
 
@@ -185,7 +206,7 @@ def run_original_matcher(
         return None
 
 
-def run_staged_vlm_matcher(
+async def run_staged_vlm_matcher(
     summaries: List[TextSummary],
     candidates: List[ImageCandidate],
     api_key: str,
@@ -202,7 +223,7 @@ def run_staged_vlm_matcher(
             max_image_dimension=max_dimension
         )
         
-        results = matcher.match_summaries_to_images(summaries, candidates, top_k=3)
+        results = await matcher.match_summaries_to_images(summaries, candidates, top_k=3)
         return results
     except Exception as e:
         print(f"❌ Error running staged VLM matcher: {e}")
@@ -472,7 +493,7 @@ def save_results_json(
 # MAIN
 # ============================================================================
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description="Compare image-text matching approaches")
     parser.add_argument(
         '--skip-original',
@@ -528,7 +549,7 @@ def main():
     
     staged_results = None
     if api_key:
-        staged_results = run_staged_vlm_matcher(
+        staged_results = await run_staged_vlm_matcher(
             summaries,
             candidates,
             api_key,
@@ -615,7 +636,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("\n\n⚠️  Test interrupted by user")
         sys.exit(0)
