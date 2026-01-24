@@ -11,6 +11,7 @@ interface ModalProps {
 }
 
 export default function Modal({ isOpen, onClose, children, title }: ModalProps) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

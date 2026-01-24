@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import Link from 'next/link';
 import LogoutButton from './LogoutButton';
 import AuthModal from './auth/AuthModal';

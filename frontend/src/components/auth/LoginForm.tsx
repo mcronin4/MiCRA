@@ -5,11 +5,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { FcGoogle } from 'react-icons/fc';
 
 interface LoginFormProps {
-  onSuccess?: () => void;
   onSwitchToSignup?: () => void;
 }
 
-export default function LoginForm({ onSuccess, onSwitchToSignup }: LoginFormProps) {
+export default function LoginForm({ onSwitchToSignup }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -29,6 +28,7 @@ export default function LoginForm({ onSuccess, onSwitchToSignup }: LoginFormProp
       } else {
         setMessage('Check your email for the login link!');
       }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (err) {
       setError('An unexpected error occurred');
     } finally {
@@ -42,6 +42,7 @@ export default function LoginForm({ onSuccess, onSwitchToSignup }: LoginFormProp
       const { error } = await signInWithGoogle();
       if (error) setError(error.message);
       // Note: Google login redirects, so onSuccess might not be called immediately here
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setError('Failed to initiate Google login');
     }
@@ -121,7 +122,7 @@ export default function LoginForm({ onSuccess, onSwitchToSignup }: LoginFormProp
         <div className="mt-6">
           <div className="relative flex justify-center text-sm">
             <span className="px-2 bg-white text-gray-500">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <button
                 onClick={onSwitchToSignup}
                 className="font-medium text-indigo-600 hover:text-indigo-500 bg-transparent border-none p-0 cursor-pointer"

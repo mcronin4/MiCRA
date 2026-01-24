@@ -5,11 +5,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { FcGoogle } from 'react-icons/fc';
 
 interface SignupFormProps {
-  onSuccess?: () => void;
   onSwitchToLogin?: () => void;
 }
 
-export default function SignupForm({ onSuccess, onSwitchToLogin }: SignupFormProps) {
+export default function SignupForm({ onSwitchToLogin }: SignupFormProps) {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +35,7 @@ export default function SignupForm({ onSuccess, onSwitchToLogin }: SignupFormPro
       } else {
         setMessage('Check your email for the signup link!');
       }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (err) {
       setError('An unexpected error occurred');
     } finally {
@@ -46,8 +46,10 @@ export default function SignupForm({ onSuccess, onSwitchToLogin }: SignupFormPro
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
+       
       const { error } = await signInWithGoogle();
       if (error) setError(error.message);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setError('Failed to initiate Google login');
     }

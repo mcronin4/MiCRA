@@ -29,12 +29,10 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
     >
       {view === 'login' ? (
         <LoginForm
-          onSuccess={onClose}
           onSwitchToSignup={() => setView('signup')}
         />
       ) : (
         <SignupForm
-          onSuccess={onClose}
           onSwitchToLogin={() => setView('login')}
         />
       )}

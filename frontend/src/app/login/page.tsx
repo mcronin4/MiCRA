@@ -26,6 +26,7 @@ export default function LoginPage() {
         router.push('/');
         router.refresh();
       }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (err) {
       setError('An unexpected error occurred');
     } finally {
@@ -97,7 +98,7 @@ export default function LoginPage() {
               href="/signup"
               className="text-sm text-indigo-600 hover:text-indigo-500"
             >
-              Don't have an account? Sign up
+              Don&apos;t have an account? Sign up
             </Link>
           </div>
         </form>
