@@ -45,9 +45,9 @@ supabase
 asyncpg
 
 # ML dependencies for V1 image_text_matching (embeddings.py) (VLM V1)
-torch
-torchvision
-transformers
-sentencepiece
-scikit-learn
-easyocr
+# torch
+# torchvision
+# transformers
+# sentencepiece
+# scikit-learn
+# easyocr
