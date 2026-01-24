@@ -126,6 +126,7 @@ function HandleTooltip({
 export function WorkflowNodeWrapper({
   nodeId,
   config,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onExecute,
   theme = nodeThemes.indigo,
   children,

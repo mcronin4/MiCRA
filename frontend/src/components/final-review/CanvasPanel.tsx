@@ -1,8 +1,6 @@
 import React, { useEffect, useCallback, useState } from "react";
 import type { Node, Edge, OnConnect, ReactFlowInstance } from "@xyflow/react";
-import { PanelRight, Plus } from "lucide-react";
 import AddPartMenu from "../AddPartMenu";
-import ZoomControls from "../ZoomControls";
 import PartContextMenu from "../PartContextMenu";
 import { LinkedInComponent } from "../canvas/LinkedInComponent";
 import { TikTokComponent } from "../canvas/TikTokComponent";
@@ -90,7 +88,9 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   useNodesState,
   useEdgesState,
   addEdge,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   isChatOpen,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setIsChatOpen,
   menuPosition,
   setMenuPosition,
@@ -106,6 +106,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   reactFlowInstance,
   setReactFlowInstance,
   isLocked,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setIsLocked,
   setNodesRef,
   showSaveDialog,

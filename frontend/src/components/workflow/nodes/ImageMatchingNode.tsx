@@ -11,11 +11,9 @@ import {
 } from "@/lib/fastapi/image-matching";
 import { NodeConfig } from "@/types/workflow";
 import {
-  X,
   Check,
   AlertCircle,
   Image as ImageIcon,
-  RefreshCw,
 } from "lucide-react";
 import Image from "next/image";
 

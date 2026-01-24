@@ -5,8 +5,6 @@ import type { Node, Edge, ReactFlowInstance } from "@xyflow/react";
 import { useWorkflowPersistence } from "@/hooks/useWorkflowPersistence";
 import type { Workflow } from "@/lib/fastapi/workflows";
 import {
-  Save,
-  FolderOpen,
   Trash2,
   X,
   Loader2,
@@ -72,17 +70,17 @@ export function WorkflowManager({
   }, [showLoadDialogExternal]);
 
   // Notify parent when dialogs close
-  const handleCloseSaveDialog = () => {
+  const handleCloseSaveDialog = useCallback(() => {
     setShowSaveDialog(false);
     setWorkflowName("");
     setWorkflowDescription("");
     onDialogClose?.();
-  };
+  }, [onDialogClose]);
 
-  const handleCloseLoadDialog = () => {
+  const handleCloseLoadDialog = useCallback(() => {
     setIsOpen(false);
     onDialogClose?.();
-  };
+  }, [onDialogClose]);
 
   // Load workflows on mount when dialog opens
   const loadWorkflows = useCallback(async () => {
@@ -143,6 +141,7 @@ export function WorkflowManager({
     saveWorkflow,
     onWorkflowChanged,
     loadWorkflows,
+    handleCloseSaveDialog,
   ]);
 
   const handleLoad = useCallback(
@@ -170,7 +169,14 @@ export function WorkflowManager({
         }
       }
     },
-    [loadWorkflow, reactFlowInstance, setNodes, setEdges, onWorkflowChanged],
+    [
+      loadWorkflow,
+      reactFlowInstance,
+      setNodes,
+      setEdges,
+      onWorkflowChanged,
+      handleCloseLoadDialog,
+    ],
   );
 
   const handleDelete = useCallback(

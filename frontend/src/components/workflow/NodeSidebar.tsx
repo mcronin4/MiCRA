@@ -5,7 +5,6 @@ import {
   Send,
   Wand2,
   ChevronRight,
-  ChevronLeft,
   Linkedin,
   Mail,
   FileText,
@@ -16,7 +15,6 @@ import {
   GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
-  Box,
   Layers,
 } from "lucide-react";
 import { FaTiktok } from "react-icons/fa";

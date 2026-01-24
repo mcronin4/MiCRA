@@ -12,7 +12,6 @@ import { useChatConversation } from "@/hooks/useChatConversation";
 import { useCanvasOperations } from "@/hooks/useCanvasOperations";
 import { useContextMenus } from "@/hooks/useContextMenus";
 import type {
-  SourceType,
   OutputNodeType,
   WorkflowNodeType,
   FlowNodeType,
@@ -21,7 +20,6 @@ import type {
 import { WORKFLOW_NODES, FLOW_NODES } from "./final-review/types";
 
 const FinalReview = () => {
-  const [activeTab, setActiveTab] = useState<SourceType>("Video");
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [workflowName, setWorkflowName] = useState("Untitled Workflow");
   const [interactionMode, setInteractionMode] = useState<"select" | "pan">(
@@ -32,14 +30,14 @@ const FinalReview = () => {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   // Simple undo/redo state (placeholder - would need proper history management)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [undoStack, setUndoStack] = useState<unknown[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [redoStack, setRedoStack] = useState<unknown[]>([]);
 
   // Custom hooks for state management
   const sourceTextsHook = useSourceTexts();
-  const transcriptionHook = useTranscription(
-    sourceTextsHook.addSourceFromTranscription,
-  );
+  useTranscription(sourceTextsHook.addSourceFromTranscription);
   const canvasOps = useCanvasOperations();
   const contextMenus = useContextMenus();
   const chatHook = useChatConversation({

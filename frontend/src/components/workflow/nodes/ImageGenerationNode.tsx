@@ -10,8 +10,6 @@ import {
 } from "@/lib/fastapi/image-generation";
 import { NodeConfig } from "@/types/workflow";
 import {
-  X,
-  Sparkles,
   Image as ImageIcon,
   Download,
   RectangleHorizontal,
