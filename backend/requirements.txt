@@ -37,7 +37,7 @@ tqdm
 python-multipart
 Pillow
 
-# VLM dependencies for image_text_matching (VLM approaches)
+# VLM dependencies for V2 image_text_matching (vlm_anslysis.py) (VLM V2)
 fireworks-ai
 
 # Supabase Storage integration
@@ -53,4 +53,4 @@ PyJWT[cryptography]
 # transformers
 # sentencepiece
 # scikit-learn
-# pytesseract
+# easyocr
