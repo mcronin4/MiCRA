@@ -1,13 +1,14 @@
 """
 Text generation API endpoints with preset management.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from ...agents.text_generation.generator import generate_text
 from ...db.supabase import get_supabase
+from ...auth.dependencies import get_current_user, User
 
 router = APIRouter(prefix="/text-generation", tags=["text-generation"])
 
@@ -63,14 +64,27 @@ class GenerateResponse(BaseModel):
 
 # Endpoints
 @router.get("/presets", response_model=List[PresetResponse])
-async def list_presets():
-    """List all text generation presets."""
+async def list_presets(user: User = Depends(get_current_user)):
+    """List text generation presets accessible to the user (user_id is null or matches user's ID)."""
     try:
         supabase = get_supabase()
-        result = supabase.client.table("text_generation_presets").select("*").order("name").execute()
+        user_id = user.sub
+        
+        # Fetch presets where user_id is null (public presets)
+        public_result = supabase.client.table("text_generation_presets").select("*").is_("user_id", "null").order("name").execute()
+        
+        # Fetch presets where user_id matches the authenticated user
+        user_result = supabase.client.table("text_generation_presets").select("*").eq("user_id", user_id).order("name").execute()
+        
+        # Combine and deduplicate by ID
+        all_presets = {}
+        for preset in public_result.data:
+            all_presets[str(preset["id"])] = preset
+        for preset in user_result.data:
+            all_presets[str(preset["id"])] = preset
         
         presets = []
-        for preset in result.data:
+        for preset in all_presets.values():
             # Parse output_format if it's a string
             output_format = preset.get("output_format")
             if isinstance(output_format, str):
@@ -94,22 +108,32 @@ async def list_presets():
                 updated_at=preset["updated_at"]
             ))
         
+        # Sort by name
+        presets.sort(key=lambda x: x.name)
+        
         return presets
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch presets: {str(e)}")
 
 
 @router.get("/presets/{preset_id}", response_model=PresetResponse)
-async def get_preset(preset_id: str):
-    """Get a single preset by ID."""
+async def get_preset(preset_id: str, user: User = Depends(get_current_user)):
+    """Get a single preset by ID. Only accessible if user_id is null or matches user's ID."""
     try:
         supabase = get_supabase()
+        user_id = user.sub
+        
         result = supabase.client.table("text_generation_presets").select("*").eq("id", preset_id).execute()
         
         if not result.data or len(result.data) == 0:
             raise HTTPException(status_code=404, detail="Preset not found")
         
         preset = result.data[0]
+        
+        # Check authorization: user_id must be null or match the authenticated user
+        preset_user_id = preset.get("user_id")
+        if preset_user_id is not None and preset_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied: You don't have permission to access this preset")
         
         # Parse output_format if it's a string
         output_format = preset.get("output_format")
@@ -140,10 +164,11 @@ async def get_preset(preset_id: str):
 
 
 @router.post("/presets", response_model=PresetResponse, status_code=201)
-async def create_preset(preset: PresetCreate):
-    """Create a new text generation preset."""
+async def create_preset(preset: PresetCreate, user: User = Depends(get_current_user)):
+    """Create a new text generation preset. The preset will be associated with the authenticated user's ID."""
     try:
         supabase = get_supabase()
+        user_id = user.sub
         
         # Prepare data for insertion
         preset_data = {
@@ -154,11 +179,15 @@ async def create_preset(preset: PresetCreate):
             "tone_guidance": preset.tone_guidance,
             "structure_template": preset.structure_template,
             "output_limit": preset.output_limit,
-            "is_default": preset.is_default
+            "is_default": preset.is_default,
+            "user_id": user_id  # Set user_id to the authenticated user's ID
         }
         
-        # Remove None values
+        # Remove None values (but keep user_id even if other fields are None)
         preset_data = {k: v for k, v in preset_data.items() if v is not None}
+        # Ensure user_id is always included
+        if "user_id" not in preset_data:
+            preset_data["user_id"] = user_id
         
         result = supabase.client.table("text_generation_presets").insert(preset_data).execute()
         
@@ -196,23 +225,34 @@ async def create_preset(preset: PresetCreate):
 
 
 @router.put("/presets/{preset_id}", response_model=PresetResponse)
-async def update_preset(preset_id: str, preset: PresetUpdate):
-    """Update an existing preset."""
+async def update_preset(preset_id: str, preset: PresetUpdate, user: User = Depends(get_current_user)):
+    """Update an existing preset. Only allowed for presets owned by the user (user_id matches). System presets (user_id null) are read-only."""
     try:
         supabase = get_supabase()
+        user_id = user.sub
         
-        # Check if preset exists
-        check_result = supabase.client.table("text_generation_presets").select("id").eq("id", preset_id).execute()
+        # Check if preset exists and verify ownership
+        check_result = supabase.client.table("text_generation_presets").select("*").eq("id", preset_id).execute()
         if not check_result.data or len(check_result.data) == 0:
             raise HTTPException(status_code=404, detail="Preset not found")
         
-        # Prepare update data
+        existing_preset = check_result.data[0]
+        preset_user_id = existing_preset.get("user_id")
+        
+        # Write access: only own presets. System presets (user_id null) are read-only.
+        if preset_user_id is None:
+            raise HTTPException(status_code=403, detail="Cannot update system presets")
+        if preset_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied: You can only update your own presets")
+        
+        # Prepare update data (exclude user_id from updates - it cannot be changed)
         update_data = preset.dict(exclude_unset=True)
+        update_data.pop("user_id", None)
         
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
         
-        result = supabase.client.table("text_generation_presets").update(update_data).eq("id", preset_id).execute()
+        result = supabase.client.table("text_generation_presets").update(update_data).eq("id", preset_id).eq("user_id", user_id).execute()
         
         if not result.data or len(result.data) == 0:
             raise HTTPException(status_code=500, detail="Failed to update preset")
@@ -248,17 +288,27 @@ async def update_preset(preset_id: str, preset: PresetUpdate):
 
 
 @router.delete("/presets/{preset_id}", status_code=204)
-async def delete_preset(preset_id: str):
-    """Delete a preset."""
+async def delete_preset(preset_id: str, user: User = Depends(get_current_user)):
+    """Delete a preset. Only allowed for presets owned by the user (user_id matches). System presets (user_id null) are read-only."""
     try:
         supabase = get_supabase()
+        user_id = user.sub
         
-        # Check if preset exists
-        check_result = supabase.client.table("text_generation_presets").select("id").eq("id", preset_id).execute()
+        # Check if preset exists and verify ownership
+        check_result = supabase.client.table("text_generation_presets").select("*").eq("id", preset_id).execute()
         if not check_result.data or len(check_result.data) == 0:
             raise HTTPException(status_code=404, detail="Preset not found")
         
-        supabase.client.table("text_generation_presets").delete().eq("id", preset_id).execute()
+        existing_preset = check_result.data[0]
+        preset_user_id = existing_preset.get("user_id")
+        
+        # Write access: only own presets. System presets (user_id null) are read-only.
+        if preset_user_id is None:
+            raise HTTPException(status_code=403, detail="Cannot delete system presets")
+        if preset_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied: You can only delete your own presets")
+        
+        supabase.client.table("text_generation_presets").delete().eq("id", preset_id).eq("user_id", user_id).execute()
         
         return None
     except HTTPException:
@@ -268,9 +318,25 @@ async def delete_preset(preset_id: str):
 
 
 @router.post("/generate", response_model=GenerateResponse)
-async def generate_text_endpoint(request: GenerateRequest):
-    """Generate text using a preset."""
+async def generate_text_endpoint(request: GenerateRequest, user: User = Depends(get_current_user)):
+    """Generate text using a preset. Only allowed if preset user_id is null or matches user's ID."""
     try:
+        supabase = get_supabase()
+        user_id = user.sub
+        
+        # Verify preset exists and is accessible to the user
+        preset_result = supabase.client.table("text_generation_presets").select("*").eq("id", request.preset_id).execute()
+        
+        if not preset_result.data or len(preset_result.data) == 0:
+            raise HTTPException(status_code=404, detail=f"Preset with id {request.preset_id} not found")
+        
+        preset = preset_result.data[0]
+        preset_user_id = preset.get("user_id")
+        
+        # Check authorization: user_id must be null or match the authenticated user
+        if preset_user_id is not None and preset_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied: You don't have permission to use this preset")
+        
         output = generate_text(
             input_text=request.input_text,
             preset_id=request.preset_id,
@@ -282,6 +348,8 @@ async def generate_text_endpoint(request: GenerateRequest):
             output=output,
             error=None
         )
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
