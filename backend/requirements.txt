@@ -44,7 +44,7 @@ fireworks-ai
 supabase
 asyncpg
 
-# ML dependencies for V1 image_text_matching (embeddings.py) (VLM V1)
+# Optional ML dependencies (uncomment if needed for original image_text_matching implementation)
 # torch
 # torchvision
 # transformers
