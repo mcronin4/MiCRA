@@ -44,6 +44,9 @@ fireworks-ai
 supabase
 asyncpg
 
+# JWT verification for Supabase Auth
+PyJWT[cryptography]
+
 # Optional ML dependencies (uncomment if needed for original image_text_matching implementation)
 # torch
 # torchvision

@@ -2,13 +2,14 @@
 File management endpoints for Supabase Storage integration.
 Handles upload initialization, completion, download signing, and listing.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID, uuid4
 import os
 import re
+from ...auth.dependencies import User, get_current_user
 from ...db.supabase import get_supabase
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -205,16 +206,18 @@ def log_file_access(
 
 # Endpoints
 @router.post("/init-upload", response_model=InitUploadResponse)
-async def init_upload(request: InitUploadRequest):
+async def init_upload(request: InitUploadRequest, user: User = Depends(get_current_user)):
     """
     Initialize a file upload.
     Creates a database record and returns a signed upload URL.
+    Files are stored at {user_id}/uploads/{file_id}.{extension}.
     """
     supabase = get_supabase()
-    
+    user_id = user.sub
+
     # Generate file ID
     file_id = uuid4()
-    
+
     # Sanitize and determine extension
     sanitized_name = sanitize_filename(request.name)
     extension = get_extension_from_name(sanitized_name)
@@ -222,14 +225,15 @@ async def init_upload(request: InitUploadRequest):
         extension = get_extension_from_content_type(request.contentType)
     if not extension:
         extension = "bin"
-    
-    # Set path
-    path = f"uploads/{file_id}.{extension}"
-    
+
+    # Set path: {user_id}/uploads/{file_id}.{extension}
+    path = f"{user_id}/uploads/{file_id}.{extension}"
+
     # Insert file record
     try:
         file_data = {
             "id": str(file_id),
+            "user_id": user_id,
             "bucket": request.bucket,
             "path": path,
             "type": request.type,
@@ -306,29 +310,30 @@ async def init_upload(request: InitUploadRequest):
 
 
 @router.post("/complete-upload", response_model=CompleteUploadResponse)
-async def complete_upload(request: CompleteUploadRequest):
+async def complete_upload(request: CompleteUploadRequest, user: User = Depends(get_current_user)):
     """
     Complete a file upload.
     Verifies the file exists in storage and updates the database record.
     """
     supabase = get_supabase()
-    
+
     # Fetch file record
     result = supabase.client.table("files").select("*").eq("id", str(request.fileId)).execute()
-    
+
     if not result.data or len(result.data) == 0:
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     file_record = result.data[0]
+    if file_record.get("user_id") != user.sub:
+        raise HTTPException(status_code=403, detail="Not authorized to complete this upload")
+
     bucket = file_record["bucket"]
     path = file_record["path"]
-    
+    uploads_dir = os.path.dirname(path)  # {user_id}/uploads
+
     # Verify file exists in storage
     try:
-        # List files in uploads/ directory and check if our file exists
-        files_result = supabase.storage().from_(bucket).list("uploads/")
-        
-        # Extract filename from path
+        files_result = supabase.storage().from_(bucket).list(f"{uploads_dir}/")
         filename = os.path.basename(path)
         file_exists = any(
             f.get("name") == filename
@@ -389,20 +394,21 @@ async def complete_upload(request: CompleteUploadRequest):
 
 
 @router.post("/sign-download", response_model=SignDownloadResponse)
-async def sign_download(request: SignDownloadRequest):
+async def sign_download(request: SignDownloadRequest, user: User = Depends(get_current_user)):
     """
     Generate a signed download URL for a file.
     """
     supabase = get_supabase()
-    
-    # Fetch file record
+
     result = supabase.client.table("files").select("*").eq("id", str(request.fileId)).execute()
-    
+
     if not result.data or len(result.data) == 0:
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     file_record = result.data[0]
-    
+    if file_record.get("user_id") != user.sub:
+        raise HTTPException(status_code=403, detail="Not authorized to access this file")
+
     if file_record["status"] != "uploaded":
         raise HTTPException(
             status_code=400,
@@ -454,6 +460,7 @@ async def sign_download(request: SignDownloadRequest):
 
 @router.get("", response_model=ListFilesResponse)
 async def list_files(
+    user: User = Depends(get_current_user),
     bucket: Optional[str] = Query(None, description="Filter by bucket"),
     parent_id: Optional[UUID] = Query(None, description="Filter by parent file ID"),
     status: str = Query("uploaded", description="Filter by status"),
@@ -464,11 +471,11 @@ async def list_files(
     expires_in: int = Query(60, ge=1, le=3600, description="URL expiration in seconds"),
 ):
     """
-    List files with optional filtering and pagination.
+    List files for the current user with optional filtering and pagination.
     Can optionally include signed download URLs.
     """
     supabase = get_supabase()
-    
+
     # Validate filters
     if bucket and bucket not in ALLOWED_BUCKETS:
         raise HTTPException(
@@ -486,9 +493,9 @@ async def list_files(
             detail=f"Type must be one of: {', '.join(ALLOWED_TYPES)}"
         )
     
-    # Build query
-    query = supabase.client.table("files").select("*")
-    
+    # Build query (scope to current user)
+    query = supabase.client.table("files").select("*").eq("user_id", user.sub)
+
     if bucket:
         query = query.eq("bucket", bucket)
     if parent_id:
