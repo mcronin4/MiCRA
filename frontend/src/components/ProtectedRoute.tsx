@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 
 /**
  * ProtectedRoute component - wraps pages that require authentication.
- * Redirects to login if user is not authenticated.
+ * Redirects to home page if user is not authenticated (where AuthNav shows login modal).
  */
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
@@ -18,7 +18,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      router.push('/');
     }
   }, [user, loading, router]);
 
