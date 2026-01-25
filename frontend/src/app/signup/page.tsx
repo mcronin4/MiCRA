@@ -38,9 +38,9 @@ export default function SignupPage() {
         setError(error.message);
       } else {
         setSuccess(true);
-        // Redirect to login after a brief delay
+        // Redirect to home after a brief delay
         setTimeout(() => {
-          router.push('/login');
+          router.push('/');
         }, 2000);
       }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -132,12 +132,9 @@ export default function SignupPage() {
           </div>
 
           <div className="text-center">
-            <Link
-              href="/login"
-              className="text-sm text-indigo-600 hover:text-indigo-500"
-            >
-              Already have an account? Sign in
-            </Link>
+            <p className="text-sm text-gray-600">
+              Already have an account? Use the login button in the navigation bar.
+            </p>
           </div>
         </form>
       </div>

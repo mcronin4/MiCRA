@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import { Save, FolderOpen } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import type { User } from "@supabase/supabase-js";
 
 interface TopNavBarProps {
   workflowName?: string;
@@ -9,6 +11,21 @@ interface TopNavBarProps {
   onSave?: () => void;
   onLoad?: () => void;
   canSave?: boolean;
+}
+
+/** Prefer full_name (Google), then name, display_name, user_name, username (Magic Link). */
+function displayNameFromUser(user: User | null): string | null {
+  if (!user?.user_metadata) return null;
+  const m = user.user_metadata as Record<string, unknown>;
+  const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return (
+    s(m.full_name) ??
+    s(m.name) ??
+    s(m.display_name) ??
+    s(m.user_name) ??
+    s(m.username) ??
+    null
+  );
 }
 
 export const TopNavBar: React.FC<TopNavBarProps> = ({
@@ -20,6 +37,9 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(workflowName);
+  const { user } = useAuth();
+  const displayName = displayNameFromUser(user);
+  const projectsLabel = user && displayName ? `${displayName}'s Projects` : "My Projects";
 
   const handleNameSubmit = () => {
     setIsEditingName(false);
@@ -32,7 +52,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     <div className="h-12 bg-white border-b border-gray-100 flex items-center justify-between px-4">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-gray-400">My Projects</span>
+        <span className="text-gray-400">{projectsLabel}</span>
         <span className="text-gray-300">/</span>
         {isEditingName ? (
           <input

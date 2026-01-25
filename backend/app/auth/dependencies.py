@@ -4,12 +4,15 @@ Validates Supabase-issued JWT tokens on protected endpoints.
 """
 
 import os
+import logging
 from typing import Optional
 from functools import lru_cache
 from fastapi import Depends, HTTPException, status, Header
 from pydantic import BaseModel
 import jwt
 from jwt import PyJWKClient
+
+logger = logging.getLogger(__name__)
 
 
 class User(BaseModel):
@@ -20,17 +23,21 @@ class User(BaseModel):
 
 
 def get_supabase_jwks_url() -> str:
-    """Get the JWKS URL from Supabase URL."""
+    """Get the JWKS URL from Supabase URL.
+    
+    Supabase JWKS endpoint format: https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+    """
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     if not supabase_url:
         raise ValueError("SUPABASE_URL environment variable is required")
-    return f"{supabase_url}/.well-known/jwks.json"
+    return f"{supabase_url}/auth/v1/.well-known/jwks.json"
 
 
 @lru_cache(maxsize=1)
 def get_jwks_client() -> PyJWKClient:
     """Get or create cached JWKS client."""
     jwks_url = get_supabase_jwks_url()
+    logger.info(f"JWKS URL: {jwks_url}")
     return PyJWKClient(jwks_url)
 
 
@@ -67,6 +74,15 @@ def verify_jwt(token: str) -> User:
     try:
         # Get signing key from JWKS
         jwks_client = get_jwks_client()
+        
+        # Decode token header to get kid (key ID) for debugging
+        try:
+            unverified_header = jwt.get_unverified_header(token)
+            kid = unverified_header.get("kid", "N/A")
+            logger.debug(f"Token kid (key ID): {kid}")
+        except Exception as e:
+            logger.warning(f"Could not decode token header: {e}")
+        
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         
         # Decode and verify token
@@ -76,7 +92,7 @@ def verify_jwt(token: str) -> User:
         payload = jwt.decode(
             token,
             signing_key.key,
-            algorithms=["RS256"],
+            algorithms=["RS256", "ES256"],
             audience=audience,
             issuer=issuer,
         )
@@ -107,9 +123,14 @@ def verify_jwt(token: str) -> User:
         )
     except Exception as e:
         # Handle JWKS fetch errors or other unexpected errors
+        error_msg = str(e)
+        logger.error(f"Token verification failed: {error_msg}")
+        logger.error(f"JWKS URL: {get_supabase_jwks_url()}")
+        logger.error(f"Issuer: {get_jwt_issuer()}")
+        logger.error(f"Audience: {get_jwt_audience()}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Token verification failed: {str(e)}"
+            detail=f"Token verification failed: {error_msg}"
         )
 
 

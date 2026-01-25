@@ -12,7 +12,7 @@ export function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
 
   // Allow auth pages and public assets
-  if (pathname.startsWith('/login') || pathname.startsWith('/signup')) {
+  if (pathname.startsWith('/signup')) {
     return NextResponse.next();
   }
 
