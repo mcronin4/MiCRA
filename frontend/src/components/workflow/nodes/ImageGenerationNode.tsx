@@ -8,6 +8,7 @@ import {
   generateImage,
   GenerateImageRequest,
 } from "@/lib/fastapi/image-generation";
+import { getImageBase64, getImageSrc } from "@/lib/utils/imageUtils";
 import { NodeConfig } from "@/types/workflow";
 import {
   Image as ImageIcon,
@@ -110,7 +111,9 @@ export function ImageGenerationNode({ id }: NodeProps) {
       };
 
       if (selectedImage) {
-        request.input_image = selectedImage.base64;
+        // Get base64 from signedUrl if needed
+        const base64 = selectedImage.base64 || await getImageBase64(selectedImage);
+        request.input_image = base64;
       }
 
       const response = await generateImage(request);
@@ -220,7 +223,7 @@ export function ImageGenerationNode({ id }: NodeProps) {
               className="nodrag relative rounded-xl overflow-hidden cursor-pointer group border border-slate-200"
             >
               <Image
-                src={selectedImage.base64}
+                src={getImageSrc(selectedImage)}
                 alt={selectedImage.name}
                 width={280}
                 height={140}
@@ -287,7 +290,7 @@ export function ImageGenerationNode({ id }: NodeProps) {
                   `}
                 >
                   <Image
-                    src={image.base64}
+                    src={getImageSrc(image)}
                     alt={image.name}
                     fill
                     className="object-cover"

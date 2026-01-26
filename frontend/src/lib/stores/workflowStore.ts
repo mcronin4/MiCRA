@@ -16,7 +16,9 @@ export interface WorkflowNodeState {
 // Image bucket item for centralized image storage
 export interface ImageBucketItem {
   id: string
-  base64: string
+  base64?: string  // Optional for backward compatibility, prefer signedUrl
+  fileId?: string  // File ID from R2 storage
+  signedUrl?: string  // Presigned URL for R2 storage
   name: string
   addedAt: number
 }

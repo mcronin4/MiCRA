@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useRef, useCallback } from 'react';
-import { initUpload, completeUpload } from '@/lib/fastapi/files';
-import { uploadToSignedUrl } from '@/lib/supabase/storage';
+import { initUpload, completeUpload, checkHash } from '@/lib/fastapi/files';
+import { uploadToPresignedUrl, calculateFileHash } from '@/lib/storage/r2';
 import { cn } from '@/lib/utils';
 
 interface FileUploadDropboxProps {
@@ -11,20 +11,23 @@ interface FileUploadDropboxProps {
 export const FileUploadDropbox: React.FC<FileUploadDropboxProps> = ({ className }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; name: string; status: 'uploading' | 'success' | 'error' }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; name: string; status: 'uploading' | 'success' | 'error' | 'duplicate' }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const determineFileType = (file: File): { bucket: 'media' | 'docs'; type: 'image' | 'video' | 'text' | 'pdf' | 'other' } => {
+  const determineFileType = (file: File): { bucket: 'media' | 'docs'; type: 'image' | 'video' | 'text' | 'pdf' | 'audio' | 'other' } => {
     if (file.type.startsWith('image/')) {
       return { bucket: 'media', type: 'image' };
     }
     if (file.type.startsWith('video/')) {
       return { bucket: 'media', type: 'video' };
     }
+    if (file.type.startsWith('audio/')) {
+      return { bucket: 'media', type: 'audio' };
+    }
     if (file.type === 'application/pdf') {
       return { bucket: 'docs', type: 'pdf' };
     }
-    if (file.type.startsWith('text/')) {
+    if (file.type.startsWith('text/') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
       return { bucket: 'docs', type: 'text' };
     }
     return { bucket: 'docs', type: 'other' };
@@ -38,33 +41,61 @@ export const FileUploadDropbox: React.FC<FileUploadDropboxProps> = ({ className 
     for (const file of fileArray) {
       const tempId = `${file.name}-${Date.now()}`;
       setUploadedFiles(prev => [...prev, { id: tempId, name: file.name, status: 'uploading' }]);
-      setUploadProgress(prev => ({ ...prev, [tempId]: 0 }));
+      setUploadProgress(prev => ({ ...prev, [tempId]: 10 }));
 
       try {
         // Determine bucket and type
         const { bucket, type } = determineFileType(file);
 
-        // Step 1: Initialize upload
+        // Step 1: Calculate hash
+        setUploadProgress(prev => ({ ...prev, [tempId]: 20 }));
+        const contentHash = await calculateFileHash(file);
+
+        // Step 2: Check if file already exists (deduplication)
+        setUploadProgress(prev => ({ ...prev, [tempId]: 30 }));
+        const hashCheck = await checkHash({ contentHash });
+
+        if (hashCheck.exists && hashCheck.file) {
+          // File already exists, skip upload
+          setUploadedFiles(prev => 
+            prev.map(f => f.id === tempId ? { ...f, status: 'duplicate' as const } : f)
+          );
+          setUploadProgress(prev => ({ ...prev, [tempId]: 100 }));
+
+          // Remove duplicate message after 3 seconds
+          setTimeout(() => {
+            setUploadedFiles(prev => prev.filter(f => f.id !== tempId));
+            setUploadProgress(prev => {
+              const newProgress = { ...prev };
+              delete newProgress[tempId];
+              return newProgress;
+            });
+          }, 3000);
+          continue;
+        }
+
+        // Step 3: Initialize upload
+        setUploadProgress(prev => ({ ...prev, [tempId]: 40 }));
         const initResponse = await initUpload({
           bucket,
           type,
           contentType: file.type,
           name: file.name,
+          contentHash,
           metadata: {
             uploadedAt: new Date().toISOString(),
           },
         });
 
-        // Step 2: Upload to Supabase Storage
+        // Step 4: Upload to R2
         setUploadProgress(prev => ({ ...prev, [tempId]: 50 }));
-        await uploadToSignedUrl(
+        await uploadToPresignedUrl(
           initResponse.upload.signedUrl,
-          initResponse.upload.token,
           file,
           file.type
         );
 
-        // Step 3: Complete upload
+        // Step 5: Complete upload
         setUploadProgress(prev => ({ ...prev, [tempId]: 90 }));
         await completeUpload({
           fileId: initResponse.file.id,
@@ -196,7 +227,8 @@ export const FileUploadDropbox: React.FC<FileUploadDropboxProps> = ({ className 
                 "text-xs p-2 rounded border",
                 file.status === 'success' && "bg-green-50 border-green-200 text-green-800",
                 file.status === 'error' && "bg-red-50 border-red-200 text-red-800",
-                file.status === 'uploading' && "bg-blue-50 border-blue-200 text-blue-800"
+                file.status === 'uploading' && "bg-blue-50 border-blue-200 text-blue-800",
+                file.status === 'duplicate' && "bg-yellow-50 border-yellow-200 text-yellow-800"
               )}
             >
               <div className="flex items-center justify-between mb-1">
@@ -211,6 +243,11 @@ export const FileUploadDropbox: React.FC<FileUploadDropboxProps> = ({ className 
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                   </svg>
                 )}
+                {file.status === 'duplicate' && (
+                  <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H6a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H16a1 1 0 110 2h-2a1 1 0 01-1-1v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                  </svg>
+                )}
               </div>
               {file.status === 'uploading' && uploadProgress[file.id] !== undefined && (
                 <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
@@ -219,6 +256,9 @@ export const FileUploadDropbox: React.FC<FileUploadDropboxProps> = ({ className 
                     style={{ width: `${uploadProgress[file.id]}%` }}
                   />
                 </div>
+              )}
+              {file.status === 'duplicate' && (
+                <div className="text-xs mt-1">File already exists (deduplicated)</div>
               )}
             </div>
           ))}

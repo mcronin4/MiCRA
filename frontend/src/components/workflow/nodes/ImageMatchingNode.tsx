@@ -9,6 +9,7 @@ import {
   ImageWithId,
   ImageMatchResult,
 } from "@/lib/fastapi/image-matching";
+import { getImageBase64, getImageSrc } from "@/lib/utils/imageUtils";
 import { NodeConfig } from "@/types/workflow";
 import {
   Check,
@@ -103,10 +104,13 @@ export function ImageMatchingNode({ id }: NodeProps) {
       if (!text.trim()) throw new Error("No text entered");
 
       // Convert bucket items to ImageWithId format for the API
-      const imagesForApi: ImageWithId[] = selectedImages.map((img) => ({
-        id: img.id,
-        base64: img.base64,
-      }));
+      // Fetch base64 from signedUrl if needed
+      const imagesForApi: ImageWithId[] = await Promise.all(
+        selectedImages.map(async (img) => ({
+          id: img.id,
+          base64: img.base64 || await getImageBase64(img),
+        }))
+      );
 
       // Call API
       const response = await matchImagesToText(imagesForApi, text);
@@ -224,7 +228,7 @@ export function ImageMatchingNode({ id }: NodeProps) {
                     `}
                   >
                     <Image
-                      src={image.base64}
+                      src={getImageSrc(image)}
                       alt={image.name}
                       fill
                       className={`object-cover ${result?.status === "failed" ? "opacity-50" : ""}`}

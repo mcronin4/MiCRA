@@ -1,15 +1,25 @@
 /**
- * File management API client for Supabase Storage integration.
- * Handles upload initialization, completion, download signing, and listing.
+ * File management API client for R2 (S3-compatible) storage integration.
+ * Handles upload initialization, completion, download signing, listing, and deletion.
  */
 
 import { apiClient } from './client';
 
+export interface CheckHashRequest {
+  contentHash: string;
+}
+
+export interface CheckHashResponse {
+  exists: boolean;
+  file?: FileResponse | null;
+}
+
 export interface InitUploadRequest {
   bucket: 'media' | 'docs';
-  type: 'image' | 'video' | 'text' | 'pdf' | 'other';
+  type: 'image' | 'video' | 'text' | 'pdf' | 'audio' | 'other';
   contentType: string;
   name: string;
+  contentHash: string;
   parentId?: string;
   metadata?: Record<string, unknown>;
 }
@@ -23,6 +33,7 @@ export interface FileResponse {
   name: string;
   parentId?: string;
   contentType: string;
+  contentHash?: string;
   status: 'pending' | 'uploaded' | 'failed' | 'deleted';
   metadata: Record<string, unknown>;
   createdAt: string;
@@ -70,16 +81,41 @@ export interface ListFilesParams {
   bucket?: 'media' | 'docs';
   parentId?: string;
   status?: 'pending' | 'uploaded' | 'failed' | 'deleted';
-  type?: 'image' | 'video' | 'text' | 'pdf' | 'other';
+  type?: 'image' | 'video' | 'text' | 'pdf' | 'audio' | 'other';
   limit?: number;
   offset?: number;
   includeUrls?: boolean;
   expiresIn?: number;
 }
 
+export interface DeleteFileRequest {
+  fileId: string;
+}
+
+export interface DeleteFileResponse {
+  ok: boolean;
+  deleted: boolean;
+}
+
+/**
+ * Check if a file with the given content hash already exists for the current user.
+ * Used for deduplication before upload.
+ */
+export async function checkHash(
+  request: CheckHashRequest
+): Promise<CheckHashResponse> {
+  return apiClient.request<CheckHashResponse>('/v1/files/check-hash', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+}
+
 /**
  * Initialize a file upload.
- * Returns a signed upload URL and file metadata.
+ * Returns a presigned upload URL and file metadata.
  */
 export async function initUpload(
   request: InitUploadRequest
@@ -148,6 +184,22 @@ export async function listFiles(
   
   return apiClient.request<ListFilesResponse>(url, {
     method: 'GET',
+  });
+}
+
+/**
+ * Delete a file.
+ * Deletes the database record. Only deletes from R2 if no other users have files with the same content_hash.
+ */
+export async function deleteFile(
+  request: DeleteFileRequest
+): Promise<DeleteFileResponse> {
+  return apiClient.request<DeleteFileResponse>('/v1/files/delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
   });
 }
 
