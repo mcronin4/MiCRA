@@ -54,11 +54,37 @@ class ApiClient {
 
         const baseUrl = this.getBaseUrl();
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        const fullUrl = `${baseUrl}${cleanEndpoint}`;
 
-        const response = await fetch(`${baseUrl}${cleanEndpoint}`, {
-            ...options,
-            headers: isFormData ? authHeaders : headers, // Preserve auth headers even for FormData
-        });
+        let response: Response;
+        try {
+            response = await fetch(fullUrl, {
+                ...options,
+                headers: isFormData ? authHeaders : headers, // Preserve auth headers even for FormData
+            });
+        } catch (error) {
+            // Handle network errors (Failed to fetch, CORS, etc.)
+            const errorMessage = error instanceof Error ? error.message : "Unknown network error";
+            let detailedMessage = `Network error: ${errorMessage}`;
+            
+            // Provide helpful context for common network errors
+            if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
+                detailedMessage = `Failed to connect to backend at ${fullUrl}. ` +
+                    `Please ensure the backend server is running and accessible. ` +
+                    `Error: ${errorMessage}`;
+            } else if (errorMessage.includes("CORS")) {
+                detailedMessage = `CORS error: The backend may not be configured to allow requests from this origin. ` +
+                    `Error: ${errorMessage}`;
+            }
+            
+            console.error("API request failed:", {
+                url: fullUrl,
+                method: options.method || "GET",
+                error: detailedMessage,
+            });
+            
+            throw new HttpError(detailedMessage, 0); // Status 0 indicates network error
+        }
 
         if (!response.ok) {
             // Try to extract error details from FastAPI response

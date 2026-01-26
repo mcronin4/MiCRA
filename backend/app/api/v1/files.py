@@ -9,10 +9,13 @@ from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 import os
 import re
+import logging
 from ...auth.dependencies import User, get_current_user
 from ...db.supabase import get_supabase
 from ...storage.r2 import get_r2, R2_BUCKET
 from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -239,24 +242,6 @@ def get_type_prefix(file_type: str) -> str:
     return type_map.get(file_type, "other")
 
 
-def log_file_access(
-    supabase: Any,
-    file_id: UUID,
-    action: str,
-    info: Optional[Dict[str, Any]] = None
-):
-    """Log file access (optional)."""
-    try:
-        supabase.client.table("file_access_log").insert({
-            "file_id": str(file_id),
-            "action": action,
-            "info": info or {}
-        }).execute()
-    except Exception as e:
-        # Logging is optional, don't fail the request
-        print(f"Failed to log file access: {e}")
-
-
 # Endpoints
 @router.post("/check-hash", response_model=CheckHashResponse)
 async def check_hash(request: CheckHashRequest, user: User = Depends(get_current_user)):
@@ -312,7 +297,51 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
     type_prefix = get_type_prefix(request.type)
     path = f"{type_prefix}/{request.contentHash}.{extension}"
 
-    # Insert file record
+    # Check if a file with this path already exists (regardless of user)
+    # This handles the case where another user has already uploaded the same file
+    try:
+        existing_file_result = supabase.client.table("files").select("*").eq(
+            "path", path
+        ).execute()
+        
+        if existing_file_result.data and len(existing_file_result.data) > 0:
+            # File already exists - reuse it (could be uploaded or pending)
+            file_record = existing_file_result.data[0]
+            logger.info(f"File with path {path} already exists, reusing existing record")
+            
+            # Create presigned upload URL (allows re-upload if needed, or skip if already uploaded)
+            try:
+                signed_url = r2.client.generate_presigned_url(
+                    'put_object',
+                    Params={
+                        'Bucket': R2_BUCKET,
+                        'Key': path,
+                        'ContentType': request.contentType,
+                    },
+                    ExpiresIn=DEFAULT_UPLOAD_EXPIRATION
+                )
+                
+                return InitUploadResponse(
+                    file=FileResponse(**file_record),
+                    upload={
+                        "signedUrl": signed_url,
+                        "token": "",  # S3 doesn't use tokens
+                    }
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to create presigned upload URL: {str(e)}"
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # If checking for existing file fails, continue with normal flow
+        # (don't fail the request, just log and continue)
+        logger.warning(f"Error checking for existing file: {str(e)}")
+
+    # Insert file record (file doesn't exist yet)
+    file_record = None
     try:
         file_data = {
             "id": str(file_id),
@@ -336,48 +365,75 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
         
         file_record = result.data[0]
         
-        # Create presigned upload URL for R2
-        try:
-            signed_url = r2.client.generate_presigned_url(
-                'put_object',
-                Params={
-                    'Bucket': R2_BUCKET,
-                    'Key': path,
-                    'ContentType': request.contentType,
-                },
-                ExpiresIn=DEFAULT_UPLOAD_EXPIRATION
-            )
-            
-            # Log access
-            log_file_access(
-                supabase,
-                file_id,
-                "sign_upload",
-                {"bucket": R2_BUCKET, "path": path}
-            )
-            
-            return InitUploadResponse(
-                file=FileResponse(**file_record),
-                upload={
-                    "signedUrl": signed_url,
-                    "token": "",  # S3 doesn't use tokens
-                }
-            )
-        except Exception as e:
-            # Clean up file record if signing fails
+    except Exception as insert_error:
+        # Handle duplicate key constraint violation (path already exists)
+        # This can happen due to race conditions or if the check above missed it
+        error_str = str(insert_error)
+        if "duplicate key value violates unique constraint" in error_str.lower() or "23505" in error_str:
+            logger.info(f"Duplicate path detected for {path} during insert, fetching existing file")
+            try:
+                # Fetch the existing file record
+                existing_file_result = supabase.client.table("files").select("*").eq(
+                    "path", path
+                ).execute()
+                
+                if existing_file_result.data and len(existing_file_result.data) > 0:
+                    file_record = existing_file_result.data[0]
+                    logger.info(f"Successfully retrieved existing file record for {path}")
+                else:
+                    # Unexpected: duplicate key but file not found
+                    logger.error(f"Duplicate key error but file not found for path {path}")
+                    raise HTTPException(
+                        status_code=409,
+                        detail="File with this content already exists but could not be retrieved. Please try again."
+                    )
+            except HTTPException:
+                raise
+            except Exception as check_error:
+                logger.error(f"Error fetching existing file after duplicate key: {str(check_error)}")
+                raise HTTPException(
+                    status_code=409,
+                    detail="File with this content already exists. Please try again."
+                )
+        else:
+            # Re-raise if it's not a duplicate key error
+            raise HTTPException(status_code=500, detail=f"Error initializing upload: {error_str}")
+    
+    # Ensure we have a file_record at this point
+    if not file_record:
+        raise HTTPException(status_code=500, detail="Failed to obtain file record")
+    
+    # Create presigned upload URL for R2
+    try:
+        signed_url = r2.client.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': R2_BUCKET,
+                'Key': path,
+                'ContentType': request.contentType,
+            },
+            ExpiresIn=DEFAULT_UPLOAD_EXPIRATION
+        )
+        logger.debug(f"Generated presigned URL for path: {path}, URL length: {len(signed_url)}")
+        
+        return InitUploadResponse(
+            file=FileResponse(**file_record),
+            upload={
+                "signedUrl": signed_url,
+                "token": "",  # S3 doesn't use tokens
+            }
+        )
+    except Exception as e:
+        # Clean up file record if signing fails (only if we created a new one)
+        if 'file_id' in locals():
             try:
                 supabase.client.table("files").delete().eq("id", str(file_id)).execute()
             except:
                 pass
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create presigned upload URL: {str(e)}"
-            )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error initializing upload: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create presigned upload URL: {str(e)}"
+        )
 
 
 @router.post("/complete-upload", response_model=CompleteUploadResponse)
@@ -396,10 +452,27 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
         raise HTTPException(status_code=404, detail="File not found")
 
     file_record = result.data[0]
-    if file_record.get("user_id") != user.sub:
-        raise HTTPException(status_code=403, detail="Not authorized to complete this upload")
-
     path = file_record["path"]
+    file_status = file_record.get("status")
+    
+    # If file already belongs to another user but is uploaded, allow completion
+    # This handles the case where a duplicate file was detected during init_upload
+    file_owner = file_record.get("user_id")
+    is_owner = file_owner == user.sub
+    
+    # If file is already uploaded and belongs to another user, we can still return it
+    # (the file was already uploaded, so no need to update)
+    if file_status == "uploaded" and not is_owner:
+        # File already exists and is uploaded by another user
+        # Just return it without updating (since we can't update another user's file)
+        return CompleteUploadResponse(
+            ok=True,
+            file=FileResponse(**file_record)
+        )
+    
+    # For files owned by the current user, or pending files, proceed normally
+    if not is_owner and file_status != "pending":
+        raise HTTPException(status_code=403, detail="Not authorized to complete this upload")
     
     # Verify file exists in R2
     try:
@@ -416,30 +489,26 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
                     detail=f"File size exceeds maximum of {MAX_FILE_SIZE_BYTES} bytes"
                 )
         
-        # Update file record
-        update_data = {
-            "status": "uploaded",
-            "uploaded_at": datetime.utcnow().isoformat(),
-        }
-        if size_bytes is not None:
-            update_data["size_bytes"] = size_bytes
-        
-        update_result = supabase.client.table("files").update(update_data).eq(
-            "id", str(request.fileId)
-        ).execute()
-        
-        if not update_result.data:
-            raise HTTPException(status_code=500, detail="Failed to update file record")
-        
-        updated_file = update_result.data[0]
-        
-        # Log access
-        log_file_access(
-            supabase,
-            request.fileId,
-            "complete_upload",
-            {"size_bytes": size_bytes}
-        )
+        # Update file record (only if we own it or it's pending)
+        if is_owner or file_status == "pending":
+            update_data = {
+                "status": "uploaded",
+                "uploaded_at": datetime.utcnow().isoformat(),
+            }
+            if size_bytes is not None:
+                update_data["size_bytes"] = size_bytes
+            
+            update_result = supabase.client.table("files").update(update_data).eq(
+                "id", str(request.fileId)
+            ).execute()
+            
+            if not update_result.data:
+                raise HTTPException(status_code=500, detail="Failed to update file record")
+            
+            updated_file = update_result.data[0]
+        else:
+            # Use existing file record
+            updated_file = file_record
         
         return CompleteUploadResponse(
             ok=True,
@@ -494,17 +563,9 @@ async def sign_download(request: SignDownloadRequest, user: User = Depends(get_c
                 'Bucket': R2_BUCKET,
                 'Key': path,
             },
-            ExpiresIn=expires_in
-        )
-        
-        # Log access
-        log_file_access(
-            supabase,
-            request.fileId,
-            "sign_download",
-            {"expires_in": expires_in}
-        )
-        
+                ExpiresIn=expires_in
+            )
+            
         return SignDownloadResponse(
             signedUrl=signed_url
         )
@@ -563,14 +624,6 @@ async def delete_file(request: DeleteFileRequest, user: User = Depends(get_curre
         
         if not update_result.data:
             raise HTTPException(status_code=500, detail="Failed to update file record")
-        
-        # Log access
-        log_file_access(
-            supabase,
-            request.fileId,
-            "delete",
-            {"deleted_from_r2": should_delete_from_r2}
-        )
         
         return DeleteFileResponse(
             ok=True,
