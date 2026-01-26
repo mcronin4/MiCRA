@@ -1,44 +1,60 @@
 """
-File management endpoints for Supabase Storage integration.
-Handles upload initialization, completion, download signing, and listing.
+File management endpoints for Cloudflare R2 (S3-compatible) storage.
+Handles upload initialization, completion, download signing, listing, and deletion.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 import os
 import re
 from ...auth.dependencies import User, get_current_user
 from ...db.supabase import get_supabase
+from ...storage.r2 import get_r2, R2_BUCKET
+from botocore.exceptions import ClientError
 
 router = APIRouter(prefix="/files", tags=["files"])
 
 # Constants
-ALLOWED_BUCKETS = {"media", "docs"}
-ALLOWED_TYPES = {"image", "video", "text", "pdf", "other"}
+ALLOWED_BUCKETS = {"media", "docs"}  # Kept for API compatibility, but all use "micra" bucket
+ALLOWED_TYPES = {"image", "video", "text", "pdf", "audio", "other"}
 ALLOWED_STATUSES = {"pending", "uploaded", "failed", "deleted"}
 
 # Content type mappings
 MEDIA_CONTENT_TYPES = {
     "image": ["image/"],
     "video": ["video/"],
+    "audio": ["audio/"],
 }
 DOCS_CONTENT_TYPES = {
-    "text": ["text/"],
+    "text": ["text/", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],  # docx
     "pdf": ["application/pdf"],
 }
 
 # Max file size: 500MB
 MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
 
+# Presigned URL expiration (default 1 hour for uploads, configurable for downloads)
+DEFAULT_UPLOAD_EXPIRATION = 3600  # 1 hour
+
 
 # Pydantic Models
+class CheckHashRequest(BaseModel):
+    contentHash: str = Field(..., alias="contentHash", description="SHA-256 hash of file content")
+
+
+class CheckHashResponse(BaseModel):
+    exists: bool
+    file: Optional[Dict[str, Any]] = None  # Existing file record if found
+
+
 class InitUploadRequest(BaseModel):
-    bucket: str = Field(..., description="Bucket name: 'media' or 'docs'")
-    type: str = Field(..., description="File type: 'image', 'video', 'text', 'pdf', or 'other'")
+    bucket: str = Field(..., description="Bucket name: 'media' or 'docs' (for compatibility)")
+    type: str = Field(..., description="File type: 'image', 'video', 'text', 'pdf', 'audio', or 'other'")
     contentType: str = Field(..., alias="contentType", description="MIME content type")
     name: str = Field(..., description="File name")
+    contentHash: str = Field(..., alias="contentHash", description="SHA-256 hash of file content")
     parentId: Optional[UUID] = Field(None, alias="parentId", description="Optional parent file ID")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
     
@@ -68,6 +84,8 @@ class InitUploadRequest(BaseModel):
                 allowed_prefixes = MEDIA_CONTENT_TYPES["image"]
             elif file_type == "video":
                 allowed_prefixes = MEDIA_CONTENT_TYPES["video"]
+            elif file_type == "audio":
+                allowed_prefixes = MEDIA_CONTENT_TYPES["audio"]
             
             if not any(v.startswith(prefix) for prefix in allowed_prefixes):
                 raise ValueError(
@@ -99,6 +117,7 @@ class FileResponse(BaseModel):
     name: str
     parentId: Optional[UUID] = Field(None, alias="parent_id")
     contentType: str = Field(..., alias="content_type")
+    contentHash: Optional[str] = Field(None, alias="content_hash")
     status: str
     metadata: Dict[str, Any]
     createdAt: datetime = Field(..., alias="created_at")
@@ -111,7 +130,7 @@ class FileResponse(BaseModel):
 
 class InitUploadResponse(BaseModel):
     file: FileResponse
-    upload: Dict[str, str]  # { signedUrl, token }
+    upload: Dict[str, str]  # { signedUrl, token } - token is empty for S3
 
 
 class CompleteUploadRequest(BaseModel):
@@ -137,6 +156,18 @@ class SignDownloadRequest(BaseModel):
 
 class SignDownloadResponse(BaseModel):
     signedUrl: str
+
+
+class DeleteFileRequest(BaseModel):
+    fileId: UUID = Field(..., alias="fileId")
+    
+    class Config:
+        populate_by_name = True
+
+
+class DeleteFileResponse(BaseModel):
+    ok: bool
+    deleted: bool  # Whether the physical file was deleted from R2
 
 
 class FileListItem(FileResponse):
@@ -178,12 +209,34 @@ def get_extension_from_content_type(content_type: str) -> Optional[str]:
         "video/mpeg": "mpeg",
         "video/quicktime": "mov",
         "video/webm": "webm",
+        "audio/mpeg": "mp3",
+        "audio/mp3": "mp3",
+        "audio/wav": "wav",
+        "audio/wave": "wav",
+        "audio/ogg": "ogg",
+        "audio/aac": "aac",
+        "audio/flac": "flac",
         "text/plain": "txt",
         "text/markdown": "md",
         "text/html": "html",
         "application/pdf": "pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     }
     return mapping.get(content_type.lower())
+
+
+def get_type_prefix(file_type: str) -> str:
+    """Get the storage prefix for a file type."""
+    # Map types to their storage prefixes
+    type_map = {
+        "image": "images",
+        "video": "videos",
+        "audio": "audio",
+        "text": "text",
+        "pdf": "text",  # PDFs go to text/ prefix
+        "other": "other",
+    }
+    return type_map.get(file_type, "other")
 
 
 def log_file_access(
@@ -205,14 +258,43 @@ def log_file_access(
 
 
 # Endpoints
+@router.post("/check-hash", response_model=CheckHashResponse)
+async def check_hash(request: CheckHashRequest, user: User = Depends(get_current_user)):
+    """
+    Check if a file with the given content hash already exists for the current user.
+    Used for deduplication before upload.
+    """
+    supabase = get_supabase()
+    user_id = user.sub
+    
+    try:
+        # Check if a file with this hash exists for this user
+        result = supabase.client.table("files").select("*").eq(
+            "user_id", user_id
+        ).eq("content_hash", request.contentHash).eq("status", "uploaded").execute()
+        
+        if result.data and len(result.data) > 0:
+            # Return the first matching file
+            return CheckHashResponse(
+                exists=True,
+                file=result.data[0]
+            )
+        
+        return CheckHashResponse(exists=False, file=None)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error checking hash: {str(e)}")
+
+
 @router.post("/init-upload", response_model=InitUploadResponse)
 async def init_upload(request: InitUploadRequest, user: User = Depends(get_current_user)):
     """
     Initialize a file upload.
-    Creates a database record and returns a signed upload URL.
-    Files are stored at {user_id}/uploads/{file_id}.{extension}.
+    Creates a database record and returns a presigned upload URL for R2.
+    Files are stored at {type}/{content_hash}.{extension}.
     """
     supabase = get_supabase()
+    r2 = get_r2()
     user_id = user.sub
 
     # Generate file ID
@@ -220,25 +302,27 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
 
     # Sanitize and determine extension
     sanitized_name = sanitize_filename(request.name)
-    extension = get_extension_from_name(sanitized_name)
+    extension = get_extension_from_content_type(request.contentType)
     if not extension:
-        extension = get_extension_from_content_type(request.contentType)
+        extension = get_extension_from_name(sanitized_name)
     if not extension:
         extension = "bin"
 
-    # Set path: {user_id}/uploads/{file_id}.{extension}
-    path = f"{user_id}/uploads/{file_id}.{extension}"
+    # Get type prefix and build path: {type}/{content_hash}.{extension}
+    type_prefix = get_type_prefix(request.type)
+    path = f"{type_prefix}/{request.contentHash}.{extension}"
 
     # Insert file record
     try:
         file_data = {
             "id": str(file_id),
             "user_id": user_id,
-            "bucket": request.bucket,
+            "bucket": request.bucket,  # Keep for compatibility
             "path": path,
             "type": request.type,
             "name": sanitized_name,
             "content_type": request.contentType,
+            "content_hash": request.contentHash,
             "status": "pending",
             "metadata": request.metadata or {},
         }
@@ -252,44 +336,31 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
         
         file_record = result.data[0]
         
-        # Create signed upload URL
+        # Create presigned upload URL for R2
         try:
-            upload_result = supabase.storage().from_(request.bucket).create_signed_upload_url(
-                path
+            signed_url = r2.client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': R2_BUCKET,
+                    'Key': path,
+                    'ContentType': request.contentType,
+                },
+                ExpiresIn=DEFAULT_UPLOAD_EXPIRATION
             )
-            
-            # Handle different response formats
-            signed_url = None
-            token = None
-            
-            if isinstance(upload_result, dict):
-                signed_url = upload_result.get("signedUrl") or upload_result.get("signed_url") or upload_result.get("url")
-                token = upload_result.get("token") or upload_result.get("path")
-            elif hasattr(upload_result, "signedUrl"):
-                signed_url = upload_result.signedUrl
-                token = getattr(upload_result, "token", None)
-            
-            if not signed_url:
-                # Clean up file record if signing fails
-                supabase.client.table("files").delete().eq("id", str(file_id)).execute()
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to create signed upload URL: invalid response format"
-                )
             
             # Log access
             log_file_access(
                 supabase,
                 file_id,
                 "sign_upload",
-                {"bucket": request.bucket, "path": path}
+                {"bucket": R2_BUCKET, "path": path}
             )
             
             return InitUploadResponse(
                 file=FileResponse(**file_record),
                 upload={
                     "signedUrl": signed_url,
-                    "token": token or "",
+                    "token": "",  # S3 doesn't use tokens
                 }
             )
         except Exception as e:
@@ -300,7 +371,7 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
                 pass
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to create signed upload URL: {str(e)}"
+                detail=f"Failed to create presigned upload URL: {str(e)}"
             )
         
     except HTTPException:
@@ -313,9 +384,10 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
 async def complete_upload(request: CompleteUploadRequest, user: User = Depends(get_current_user)):
     """
     Complete a file upload.
-    Verifies the file exists in storage and updates the database record.
+    Verifies the file exists in R2 and updates the database record.
     """
     supabase = get_supabase()
+    r2 = get_r2()
 
     # Fetch file record
     result = supabase.client.table("files").select("*").eq("id", str(request.fileId)).execute()
@@ -327,24 +399,11 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
     if file_record.get("user_id") != user.sub:
         raise HTTPException(status_code=403, detail="Not authorized to complete this upload")
 
-    bucket = file_record["bucket"]
     path = file_record["path"]
-    uploads_dir = os.path.dirname(path)  # {user_id}/uploads
-
-    # Verify file exists in storage
+    
+    # Verify file exists in R2
     try:
-        files_result = supabase.storage().from_(bucket).list(f"{uploads_dir}/")
-        filename = os.path.basename(path)
-        file_exists = any(
-            f.get("name") == filename
-            for f in files_result
-        )
-        
-        if not file_exists:
-            raise HTTPException(
-                status_code=404,
-                detail=f"File not found in storage at {bucket}/{path}"
-            )
+        r2.client.head_object(Bucket=R2_BUCKET, Key=path)
         
         # Validate size if provided
         size_bytes = request.sizeBytes
@@ -387,6 +446,14 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
             file=FileResponse(**updated_file)
         )
         
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code == '404' or error_code == 'NoSuchKey':
+            raise HTTPException(
+                status_code=404,
+                detail=f"File not found in R2 at {path}"
+            )
+        raise HTTPException(status_code=500, detail=f"Error verifying file in R2: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
@@ -396,9 +463,10 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
 @router.post("/sign-download", response_model=SignDownloadResponse)
 async def sign_download(request: SignDownloadRequest, user: User = Depends(get_current_user)):
     """
-    Generate a signed download URL for a file.
+    Generate a presigned download URL for a file in R2.
     """
     supabase = get_supabase()
+    r2 = get_r2()
 
     result = supabase.client.table("files").select("*").eq("id", str(request.fileId)).execute()
 
@@ -415,47 +483,104 @@ async def sign_download(request: SignDownloadRequest, user: User = Depends(get_c
             detail=f"File status is '{file_record['status']}', must be 'uploaded'"
         )
     
-    bucket = file_record["bucket"]
     path = file_record["path"]
+    expires_in = request.expiresIn or 60
     
     try:
-        # Create signed URL
-        signed_url_result = supabase.storage().from_(bucket).create_signed_url(
-            path,
-            expires_in=request.expiresIn or 60
+        # Create presigned URL for download
+        signed_url = r2.client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': R2_BUCKET,
+                'Key': path,
+            },
+            ExpiresIn=expires_in
         )
-        
-        # Handle different response formats
-        signed_url = None
-        if isinstance(signed_url_result, dict):
-            signed_url = signed_url_result.get("signedURL") or signed_url_result.get("signed_url") or signed_url_result.get("url")
-        elif hasattr(signed_url_result, "signedURL"):
-            signed_url = signed_url_result.signedURL
-        elif isinstance(signed_url_result, str):
-            signed_url = signed_url_result
-        
-        if not signed_url:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to create signed download URL: invalid response format"
-            )
         
         # Log access
         log_file_access(
             supabase,
             request.fileId,
             "sign_download",
-            {"expires_in": request.expiresIn}
+            {"expires_in": expires_in}
         )
         
         return SignDownloadResponse(
             signedUrl=signed_url
         )
         
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error signing download: {str(e)}")
+
+
+@router.post("/delete", response_model=DeleteFileResponse)
+async def delete_file(request: DeleteFileRequest, user: User = Depends(get_current_user)):
+    """
+    Delete a file.
+    Deletes the database record. Only deletes from R2 if no other users have files with the same content_hash.
+    """
+    supabase = get_supabase()
+    r2 = get_r2()
+
+    # Fetch file record
+    result = supabase.client.table("files").select("*").eq("id", str(request.fileId)).execute()
+
+    if not result.data or len(result.data) == 0:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record = result.data[0]
+    if file_record.get("user_id") != user.sub:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this file")
+
+    path = file_record["path"]
+    content_hash = file_record.get("content_hash")
+    
+    try:
+        # Check if other users have files with the same content_hash
+        should_delete_from_r2 = False
+        if content_hash:
+            other_files_result = supabase.client.table("files").select("id").eq(
+                "content_hash", content_hash
+            ).neq("id", str(request.fileId)).eq("status", "uploaded").execute()
+            
+            # If no other files with this hash exist, we can delete from R2
+            if not other_files_result.data or len(other_files_result.data) == 0:
+                should_delete_from_r2 = True
+        
+        # Delete from R2 if no other users reference it
+        if should_delete_from_r2:
+            try:
+                r2.client.delete_object(Bucket=R2_BUCKET, Key=path)
+            except Exception as e:
+                # Log but don't fail - the DB record will still be deleted
+                print(f"Warning: Failed to delete file from R2: {e}")
+        
+        # Update file record to deleted status
+        update_result = supabase.client.table("files").update({
+            "status": "deleted",
+            "deleted_at": datetime.utcnow().isoformat(),
+        }).eq("id", str(request.fileId)).execute()
+        
+        if not update_result.data:
+            raise HTTPException(status_code=500, detail="Failed to update file record")
+        
+        # Log access
+        log_file_access(
+            supabase,
+            request.fileId,
+            "delete",
+            {"deleted_from_r2": should_delete_from_r2}
+        )
+        
+        return DeleteFileResponse(
+            ok=True,
+            deleted=should_delete_from_r2
+        )
+        
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error signing download: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
 
 
 @router.get("", response_model=ListFilesResponse)
@@ -472,9 +597,10 @@ async def list_files(
 ):
     """
     List files for the current user with optional filtering and pagination.
-    Can optionally include signed download URLs.
+    Can optionally include presigned download URLs.
     """
     supabase = get_supabase()
+    r2 = get_r2()
 
     # Validate filters
     if bucket and bucket not in ALLOWED_BUCKETS:
@@ -516,51 +642,23 @@ async def list_files(
         
         items = [FileListItem(**item) for item in result.data]
         
-        # If include_urls, batch sign URLs
+        # If include_urls, generate presigned URLs for R2
         if include_urls:
-            # Group items by bucket for batch signing
-            items_by_bucket: Dict[str, List[FileListItem]] = {}
             for item in items:
-                if item.bucket not in items_by_bucket:
-                    items_by_bucket[item.bucket] = []
-                items_by_bucket[item.bucket].append(item)
-            
-            # Sign URLs for each bucket
-            for bucket_name, bucket_items in items_by_bucket.items():
-                paths = [item.path for item in bucket_items]
-                
-                try:
-                    # Note: Supabase Python client may not have batch signing
-                    # So we'll sign individually
-                    signed_urls = {}
-                    for item in bucket_items:
-                        try:
-                            signed_result = supabase.storage().from_(bucket_name).create_signed_url(
-                                item.path,
-                                expires_in=expires_in
-                            )
-                            # Handle different response formats
-                            signed_url = None
-                            if isinstance(signed_result, dict):
-                                signed_url = signed_result.get("signedURL") or signed_result.get("signed_url") or signed_result.get("url")
-                            elif hasattr(signed_result, "signedURL"):
-                                signed_url = signed_result.signedURL
-                            elif isinstance(signed_result, str):
-                                signed_url = signed_result
-                            
-                            if signed_url:
-                                signed_urls[item.path] = signed_url
-                        except Exception as e:
-                            print(f"Error signing URL for {item.path}: {e}")
-                            # Continue without URL for this item
-                    
-                    # Attach URLs
-                    for item in bucket_items:
-                        item.signedUrl = signed_urls.get(item.path)
-                        
-                except Exception as e:
-                    print(f"Error signing URLs for bucket {bucket_name}: {e}")
-                    # Continue without URLs rather than failing
+                if item.status == "uploaded":
+                    try:
+                        signed_url = r2.client.generate_presigned_url(
+                            'get_object',
+                            Params={
+                                'Bucket': R2_BUCKET,
+                                'Key': item.path,
+                            },
+                            ExpiresIn=expires_in
+                        )
+                        item.signedUrl = signed_url
+                    except Exception as e:
+                        print(f"Error signing URL for {item.path}: {e}")
+                        # Continue without URL for this item
         
         # Determine next offset
         next_offset = None
@@ -571,4 +669,3 @@ async def list_files(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing files: {str(e)}")
-
