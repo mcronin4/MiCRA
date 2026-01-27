@@ -1,0 +1,511 @@
+[
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_0_t_354.jpg",
+    "timestamp": 0.3545208333333333,
+    "scene_id": 0,
+    "rejection_reason": "too_dark",
+    "exposure_score": 32.67,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_1_t_1584.jpg",
+    "timestamp": 1.5849166666666665,
+    "scene_id": 1,
+    "rejection_reason": "too_dark",
+    "exposure_score": 25.29,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_3_t_6360.jpg",
+    "timestamp": 6.360520833333332,
+    "scene_id": 3,
+    "rejection_reason": "too_dark",
+    "exposure_score": 25.0,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_5_t_8508.jpg",
+    "timestamp": 8.5085,
+    "scene_id": 5,
+    "rejection_reason": "blur",
+    "blur_score": 22.66,
+    "blur_region": "body",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_6_t_9801.jpg",
+    "timestamp": 9.801458333333333,
+    "scene_id": 6,
+    "rejection_reason": "blur",
+    "blur_score": 7.29,
+    "blur_region": "body",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_8_t_11782.jpg",
+    "timestamp": 11.782604166666665,
+    "scene_id": 8,
+    "rejection_reason": "too_dark",
+    "exposure_score": 29.62,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_11_t_15932.jpg",
+    "timestamp": 15.932583333333334,
+    "scene_id": 11,
+    "rejection_reason": "blur",
+    "blur_score": 13.53,
+    "blur_region": "body",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_12_t_16954.jpg",
+    "timestamp": 16.954437499999997,
+    "scene_id": 12,
+    "rejection_reason": "blur",
+    "blur_score": 22.66,
+    "blur_region": "body",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_15_t_19707.jpg",
+    "timestamp": 19.7071875,
+    "scene_id": 15,
+    "rejection_reason": "too_dark",
+    "exposure_score": 30.73,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_16_t_20395.jpg",
+    "timestamp": 20.395375,
+    "scene_id": 16,
+    "rejection_reason": "too_dark",
+    "exposure_score": 30.92,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_17_t_21479.jpg",
+    "timestamp": 21.479791666666664,
+    "scene_id": 17,
+    "rejection_reason": "too_dark",
+    "exposure_score": 31.75,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_18_t_23377.jpg",
+    "timestamp": 23.37752083333333,
+    "scene_id": 18,
+    "rejection_reason": "too_dark",
+    "exposure_score": 47.9,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_20_t_26985.jpg",
+    "timestamp": 26.98529166666666,
+    "scene_id": 20,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 974.16,
+    "exposure_score": 55.34,
+    "face_size": 419,
+    "min_face_size_for_eye_check": 150
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_21_t_28549.jpg",
+    "timestamp": 28.549354166666664,
+    "scene_id": 21,
+    "rejection_reason": "too_dark",
+    "exposure_score": 47.5,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_22_t_30301.jpg",
+    "timestamp": 30.301104166666665,
+    "scene_id": 22,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.98,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_26_t_41624.jpg",
+    "timestamp": 41.624916666666664,
+    "scene_id": 26,
+    "rejection_reason": "too_dark",
+    "exposure_score": 43.14,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_30_t_48131.jpg",
+    "timestamp": 48.13141666666667,
+    "scene_id": 30,
+    "rejection_reason": "too_dark",
+    "exposure_score": 17.27,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_30_t_50800.jpg",
+    "timestamp": 50.800749999999994,
+    "scene_id": 30,
+    "rejection_reason": "too_dark",
+    "exposure_score": 19.42,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_30_t_53470.jpg",
+    "timestamp": 53.47008333333333,
+    "scene_id": 30,
+    "rejection_reason": "too_dark",
+    "exposure_score": 24.42,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_31_t_57036.jpg",
+    "timestamp": 57.03614583333333,
+    "scene_id": 31,
+    "rejection_reason": "too_dark",
+    "exposure_score": 44.37,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_32_t_59962.jpg",
+    "timestamp": 59.96268055555555,
+    "scene_id": 32,
+    "rejection_reason": "too_dark",
+    "exposure_score": 22.17,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_32_t_61992.jpg",
+    "timestamp": 61.992486111111106,
+    "scene_id": 32,
+    "rejection_reason": "too_dark",
+    "exposure_score": 18.27,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_33_t_64981.jpg",
+    "timestamp": 64.98158333333333,
+    "scene_id": 33,
+    "rejection_reason": "blur",
+    "blur_score": 12.16,
+    "blur_region": "full",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_34_t_67379.jpg",
+    "timestamp": 67.37981249999999,
+    "scene_id": 34,
+    "rejection_reason": "too_dark",
+    "exposure_score": 34.29,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_35_t_70466.jpg",
+    "timestamp": 70.46622916666666,
+    "scene_id": 35,
+    "rejection_reason": "too_dark",
+    "exposure_score": 37.86,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_36_t_73135.jpg",
+    "timestamp": 73.13556249999999,
+    "scene_id": 36,
+    "rejection_reason": "blur",
+    "blur_score": 13.17,
+    "blur_region": "body",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_37_t_74699.jpg",
+    "timestamp": 74.699625,
+    "scene_id": 37,
+    "rejection_reason": "too_dark",
+    "exposure_score": 46.19,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_38_t_76034.jpg",
+    "timestamp": 76.03429166666666,
+    "scene_id": 38,
+    "rejection_reason": "too_dark",
+    "exposure_score": 35.26,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_40_t_79370.jpg",
+    "timestamp": 79.37095833333333,
+    "scene_id": 40,
+    "rejection_reason": "too_dark",
+    "exposure_score": 32.68,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_41_t_81664.jpg",
+    "timestamp": 81.66491666666667,
+    "scene_id": 41,
+    "rejection_reason": "too_dark",
+    "exposure_score": 40.37,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_42_t_83083.jpg",
+    "timestamp": 83.083,
+    "scene_id": 42,
+    "rejection_reason": "blur",
+    "blur_score": 17.51,
+    "blur_region": "full",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_43_t_86719.jpg",
+    "timestamp": 86.71996666666666,
+    "scene_id": 43,
+    "rejection_reason": "too_dark",
+    "exposure_score": 19.65,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_43_t_90023.jpg",
+    "timestamp": 90.02326666666666,
+    "scene_id": 43,
+    "rejection_reason": "too_dark",
+    "exposure_score": 24.78,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_43_t_93326.jpg",
+    "timestamp": 93.32656666666666,
+    "scene_id": 43,
+    "rejection_reason": "too_dark",
+    "exposure_score": 50.0,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_43_t_96629.jpg",
+    "timestamp": 96.62986666666666,
+    "scene_id": 43,
+    "rejection_reason": "too_dark",
+    "exposure_score": 31.44,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_44_t_103912.jpg",
+    "timestamp": 103.91214166666667,
+    "scene_id": 44,
+    "rejection_reason": "blur",
+    "blur_score": 27.92,
+    "blur_region": "full",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_44_t_107891.jpg",
+    "timestamp": 107.89111666666666,
+    "scene_id": 44,
+    "rejection_reason": "too_dark",
+    "exposure_score": 44.75,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_44_t_111870.jpg",
+    "timestamp": 111.87009166666667,
+    "scene_id": 44,
+    "rejection_reason": "too_dark",
+    "exposure_score": 41.44,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_44_t_115849.jpg",
+    "timestamp": 115.84906666666666,
+    "scene_id": 44,
+    "rejection_reason": "blur",
+    "blur_score": 23.83,
+    "blur_region": "body",
+    "blur_threshold": 30.0
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_45_t_120411.jpg",
+    "timestamp": 120.41195833333333,
+    "scene_id": 45,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.84,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_46_t_121433.jpg",
+    "timestamp": 121.43381249999999,
+    "scene_id": 46,
+    "rejection_reason": "too_dark",
+    "exposure_score": 46.81,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_47_t_123373.jpg",
+    "timestamp": 123.37324999999998,
+    "scene_id": 47,
+    "rejection_reason": "too_dark",
+    "exposure_score": 45.12,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_48_t_125667.jpg",
+    "timestamp": 125.66720833333332,
+    "scene_id": 48,
+    "rejection_reason": "too_dark",
+    "exposure_score": 32.79,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_49_t_127794.jpg",
+    "timestamp": 127.79433333333333,
+    "scene_id": 49,
+    "rejection_reason": "too_dark",
+    "exposure_score": 19.0,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_50_t_129942.jpg",
+    "timestamp": 129.94231249999999,
+    "scene_id": 50,
+    "rejection_reason": "too_dark",
+    "exposure_score": 35.37,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_51_t_133977.jpg",
+    "timestamp": 133.97759374999998,
+    "scene_id": 51,
+    "rejection_reason": "too_dark",
+    "exposure_score": 14.9,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_51_t_137199.jpg",
+    "timestamp": 137.19956249999998,
+    "scene_id": 51,
+    "rejection_reason": "too_dark",
+    "exposure_score": 17.22,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_51_t_140421.jpg",
+    "timestamp": 140.42153125,
+    "scene_id": 51,
+    "rejection_reason": "too_dark",
+    "exposure_score": 17.76,
+    "exposure_range": [
+      50,
+      175
+    ]
+  }
+]

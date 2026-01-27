@@ -9,6 +9,7 @@ import { TikTokComponent } from '../canvas/TikTokComponent';
 import { EmailComponent } from '../canvas/EmailComponent';
 import { ImageMatchingNode } from '../workflow/nodes/ImageMatchingNode';
 import { TextGenerationNode } from '../workflow/nodes/TextGenerationNode';
+import { ImageExtractionNode } from '../workflow/nodes/ImageExtractionNode';
 import { WorkflowManager } from '../workflow/WorkflowManager';
 import type { OutputNodeType, WorkflowNodeType } from './types';
 
@@ -18,6 +19,7 @@ const nodeTypes = {
   Email: EmailComponent,
   ImageMatching: ImageMatchingNode,
   TextGeneration: TextGenerationNode,
+  ImageExtraction: ImageExtractionNode,
   // Add more nodes here as they are created! (e.g., 'Transcription', 'ImageExtraction')
 };
 

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { Button } from './ui/button';
-import { Linkedin, Mail, Image as ImageIcon, FileText } from 'lucide-react';
+import { Linkedin, Mail, Image as ImageIcon, FileText, Video } from 'lucide-react';
 import { FaTiktok } from 'react-icons/fa';
 import { NodeType } from './final-review/types';
 
@@ -37,6 +37,7 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({ onAddPart, onClose, position 
     { name: 'Email', label: 'Generate Email', icon: <Mail size={16} className="mr-2" /> },
     { name: 'TextGeneration', label: 'Text Generation', icon: <FileText size={16} className="mr-2" /> },
     { name: 'ImageMatching', label: 'Image-Text Matching', icon: <ImageIcon size={16} className="mr-2" aria-label="Image matching" /> },
+    { name: 'ImageExtraction', label: 'Image Extraction', icon: <Video size={16} className="mr-2" aria-label="Image extraction" /> },
   ];
 
   const handleAction = (action: () => void) => {

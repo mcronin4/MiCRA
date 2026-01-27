@@ -1,0 +1,12 @@
+[
+  {
+    "frame_path": "outputs\\keyframes\\June 4, 2017\\20260111_175427\\candidates\\scene_0_t_32372.jpg",
+    "timestamp": 32.37241379310345,
+    "scene_id": 0,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 125.15,
+    "exposure_score": 87.14,
+    "face_size": 221,
+    "min_face_size_for_eye_check": 150
+  }
+]

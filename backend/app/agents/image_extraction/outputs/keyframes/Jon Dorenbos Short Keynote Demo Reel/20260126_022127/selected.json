@@ -1,0 +1,800 @@
+[
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_2_t_4212.jpg",
+    "timestamp": 4.212541666666667,
+    "scene_id": 2,
+    "quality_score": 0.4761,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 123.93,
+    "blur_region": "full",
+    "exposure_score": 106.34,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "angry",
+      "probabilities": {
+        "angry": 100.0,
+        "disgust": 2.1580831161598172e-17,
+        "fear": 3.1349152440629524e-11,
+        "happy": 4.977800940539345e-13,
+        "sad": 6.419481699687646e-12,
+        "surprise": 8.807245023186932e-22,
+        "neutral": 8.290228503682329e-10
+      },
+      "face_size": [
+        1919,
+        1079
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "auditorium",
+      "top_k_scenes": [
+        {
+          "label": "auditorium",
+          "probability": 0.3103594481945038
+        },
+        {
+          "label": "conference_center",
+          "probability": 0.23866334557533264
+        },
+        {
+          "label": "arena/performance",
+          "probability": 0.11696317046880722
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.0958256721496582
+        },
+        {
+          "label": "stage/indoor",
+          "probability": 0.05964421480894089
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_2_t_4212.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_4_t_7257.jpg",
+    "timestamp": 7.257249999999999,
+    "scene_id": 4,
+    "quality_score": 0.4471,
+    "face_present": 1,
+    "face_size": 127,
+    "is_frontal": true,
+    "blur_score": 89.65,
+    "blur_region": "body",
+    "exposure_score": 55.61,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "neutral",
+      "probabilities": {
+        "angry": 2.4745285511016846,
+        "disgust": 4.409918255987577e-05,
+        "fear": 0.05200692266225815,
+        "happy": 1.04058039188385,
+        "sad": 35.76434326171875,
+        "surprise": 0.00018544432532507926,
+        "neutral": 60.668312072753906
+      },
+      "face_size": [
+        84,
+        84
+      ],
+      "face_confidence": 0.94
+    },
+    "scene_analysis": {
+      "top_scene": "television_studio",
+      "top_k_scenes": [
+        {
+          "label": "television_studio",
+          "probability": 0.3125095069408417
+        },
+        {
+          "label": "music_studio",
+          "probability": 0.243730828166008
+        },
+        {
+          "label": "arena/performance",
+          "probability": 0.10946528613567352
+        },
+        {
+          "label": "auditorium",
+          "probability": 0.054282836616039276
+        },
+        {
+          "label": "stage/indoor",
+          "probability": 0.03971024975180626
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_4_t_7257.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_7_t_10906.jpg",
+    "timestamp": 10.906729166666665,
+    "scene_id": 7,
+    "quality_score": 0.6446,
+    "face_present": 1,
+    "face_size": 368,
+    "is_frontal": true,
+    "blur_score": 32.46,
+    "blur_region": "body",
+    "exposure_score": 59.69,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "happy",
+      "probabilities": {
+        "angry": 3.1138217764237197e-06,
+        "disgust": 6.372596677781117e-13,
+        "fear": 1.2320694686707157e-08,
+        "happy": 99.2950668334961,
+        "sad": 2.235856754850829e-06,
+        "surprise": 0.001041969284415245,
+        "neutral": 0.7038854956626892
+      },
+      "face_size": [
+        367,
+        367
+      ],
+      "face_confidence": 0.89
+    },
+    "scene_analysis": {
+      "top_scene": "bowling_alley",
+      "top_k_scenes": [
+        {
+          "label": "bowling_alley",
+          "probability": 0.4595416188240051
+        },
+        {
+          "label": "music_studio",
+          "probability": 0.24877376854419708
+        },
+        {
+          "label": "bar",
+          "probability": 0.08548520505428314
+        },
+        {
+          "label": "discotheque",
+          "probability": 0.03190412372350693
+        },
+        {
+          "label": "coffee_shop",
+          "probability": 0.019633088260889053
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_7_t_10906.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_9_t_13138.jpg",
+    "timestamp": 13.138124999999999,
+    "scene_id": 9,
+    "quality_score": 0.3003,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 552.34,
+    "blur_region": "full",
+    "exposure_score": 64.32,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "neutral",
+      "probabilities": {
+        "angry": 3.5944557907896524e-07,
+        "disgust": 1.421336362679177e-14,
+        "fear": 0.002666949760168791,
+        "happy": 7.436067039900962e-11,
+        "sad": 0.013627002947032452,
+        "surprise": 6.345894476567082e-09,
+        "neutral": 99.98370361328125
+      },
+      "face_size": [
+        1919,
+        1079
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "arena/performance",
+      "top_k_scenes": [
+        {
+          "label": "arena/performance",
+          "probability": 0.9537233114242554
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.011075892485678196
+        },
+        {
+          "label": "auditorium",
+          "probability": 0.009296892210841179
+        },
+        {
+          "label": "stage/indoor",
+          "probability": 0.006224630866199732
+        },
+        {
+          "label": "orchestra_pit",
+          "probability": 0.005590999964624643
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_9_t_13138.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_10_t_14743.jpg",
+    "timestamp": 14.743895833333333,
+    "scene_id": 10,
+    "quality_score": 0.6495,
+    "face_present": 1,
+    "face_size": 81,
+    "is_frontal": true,
+    "blur_score": 144.61,
+    "blur_region": "body",
+    "exposure_score": 98.35,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "sad",
+      "probabilities": {
+        "angry": 0.08468656986951828,
+        "disgust": 2.2670840899019495e-13,
+        "fear": 1.9468802213668823,
+        "happy": 3.4872342791203437e-09,
+        "sad": 97.9556655883789,
+        "surprise": 1.6138305136692566e-09,
+        "neutral": 0.012761736288666725
+      },
+      "face_size": [
+        99,
+        99
+      ],
+      "face_confidence": 0.99
+    },
+    "scene_analysis": {
+      "top_scene": "stadium/soccer",
+      "top_k_scenes": [
+        {
+          "label": "stadium/soccer",
+          "probability": 0.6066344976425171
+        },
+        {
+          "label": "stadium/football",
+          "probability": 0.20165562629699707
+        },
+        {
+          "label": "football_field",
+          "probability": 0.06360509991645813
+        },
+        {
+          "label": "stadium/baseball",
+          "probability": 0.06240967661142349
+        },
+        {
+          "label": "soccer_field",
+          "probability": 0.039165642112493515
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_10_t_14743.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_13_t_17851.jpg",
+    "timestamp": 17.851166666666664,
+    "scene_id": 13,
+    "quality_score": 0.3971,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 73.52,
+    "blur_region": "full",
+    "exposure_score": 90.51,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "neutral",
+      "probabilities": {
+        "angry": 3.8114681243896484,
+        "disgust": 23.400299072265625,
+        "fear": 12.48788070678711,
+        "happy": 0.06251098960638046,
+        "sad": 1.9037559032440186,
+        "surprise": 3.4304654598236084,
+        "neutral": 54.90362548828125
+      },
+      "face_size": [
+        1919,
+        1079
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "football_field",
+      "top_k_scenes": [
+        {
+          "label": "football_field",
+          "probability": 0.47881773114204407
+        },
+        {
+          "label": "stadium/football",
+          "probability": 0.3054448962211609
+        },
+        {
+          "label": "stadium/baseball",
+          "probability": 0.04613709822297096
+        },
+        {
+          "label": "baseball_field",
+          "probability": 0.031862709671258926
+        },
+        {
+          "label": "arena/performance",
+          "probability": 0.022618619725108147
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_13_t_17851.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_14_t_18873.jpg",
+    "timestamp": 18.873020833333335,
+    "scene_id": 14,
+    "quality_score": 0.363,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 78.33,
+    "blur_region": "full",
+    "exposure_score": 83.35,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "angry",
+      "probabilities": {
+        "angry": 95.95631408691406,
+        "disgust": 9.878891454873084e-11,
+        "fear": 0.7344620823860168,
+        "happy": 5.655483164446196e-06,
+        "sad": 1.0983562469482422,
+        "surprise": 0.0006641822401434183,
+        "neutral": 2.2101993560791016
+      },
+      "face_size": [
+        1919,
+        1079
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "airport_terminal",
+      "top_k_scenes": [
+        {
+          "label": "airport_terminal",
+          "probability": 0.08468272536993027
+        },
+        {
+          "label": "bowling_alley",
+          "probability": 0.04701310768723488
+        },
+        {
+          "label": "parking_lot",
+          "probability": 0.04165658727288246
+        },
+        {
+          "label": "arena/performance",
+          "probability": 0.0382949560880661
+        },
+        {
+          "label": "stadium/football",
+          "probability": 0.03358215466141701
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_14_t_18873.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_19_t_25358.jpg",
+    "timestamp": 25.358666666666664,
+    "scene_id": 19,
+    "quality_score": 0.3146,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 53.52,
+    "blur_region": "full",
+    "exposure_score": 73.59,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "sad",
+      "probabilities": {
+        "angry": 45.881980895996094,
+        "disgust": 0.03155189007520676,
+        "fear": 2.249134063720703,
+        "happy": 0.08509277552366257,
+        "sad": 51.10641098022461,
+        "surprise": 7.281911393874907e-07,
+        "neutral": 0.645826518535614
+      },
+      "face_size": [
+        1919,
+        1079
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "berth",
+      "top_k_scenes": [
+        {
+          "label": "berth",
+          "probability": 0.23741944134235382
+        },
+        {
+          "label": "biology_laboratory",
+          "probability": 0.05220521241426468
+        },
+        {
+          "label": "art_studio",
+          "probability": 0.051147282123565674
+        },
+        {
+          "label": "hospital_room",
+          "probability": 0.04998387396335602
+        },
+        {
+          "label": "beauty_salon",
+          "probability": 0.03948981687426567
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_19_t_25358.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_23_t_33366.jpg",
+    "timestamp": 33.36666666666667,
+    "scene_id": 23,
+    "quality_score": 0.5868,
+    "face_present": 1,
+    "face_size": 140,
+    "is_frontal": true,
+    "blur_score": 37.99,
+    "blur_region": "body",
+    "exposure_score": 53.78,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "happy",
+      "probabilities": {
+        "angry": 0.6092044115066528,
+        "disgust": 0.06088140606880188,
+        "fear": 2.111642599105835,
+        "happy": 87.81417083740234,
+        "sad": 3.8942480087280273,
+        "surprise": 8.736783638596535e-05,
+        "neutral": 5.509758472442627
+      },
+      "face_size": [
+        1919,
+        1079
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "stage/indoor",
+      "top_k_scenes": [
+        {
+          "label": "stage/indoor",
+          "probability": 0.705165684223175
+        },
+        {
+          "label": "conference_center",
+          "probability": 0.17378103733062744
+        },
+        {
+          "label": "arena/performance",
+          "probability": 0.025099266320466995
+        },
+        {
+          "label": "ballroom",
+          "probability": 0.022561663761734962
+        },
+        {
+          "label": "home_theater",
+          "probability": 0.018997738137841225
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_23_t_33366.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_24_t_37954.jpg",
+    "timestamp": 37.95458333333333,
+    "scene_id": 24,
+    "quality_score": 0.4208,
+    "face_present": 1,
+    "face_size": 78,
+    "is_frontal": true,
+    "blur_score": 144.53,
+    "blur_region": "body",
+    "exposure_score": 50.78,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "surprise",
+      "probabilities": {
+        "angry": 0.18675275146961212,
+        "disgust": 0.0007775325211696327,
+        "fear": 4.211103439331055,
+        "happy": 0.1474054753780365,
+        "sad": 0.10325245559215546,
+        "surprise": 95.23201751708984,
+        "neutral": 0.11869511753320694
+      },
+      "face_size": [
+        80,
+        80
+      ],
+      "face_confidence": 0.94
+    },
+    "scene_analysis": {
+      "top_scene": "auditorium",
+      "top_k_scenes": [
+        {
+          "label": "auditorium",
+          "probability": 0.2689809203147888
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.2661927342414856
+        },
+        {
+          "label": "arena/performance",
+          "probability": 0.26219579577445984
+        },
+        {
+          "label": "conference_center",
+          "probability": 0.12894465029239655
+        },
+        {
+          "label": "orchestra_pit",
+          "probability": 0.011664625257253647
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_24_t_37954.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_25_t_39497.jpg",
+    "timestamp": 39.49779166666666,
+    "scene_id": 25,
+    "quality_score": 0.685,
+    "face_present": 1,
+    "face_size": 155,
+    "is_frontal": true,
+    "blur_score": 39.43,
+    "blur_region": "body",
+    "exposure_score": 119.95,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "neutral",
+      "probabilities": {
+        "angry": 23.6397762298584,
+        "disgust": 0.002143745543435216,
+        "fear": 4.742102146148682,
+        "happy": 0.5049589276313782,
+        "sad": 4.997004508972168,
+        "surprise": 8.295543670654297,
+        "neutral": 57.81846618652344
+      },
+      "face_size": [
+        153,
+        153
+      ],
+      "face_confidence": 0.96
+    },
+    "scene_analysis": {
+      "top_scene": "stage/indoor",
+      "top_k_scenes": [
+        {
+          "label": "stage/indoor",
+          "probability": 0.2002328783273697
+        },
+        {
+          "label": "arena/performance",
+          "probability": 0.08039584755897522
+        },
+        {
+          "label": "dressing_room",
+          "probability": 0.06973028928041458
+        },
+        {
+          "label": "home_theater",
+          "probability": 0.06785344332456589
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.06476877629756927
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_25_t_39497.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_27_t_43209.jpg",
+    "timestamp": 43.209833333333336,
+    "scene_id": 27,
+    "quality_score": 0.4215,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 57.69,
+    "blur_region": "full",
+    "exposure_score": 95.8,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "angry",
+      "probabilities": {
+        "angry": 97.3747787475586,
+        "disgust": 8.866149437380955e-05,
+        "fear": 0.27027931809425354,
+        "happy": 9.75479075293606e-09,
+        "sad": 1.8181110620498657,
+        "surprise": 1.0606638767285403e-07,
+        "neutral": 0.5367441773414612
+      },
+      "face_size": [
+        1919,
+        1079
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "discotheque",
+      "top_k_scenes": [
+        {
+          "label": "discotheque",
+          "probability": 0.6524770855903625
+        },
+        {
+          "label": "stage/indoor",
+          "probability": 0.1553216427564621
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.06963333487510681
+        },
+        {
+          "label": "sky",
+          "probability": 0.03274698182940483
+        },
+        {
+          "label": "aquarium",
+          "probability": 0.02430153638124466
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_27_t_43209.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_28_t_44148.jpg",
+    "timestamp": 44.14827083333333,
+    "scene_id": 28,
+    "quality_score": 0.5871,
+    "face_present": 1,
+    "face_size": 761,
+    "is_frontal": true,
+    "blur_score": 56.25,
+    "blur_region": "body",
+    "exposure_score": 68.01,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "fear",
+      "probabilities": {
+        "angry": 2.6749541759490967,
+        "disgust": 4.160116873208608e-08,
+        "fear": 95.2551498413086,
+        "happy": 2.750926978478674e-05,
+        "sad": 0.07905333489179611,
+        "surprise": 1.9895200729370117,
+        "neutral": 0.0012948650401085615
+      },
+      "face_size": [
+        796,
+        796
+      ],
+      "face_confidence": 0.96
+    },
+    "scene_analysis": {
+      "top_scene": "discotheque",
+      "top_k_scenes": [
+        {
+          "label": "discotheque",
+          "probability": 0.3897673785686493
+        },
+        {
+          "label": "stage/indoor",
+          "probability": 0.25488635897636414
+        },
+        {
+          "label": "bowling_alley",
+          "probability": 0.0469285324215889
+        },
+        {
+          "label": "music_studio",
+          "probability": 0.03729242831468582
+        },
+        {
+          "label": "bar",
+          "probability": 0.036984171718358994
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_28_t_44148.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\candidates\\scene_29_t_45024.jpg",
+    "timestamp": 45.024145833333336,
+    "scene_id": 29,
+    "quality_score": 0.5447,
+    "face_present": 1,
+    "face_size": 528,
+    "is_frontal": true,
+    "blur_score": 35.96,
+    "blur_region": "body",
+    "exposure_score": 65.74,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "fear",
+      "probabilities": {
+        "angry": 0.18326623737812042,
+        "disgust": 2.8484984795795754e-05,
+        "fear": 97.8893814086914,
+        "happy": 0.12076403945684433,
+        "sad": 1.7069823741912842,
+        "surprise": 0.041578687727451324,
+        "neutral": 0.05799570679664612
+      },
+      "face_size": [
+        529,
+        529
+      ],
+      "face_confidence": 0.97
+    },
+    "scene_analysis": {
+      "top_scene": "discotheque",
+      "top_k_scenes": [
+        {
+          "label": "discotheque",
+          "probability": 0.5332005023956299
+        },
+        {
+          "label": "stage/indoor",
+          "probability": 0.14223501086235046
+        },
+        {
+          "label": "aquarium",
+          "probability": 0.04239282011985779
+        },
+        {
+          "label": "bar",
+          "probability": 0.031076448038220406
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.02455108053982258
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Jon Dorenbos Short Keynote Demo Reel\\20260126_022127\\selected\\scene_29_t_45024.jpg"
+  }
+]

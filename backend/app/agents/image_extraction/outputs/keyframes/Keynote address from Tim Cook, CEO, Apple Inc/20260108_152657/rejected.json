@@ -1,0 +1,722 @@
+[
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_0_t_2360.jpg",
+    "timestamp": 2.36,
+    "scene_id": 0,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 88.33,
+    "exposure_score": 87.63
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_1_t_7359.jpg",
+    "timestamp": 7.359999999999999,
+    "scene_id": 1,
+    "rejection_reason": "blur",
+    "blur_score": 36.88,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_2_t_71152.jpg",
+    "timestamp": 71.152,
+    "scene_id": 2,
+    "rejection_reason": "blur",
+    "blur_score": 11.87,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_2_t_127024.jpg",
+    "timestamp": 127.024,
+    "scene_id": 2,
+    "rejection_reason": "blur",
+    "blur_score": 8.75,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_2_t_182896.jpg",
+    "timestamp": 182.89600000000002,
+    "scene_id": 2,
+    "rejection_reason": "blur",
+    "blur_score": 13.3,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_2_t_238768.jpg",
+    "timestamp": 238.768,
+    "scene_id": 2,
+    "rejection_reason": "blur",
+    "blur_score": 10.91,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_3_t_298039.jpg",
+    "timestamp": 298.03999999999996,
+    "scene_id": 3,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 295.31,
+    "exposure_score": 81.2
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_3_t_301440.jpg",
+    "timestamp": 301.44,
+    "scene_id": 3,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 275.27,
+    "exposure_score": 80.62
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_3_t_304840.jpg",
+    "timestamp": 304.84,
+    "scene_id": 3,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 294.25,
+    "exposure_score": 81.93
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_3_t_308240.jpg",
+    "timestamp": 308.24,
+    "scene_id": 3,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 301.29,
+    "exposure_score": 81.59
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_4_t_325664.jpg",
+    "timestamp": 325.664,
+    "scene_id": 4,
+    "rejection_reason": "blur",
+    "blur_score": 11.9,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_4_t_339688.jpg",
+    "timestamp": 339.688,
+    "scene_id": 4,
+    "rejection_reason": "blur",
+    "blur_score": 11.79,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_4_t_353712.jpg",
+    "timestamp": 353.712,
+    "scene_id": 4,
+    "rejection_reason": "blur",
+    "blur_score": 11.3,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_4_t_367736.jpg",
+    "timestamp": 367.736,
+    "scene_id": 4,
+    "rejection_reason": "blur",
+    "blur_score": 14.17,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_5_t_384470.jpg",
+    "timestamp": 384.47,
+    "scene_id": 5,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 270.3,
+    "exposure_score": 90.96
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_5_t_387180.jpg",
+    "timestamp": 387.18,
+    "scene_id": 5,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 281.35,
+    "exposure_score": 90.8
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_5_t_389890.jpg",
+    "timestamp": 389.89,
+    "scene_id": 5,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 280.42,
+    "exposure_score": 90.52
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_6_t_409560.jpg",
+    "timestamp": 409.56,
+    "scene_id": 6,
+    "rejection_reason": "blur",
+    "blur_score": 10.43,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_6_t_426520.jpg",
+    "timestamp": 426.52,
+    "scene_id": 6,
+    "rejection_reason": "blur",
+    "blur_score": 9.05,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_6_t_443480.jpg",
+    "timestamp": 443.48,
+    "scene_id": 6,
+    "rejection_reason": "blur",
+    "blur_score": 18.16,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_6_t_460440.jpg",
+    "timestamp": 460.44,
+    "scene_id": 6,
+    "rejection_reason": "blur",
+    "blur_score": 13.48,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_7_t_481392.jpg",
+    "timestamp": 481.392,
+    "scene_id": 7,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 278.55,
+    "exposure_score": 91.4
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_7_t_485384.jpg",
+    "timestamp": 485.384,
+    "scene_id": 7,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 280.58,
+    "exposure_score": 90.95
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_7_t_489376.jpg",
+    "timestamp": 489.376,
+    "scene_id": 7,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 288.9,
+    "exposure_score": 90.98
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_7_t_493368.jpg",
+    "timestamp": 493.368,
+    "scene_id": 7,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 285.13,
+    "exposure_score": 91.01
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_9_t_512568.jpg",
+    "timestamp": 512.568,
+    "scene_id": 9,
+    "rejection_reason": "blur",
+    "blur_score": 11.9,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_9_t_519895.jpg",
+    "timestamp": 519.896,
+    "scene_id": 9,
+    "rejection_reason": "blur",
+    "blur_score": 13.53,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_9_t_527224.jpg",
+    "timestamp": 527.224,
+    "scene_id": 9,
+    "rejection_reason": "blur",
+    "blur_score": 13.77,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_9_t_534552.jpg",
+    "timestamp": 534.552,
+    "scene_id": 9,
+    "rejection_reason": "blur",
+    "blur_score": 11.78,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_11_t_550386.jpg",
+    "timestamp": 550.3866666666667,
+    "scene_id": 11,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 87.65,
+    "exposure_score": 93.47
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_12_t_557736.jpg",
+    "timestamp": 557.736,
+    "scene_id": 12,
+    "rejection_reason": "blur",
+    "blur_score": 10.71,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_12_t_562712.jpg",
+    "timestamp": 562.712,
+    "scene_id": 12,
+    "rejection_reason": "blur",
+    "blur_score": 12.98,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_12_t_567688.jpg",
+    "timestamp": 567.688,
+    "scene_id": 12,
+    "rejection_reason": "blur",
+    "blur_score": 19.14,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_12_t_572664.jpg",
+    "timestamp": 572.664,
+    "scene_id": 12,
+    "rejection_reason": "blur",
+    "blur_score": 8.01,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_13_t_580440.jpg",
+    "timestamp": 580.44,
+    "scene_id": 13,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 271.34,
+    "exposure_score": 90.89
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_13_t_583240.jpg",
+    "timestamp": 583.24,
+    "scene_id": 13,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 273.05,
+    "exposure_score": 91.5
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_13_t_586040.jpg",
+    "timestamp": 586.04,
+    "scene_id": 13,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 276.37,
+    "exposure_score": 91.09
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_14_t_602048.jpg",
+    "timestamp": 602.048,
+    "scene_id": 14,
+    "rejection_reason": "blur",
+    "blur_score": 7.02,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_14_t_615256.jpg",
+    "timestamp": 615.256,
+    "scene_id": 14,
+    "rejection_reason": "blur",
+    "blur_score": 9.81,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_14_t_628464.jpg",
+    "timestamp": 628.464,
+    "scene_id": 14,
+    "rejection_reason": "blur",
+    "blur_score": 13.71,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_14_t_641672.jpg",
+    "timestamp": 641.672,
+    "scene_id": 14,
+    "rejection_reason": "blur",
+    "blur_score": 9.27,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_15_t_657160.jpg",
+    "timestamp": 657.16,
+    "scene_id": 15,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 267.47,
+    "exposure_score": 90.77
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_15_t_659440.jpg",
+    "timestamp": 659.44,
+    "scene_id": 15,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 259.3,
+    "exposure_score": 90.92
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_16_t_664792.jpg",
+    "timestamp": 664.792,
+    "scene_id": 16,
+    "rejection_reason": "blur",
+    "blur_score": 19.76,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_16_t_667864.jpg",
+    "timestamp": 667.864,
+    "scene_id": 16,
+    "rejection_reason": "blur",
+    "blur_score": 33.91,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_16_t_670936.jpg",
+    "timestamp": 670.936,
+    "scene_id": 16,
+    "rejection_reason": "blur",
+    "blur_score": 32.19,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_16_t_674008.jpg",
+    "timestamp": 674.008,
+    "scene_id": 16,
+    "rejection_reason": "blur",
+    "blur_score": 26.48,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_17_t_689000.jpg",
+    "timestamp": 689.0,
+    "scene_id": 17,
+    "rejection_reason": "blur",
+    "blur_score": 9.18,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_17_t_700920.jpg",
+    "timestamp": 700.92,
+    "scene_id": 17,
+    "rejection_reason": "blur",
+    "blur_score": 9.97,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_17_t_712840.jpg",
+    "timestamp": 712.84,
+    "scene_id": 17,
+    "rejection_reason": "blur",
+    "blur_score": 10.17,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_17_t_724760.jpg",
+    "timestamp": 724.76,
+    "scene_id": 17,
+    "rejection_reason": "blur",
+    "blur_score": 12.34,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_19_t_772048.jpg",
+    "timestamp": 772.048,
+    "scene_id": 19,
+    "rejection_reason": "blur",
+    "blur_score": 10.69,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_19_t_792376.jpg",
+    "timestamp": 792.376,
+    "scene_id": 19,
+    "rejection_reason": "blur",
+    "blur_score": 10.54,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_19_t_812704.jpg",
+    "timestamp": 812.7040000000001,
+    "scene_id": 19,
+    "rejection_reason": "blur",
+    "blur_score": 12.72,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_19_t_833032.jpg",
+    "timestamp": 833.032,
+    "scene_id": 19,
+    "rejection_reason": "blur",
+    "blur_score": 11.39,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_20_t_858616.jpg",
+    "timestamp": 858.616,
+    "scene_id": 20,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 90.33,
+    "exposure_score": 89.28
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_21_t_916319.jpg",
+    "timestamp": 916.3199999999999,
+    "scene_id": 21,
+    "rejection_reason": "blur",
+    "blur_score": 10.93,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_21_t_953000.jpg",
+    "timestamp": 953.0,
+    "scene_id": 21,
+    "rejection_reason": "blur",
+    "blur_score": 10.73,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_21_t_989680.jpg",
+    "timestamp": 989.68,
+    "scene_id": 21,
+    "rejection_reason": "blur",
+    "blur_score": 13.63,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_21_t_1026359.jpg",
+    "timestamp": 1026.36,
+    "scene_id": 21,
+    "rejection_reason": "blur",
+    "blur_score": 9.05,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_22_t_1066540.jpg",
+    "timestamp": 1066.54,
+    "scene_id": 22,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 283.29,
+    "exposure_score": 90.34
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_22_t_1070040.jpg",
+    "timestamp": 1070.04,
+    "scene_id": 22,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 280.09,
+    "exposure_score": 90.44
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_22_t_1073540.jpg",
+    "timestamp": 1073.54,
+    "scene_id": 22,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 281.87,
+    "exposure_score": 90.29
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_23_t_1092976.jpg",
+    "timestamp": 1092.9759999999999,
+    "scene_id": 23,
+    "rejection_reason": "blur",
+    "blur_score": 12.1,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_23_t_1108912.jpg",
+    "timestamp": 1108.912,
+    "scene_id": 23,
+    "rejection_reason": "blur",
+    "blur_score": 11.68,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_23_t_1124848.jpg",
+    "timestamp": 1124.848,
+    "scene_id": 23,
+    "rejection_reason": "blur",
+    "blur_score": 11.35,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_23_t_1140784.jpg",
+    "timestamp": 1140.784,
+    "scene_id": 23,
+    "rejection_reason": "blur",
+    "blur_score": 7.6,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_24_t_1159800.jpg",
+    "timestamp": 1159.8,
+    "scene_id": 24,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 104.45,
+    "exposure_score": 107.59
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_24_t_1162880.jpg",
+    "timestamp": 1162.88,
+    "scene_id": 24,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 85.27,
+    "exposure_score": 105.34
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_25_t_1171133.jpg",
+    "timestamp": 1171.1333333333332,
+    "scene_id": 25,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 107.08,
+    "exposure_score": 113.97
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_25_t_1173226.jpg",
+    "timestamp": 1173.2266666666667,
+    "scene_id": 25,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 108.36,
+    "exposure_score": 111.74
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_26_t_1178639.jpg",
+    "timestamp": 1178.6399999999999,
+    "scene_id": 26,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 189.41,
+    "exposure_score": 71.1
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_26_t_1181960.jpg",
+    "timestamp": 1181.96,
+    "scene_id": 26,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 172.26,
+    "exposure_score": 70.97
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_27_t_1194648.jpg",
+    "timestamp": 1194.648,
+    "scene_id": 27,
+    "rejection_reason": "blur",
+    "blur_score": 9.39,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_27_t_1204015.jpg",
+    "timestamp": 1204.0159999999998,
+    "scene_id": 27,
+    "rejection_reason": "blur",
+    "blur_score": 10.78,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_27_t_1213384.jpg",
+    "timestamp": 1213.384,
+    "scene_id": 27,
+    "rejection_reason": "blur",
+    "blur_score": 9.82,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_27_t_1222752.jpg",
+    "timestamp": 1222.752,
+    "scene_id": 27,
+    "rejection_reason": "blur",
+    "blur_score": 9.61,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_28_t_1236253.jpg",
+    "timestamp": 1236.2533333333333,
+    "scene_id": 28,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 79.55,
+    "exposure_score": 120.62
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_29_t_1247410.jpg",
+    "timestamp": 1247.41,
+    "scene_id": 29,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 159.92,
+    "exposure_score": 77.88
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_30_t_1254288.jpg",
+    "timestamp": 1254.288,
+    "scene_id": 30,
+    "rejection_reason": "blur",
+    "blur_score": 9.4,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_30_t_1258136.jpg",
+    "timestamp": 1258.136,
+    "scene_id": 30,
+    "rejection_reason": "blur",
+    "blur_score": 22.63,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_30_t_1261984.jpg",
+    "timestamp": 1261.9840000000002,
+    "scene_id": 30,
+    "rejection_reason": "blur",
+    "blur_score": 20.05,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_30_t_1265832.jpg",
+    "timestamp": 1265.832,
+    "scene_id": 30,
+    "rejection_reason": "blur",
+    "blur_score": 10.37,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_32_t_1282072.jpg",
+    "timestamp": 1282.072,
+    "scene_id": 32,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 185.43,
+    "exposure_score": 58.57
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_32_t_1286024.jpg",
+    "timestamp": 1286.024,
+    "scene_id": 32,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 185.2,
+    "exposure_score": 57.86
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_32_t_1289976.jpg",
+    "timestamp": 1289.976,
+    "scene_id": 32,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 181.4,
+    "exposure_score": 57.24
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_33_t_1302376.jpg",
+    "timestamp": 1302.376,
+    "scene_id": 33,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 57.96,
+    "exposure_score": 110.28
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_33_t_1311368.jpg",
+    "timestamp": 1311.368,
+    "scene_id": 33,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 71.49,
+    "exposure_score": 114.39
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_34_t_1323139.jpg",
+    "timestamp": 1323.1399999999999,
+    "scene_id": 34,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 218.18,
+    "exposure_score": 67.36
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Keynote address from Tim Cook, CEO, Apple Inc\\20260108_152657\\candidates\\scene_34_t_1325920.jpg",
+    "timestamp": 1325.92,
+    "scene_id": 34,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 254.01,
+    "exposure_score": 67.38
+  }
+]

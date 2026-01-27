@@ -1,1 +1,0 @@
-# Once we have the scenes, we will sample frames from each scene

@@ -1,0 +1,313 @@
+[
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_0_t_2388.jpg",
+    "timestamp": 2.388888888888889,
+    "scene_id": 0,
+    "rejection_reason": "too_bright",
+    "exposure_score": 224.12,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_1_t_12406.jpg",
+    "timestamp": 12.406666666666666,
+    "scene_id": 1,
+    "rejection_reason": "blur",
+    "blur_score": 36.93,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_1_t_17646.jpg",
+    "timestamp": 17.64666666666667,
+    "scene_id": 1,
+    "rejection_reason": "blur",
+    "blur_score": 38.11,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_1_t_22886.jpg",
+    "timestamp": 22.886666666666667,
+    "scene_id": 1,
+    "rejection_reason": "blur",
+    "blur_score": 41.76,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_1_t_28126.jpg",
+    "timestamp": 28.12666666666667,
+    "scene_id": 1,
+    "rejection_reason": "blur",
+    "blur_score": 42.08,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_2_t_34683.jpg",
+    "timestamp": 34.68333333333334,
+    "scene_id": 2,
+    "rejection_reason": "blur",
+    "blur_score": 19.08,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_3_t_42300.jpg",
+    "timestamp": 42.3,
+    "scene_id": 3,
+    "rejection_reason": "blur",
+    "blur_score": 48.65,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_3_t_48600.jpg",
+    "timestamp": 48.6,
+    "scene_id": 3,
+    "rejection_reason": "blur",
+    "blur_score": 40.78,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_3_t_54900.jpg",
+    "timestamp": 54.9,
+    "scene_id": 3,
+    "rejection_reason": "blur",
+    "blur_score": 34.82,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_3_t_61200.jpg",
+    "timestamp": 61.2,
+    "scene_id": 3,
+    "rejection_reason": "blur",
+    "blur_score": 44.72,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_4_t_88820.jpg",
+    "timestamp": 88.82,
+    "scene_id": 4,
+    "rejection_reason": "too_dark",
+    "exposure_score": 48.9,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_5_t_128126.jpg",
+    "timestamp": 128.12666666666667,
+    "scene_id": 5,
+    "rejection_reason": "blur",
+    "blur_score": 41.21,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_5_t_135453.jpg",
+    "timestamp": 135.45333333333332,
+    "scene_id": 5,
+    "rejection_reason": "blur",
+    "blur_score": 48.54,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_5_t_142780.jpg",
+    "timestamp": 142.78,
+    "scene_id": 5,
+    "rejection_reason": "blur",
+    "blur_score": 39.27,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_5_t_150106.jpg",
+    "timestamp": 150.10666666666668,
+    "scene_id": 5,
+    "rejection_reason": "blur",
+    "blur_score": 38.96,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_6_t_164620.jpg",
+    "timestamp": 164.62,
+    "scene_id": 6,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.59,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_6_t_171806.jpg",
+    "timestamp": 171.80666666666667,
+    "scene_id": 6,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.22,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_6_t_178993.jpg",
+    "timestamp": 178.99333333333334,
+    "scene_id": 6,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.38,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_6_t_186180.jpg",
+    "timestamp": 186.18,
+    "scene_id": 6,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.3,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_7_t_202046.jpg",
+    "timestamp": 202.04666666666668,
+    "scene_id": 7,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 70.18,
+    "exposure_score": 53.91
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_7_t_206386.jpg",
+    "timestamp": 206.38666666666666,
+    "scene_id": 7,
+    "rejection_reason": "eyes_closed",
+    "blur_score": 63.48,
+    "exposure_score": 55.51
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_10_t_230693.jpg",
+    "timestamp": 230.69333333333333,
+    "scene_id": 10,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.74,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_10_t_236486.jpg",
+    "timestamp": 236.48666666666668,
+    "scene_id": 10,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.43,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_10_t_242280.jpg",
+    "timestamp": 242.28,
+    "scene_id": 10,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.6,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_10_t_248073.jpg",
+    "timestamp": 248.07333333333335,
+    "scene_id": 10,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.95,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_11_t_256677.jpg",
+    "timestamp": 256.6777777777778,
+    "scene_id": 11,
+    "rejection_reason": "blur",
+    "blur_score": 36.16,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_11_t_259488.jpg",
+    "timestamp": 259.4888888888889,
+    "scene_id": 11,
+    "rejection_reason": "blur",
+    "blur_score": 45.68,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_13_t_303000.jpg",
+    "timestamp": 303.0,
+    "scene_id": 13,
+    "rejection_reason": "too_dark",
+    "exposure_score": 49.98,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_14_t_316366.jpg",
+    "timestamp": 316.3666666666667,
+    "scene_id": 14,
+    "rejection_reason": "blur",
+    "blur_score": 36.8,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_14_t_321466.jpg",
+    "timestamp": 321.46666666666664,
+    "scene_id": 14,
+    "rejection_reason": "blur",
+    "blur_score": 12.36,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_14_t_326566.jpg",
+    "timestamp": 326.56666666666666,
+    "scene_id": 14,
+    "rejection_reason": "blur",
+    "blur_score": 35.52,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_14_t_331666.jpg",
+    "timestamp": 331.66666666666663,
+    "scene_id": 14,
+    "rejection_reason": "blur",
+    "blur_score": 27.23,
+    "blur_threshold": 50.0
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_16_t_361800.jpg",
+    "timestamp": 361.8,
+    "scene_id": 16,
+    "rejection_reason": "too_bright",
+    "exposure_score": 197.06,
+    "exposure_range": [
+      50,
+      175
+    ]
+  },
+  {
+    "frame_path": "outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260106_192102\\candidates\\scene_16_t_365099.jpg",
+    "timestamp": 365.09999999999997,
+    "scene_id": 16,
+    "rejection_reason": "too_bright",
+    "exposure_score": 192.54,
+    "exposure_range": [
+      50,
+      175
+    ]
+  }
+]

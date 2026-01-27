@@ -1,0 +1,844 @@
+[
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_1_t_22886.jpg",
+    "timestamp": 22.886666666666667,
+    "scene_id": 1,
+    "quality_score": 0.5572,
+    "face_present": 1,
+    "face_size": 103,
+    "is_frontal": true,
+    "blur_score": 211.71,
+    "blur_region": "body",
+    "exposure_score": 76.28,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "sad",
+      "probabilities": {
+        "angry": 11.415660858154297,
+        "disgust": 2.1437344551086426,
+        "fear": 4.3615851402282715,
+        "happy": 0.2829117774963379,
+        "sad": 61.82353210449219,
+        "surprise": 0.05636468902230263,
+        "neutral": 19.91621208190918
+      },
+      "face_size": [
+        103,
+        103
+      ],
+      "face_confidence": 0.96
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.5936692953109741
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.18768669664859772
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.09638909995555878
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.05219167843461037
+        },
+        {
+          "label": "office",
+          "probability": 0.021415887400507927
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_1_t_22886.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_3_t_54900.jpg",
+    "timestamp": 54.9,
+    "scene_id": 3,
+    "quality_score": 0.7103,
+    "face_present": 1,
+    "face_size": 106,
+    "is_frontal": true,
+    "blur_score": 206.56,
+    "blur_region": "body",
+    "exposure_score": 76.87,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "happy",
+      "probabilities": {
+        "angry": 0.011028580367565155,
+        "disgust": 1.385174982715398e-06,
+        "fear": 0.02986319549381733,
+        "happy": 99.31703186035156,
+        "sad": 0.2674650251865387,
+        "surprise": 0.008648436516523361,
+        "neutral": 0.36595869064331055
+      },
+      "face_size": [
+        105,
+        105
+      ],
+      "face_confidence": 0.93
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.4681856036186218
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.1301146298646927
+        },
+        {
+          "label": "art_gallery",
+          "probability": 0.07803956419229507
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.07654619961977005
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.03789832442998886
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_3_t_54900.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_5_t_135453.jpg",
+    "timestamp": 135.45333333333332,
+    "scene_id": 5,
+    "quality_score": 0.7041,
+    "face_present": 1,
+    "face_size": 106,
+    "is_frontal": true,
+    "blur_score": 251.95,
+    "blur_region": "body",
+    "exposure_score": 75.0,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "happy",
+      "probabilities": {
+        "angry": 35.99835205078125,
+        "disgust": 1.3979745006054145e-07,
+        "fear": 0.5075461864471436,
+        "happy": 51.8547477722168,
+        "sad": 5.835987567901611,
+        "surprise": 0.0001775316195562482,
+        "neutral": 5.803191184997559
+      },
+      "face_size": [
+        106,
+        106
+      ],
+      "face_confidence": 0.98
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.8072220683097839
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.07863693684339523
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.06389608234167099
+        },
+        {
+          "label": "office",
+          "probability": 0.012582245282828808
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.011204816401004791
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_5_t_135453.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_5_t_142780.jpg",
+    "timestamp": 142.78,
+    "scene_id": 5,
+    "quality_score": 0.5628,
+    "face_present": 1,
+    "face_size": 128,
+    "is_frontal": true,
+    "blur_score": 185.54,
+    "blur_region": "body",
+    "exposure_score": 76.75,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "angry",
+      "probabilities": {
+        "angry": 82.74920654296875,
+        "disgust": 0.09937013685703278,
+        "fear": 6.331959247589111,
+        "happy": 1.5296273904626123e-13,
+        "sad": 10.816097259521484,
+        "surprise": 3.996098729697195e-10,
+        "neutral": 0.0033701066859066486
+      },
+      "face_size": [
+        1279,
+        719
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.6988347172737122
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.1516762375831604
+        },
+        {
+          "label": "home_theater",
+          "probability": 0.06982094794511795
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.022256817668676376
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.011072983033955097
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_5_t_142780.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_7_t_202046.jpg",
+    "timestamp": 202.04666666666668,
+    "scene_id": 7,
+    "quality_score": 0.4613,
+    "face_present": 1,
+    "face_size": 66,
+    "is_frontal": true,
+    "blur_score": 521.19,
+    "blur_region": "body",
+    "exposure_score": 53.91,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "neutral",
+      "probabilities": {
+        "angry": 0.2162363976240158,
+        "disgust": 3.4266497550561326e-06,
+        "fear": 0.27489376068115234,
+        "happy": 0.23100349307060242,
+        "sad": 4.432574272155762,
+        "surprise": 0.00011896486830664799,
+        "neutral": 94.84516906738281
+      },
+      "face_size": [
+        57,
+        57
+      ],
+      "face_confidence": 0.92
+    },
+    "scene_analysis": {
+      "top_scene": "home_theater",
+      "top_k_scenes": [
+        {
+          "label": "home_theater",
+          "probability": 0.4378691613674164
+        },
+        {
+          "label": "conference_center",
+          "probability": 0.1690831482410431
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.16348125040531158
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.1029563918709755
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.05174390971660614
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_7_t_202046.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_7_t_206386.jpg",
+    "timestamp": 206.38666666666666,
+    "scene_id": 7,
+    "quality_score": 0.4571,
+    "face_present": 1,
+    "face_size": 68,
+    "is_frontal": true,
+    "blur_score": 317.55,
+    "blur_region": "body",
+    "exposure_score": 55.51,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "sad",
+      "probabilities": {
+        "angry": 2.7487497329711914,
+        "disgust": 0.006237794645130634,
+        "fear": 1.5755268335342407,
+        "happy": 0.6048998236656189,
+        "sad": 83.98115539550781,
+        "surprise": 0.19274665415287018,
+        "neutral": 10.890680313110352
+      },
+      "face_size": [
+        59,
+        59
+      ],
+      "face_confidence": 0.94
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.3075820505619049
+        },
+        {
+          "label": "home_theater",
+          "probability": 0.27478814125061035
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.11566469818353653
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.09681259095668793
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.06524151563644409
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_7_t_206386.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_8_t_216883.jpg",
+    "timestamp": 216.88333333333333,
+    "scene_id": 8,
+    "quality_score": 0.3677,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 77.22,
+    "blur_region": "full",
+    "exposure_score": 53.1,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "happy",
+      "probabilities": {
+        "angry": 8.389689901378006e-05,
+        "disgust": 2.248411647087778e-06,
+        "fear": 1.1250163316726685,
+        "happy": 98.75729370117188,
+        "sad": 0.07175146043300629,
+        "surprise": 2.0524495994322933e-05,
+        "neutral": 0.0458342544734478
+      },
+      "face_size": [
+        1279,
+        719
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "television_studio",
+      "top_k_scenes": [
+        {
+          "label": "television_studio",
+          "probability": 0.29811951518058777
+        },
+        {
+          "label": "home_theater",
+          "probability": 0.1697620004415512
+        },
+        {
+          "label": "orchestra_pit",
+          "probability": 0.11528396606445312
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.09350325167179108
+        },
+        {
+          "label": "auditorium",
+          "probability": 0.08071345835924149
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_8_t_216883.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_11_t_256677.jpg",
+    "timestamp": 256.6777777777778,
+    "scene_id": 11,
+    "quality_score": 0.5106,
+    "face_present": 1,
+    "face_size": 85,
+    "is_frontal": true,
+    "blur_score": 217.55,
+    "blur_region": "body",
+    "exposure_score": 67.23,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "angry",
+      "probabilities": {
+        "angry": 50.97920608520508,
+        "disgust": 1.8647568225860596,
+        "fear": 6.759331703186035,
+        "happy": 0.013485406525433064,
+        "sad": 37.50825881958008,
+        "surprise": 0.06934315711259842,
+        "neutral": 2.8056111335754395
+      },
+      "face_size": [
+        76,
+        76
+      ],
+      "face_confidence": 0.98
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.6481155157089233
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.1425330638885498
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.07363253086805344
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.05945432186126709
+        },
+        {
+          "label": "home_theater",
+          "probability": 0.017082197591662407
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_11_t_256677.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_11_t_259488.jpg",
+    "timestamp": 259.4888888888889,
+    "scene_id": 11,
+    "quality_score": 0.5434,
+    "face_present": 1,
+    "face_size": 88,
+    "is_frontal": true,
+    "blur_score": 212.74,
+    "blur_region": "body",
+    "exposure_score": 73.99,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "sad",
+      "probabilities": {
+        "angry": 23.930166244506836,
+        "disgust": 0.6239623427391052,
+        "fear": 9.558624267578125,
+        "happy": 1.0599983930587769,
+        "sad": 46.79783248901367,
+        "surprise": 3.6162052154541016,
+        "neutral": 14.41321849822998
+      },
+      "face_size": [
+        92,
+        92
+      ],
+      "face_confidence": 0.98
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.6008646488189697
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.09895125031471252
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.08493220806121826
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.08478274196386337
+        },
+        {
+          "label": "office",
+          "probability": 0.02504006214439869
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_11_t_259488.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_12_t_264844.jpg",
+    "timestamp": 264.84444444444443,
+    "scene_id": 12,
+    "quality_score": 0.0481,
+    "face_present": 0,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 101.78,
+    "blur_region": "full",
+    "exposure_score": 59.12,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": false,
+      "dominant_emotion": null,
+      "probabilities": {}
+    },
+    "scene_analysis": {
+      "top_scene": "movie_theater/indoor",
+      "top_k_scenes": [
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.3593584895133972
+        },
+        {
+          "label": "auditorium",
+          "probability": 0.19423575699329376
+        },
+        {
+          "label": "home_theater",
+          "probability": 0.16131776571273804
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.12667085230350494
+        },
+        {
+          "label": "conference_center",
+          "probability": 0.039307206869125366
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_12_t_264844.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_12_t_267388.jpg",
+    "timestamp": 267.3888888888889,
+    "scene_id": 12,
+    "quality_score": 0.2501,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 106.66,
+    "blur_region": "full",
+    "exposure_score": 59.47,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "sad",
+      "probabilities": {
+        "angry": 5.423661194638163e-13,
+        "disgust": 2.2342076876652353e-16,
+        "fear": 0.29008662700653076,
+        "happy": 9.194022432268412e-09,
+        "sad": 99.70991516113281,
+        "surprise": 4.8243503563986334e-26,
+        "neutral": 3.0313157539652025e-10
+      },
+      "face_size": [
+        1279,
+        719
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "movie_theater/indoor",
+      "top_k_scenes": [
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.28101015090942383
+        },
+        {
+          "label": "auditorium",
+          "probability": 0.21194995939731598
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.16300468146800995
+        },
+        {
+          "label": "home_theater",
+          "probability": 0.08596282452344894
+        },
+        {
+          "label": "conference_center",
+          "probability": 0.06595701724290848
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_12_t_267388.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_14_t_316366.jpg",
+    "timestamp": 316.3666666666667,
+    "scene_id": 14,
+    "quality_score": 0.7571,
+    "face_present": 1,
+    "face_size": 137,
+    "is_frontal": true,
+    "blur_score": 167.3,
+    "blur_region": "body",
+    "exposure_score": 85.84,
+    "eyes_open": false,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "happy",
+      "probabilities": {
+        "angry": 4.785985296962281e-08,
+        "disgust": 1.545180812728003e-13,
+        "fear": 12.399560928344727,
+        "happy": 86.034423828125,
+        "sad": 0.036594849079847336,
+        "surprise": 0.02145659737288952,
+        "neutral": 1.5079612731933594
+      },
+      "face_size": [
+        1279,
+        719
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.7537471652030945
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.08001868426799774
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.05314778909087181
+        },
+        {
+          "label": "office",
+          "probability": 0.03237897530198097
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.02727012149989605
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_14_t_316366.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_14_t_321466.jpg",
+    "timestamp": 321.46666666666664,
+    "scene_id": 14,
+    "quality_score": 0.7649,
+    "face_present": 1,
+    "face_size": 137,
+    "is_frontal": true,
+    "blur_score": 38.96,
+    "blur_region": "body",
+    "exposure_score": 89.08,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "happy",
+      "probabilities": {
+        "angry": 1.6098882209963916e-12,
+        "disgust": 6.533828168825691e-22,
+        "fear": 0.10690946877002716,
+        "happy": 99.89309692382812,
+        "sad": 1.4055014041503e-08,
+        "surprise": 1.5682005694017676e-09,
+        "neutral": 1.0362583013900917e-09
+      },
+      "face_size": [
+        1279,
+        719
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "conference_center",
+      "top_k_scenes": [
+        {
+          "label": "conference_center",
+          "probability": 0.8131585121154785
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.04350152239203453
+        },
+        {
+          "label": "television_studio",
+          "probability": 0.04336276277899742
+        },
+        {
+          "label": "lecture_room",
+          "probability": 0.0290666650980711
+        },
+        {
+          "label": "office",
+          "probability": 0.022801656275987625
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_14_t_321466.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_15_t_349806.jpg",
+    "timestamp": 349.8066666666667,
+    "scene_id": 15,
+    "quality_score": 0.3624,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 89.25,
+    "blur_region": "full",
+    "exposure_score": 51.84,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "happy",
+      "probabilities": {
+        "angry": 0.9154624342918396,
+        "disgust": 6.78667493048124e-06,
+        "fear": 0.16563007235527039,
+        "happy": 93.34764862060547,
+        "sad": 4.832755088806152,
+        "surprise": 1.0433866009407211e-05,
+        "neutral": 0.7384864091873169
+      },
+      "face_size": [
+        1279,
+        719
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "lecture_room",
+      "top_k_scenes": [
+        {
+          "label": "lecture_room",
+          "probability": 0.3097749650478363
+        },
+        {
+          "label": "auditorium",
+          "probability": 0.30756309628486633
+        },
+        {
+          "label": "conference_center",
+          "probability": 0.1836194396018982
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.09255313873291016
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.07457272708415985
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_15_t_349806.jpg"
+  },
+  {
+    "frame_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\candidates\\scene_15_t_354153.jpg",
+    "timestamp": 354.1533333333333,
+    "scene_id": 15,
+    "quality_score": 0.2241,
+    "face_present": 1,
+    "face_size": 0,
+    "is_frontal": false,
+    "blur_score": 98.76,
+    "blur_region": "full",
+    "exposure_score": 54.17,
+    "eyes_open": true,
+    "emotion_analysis": {
+      "face_detected": true,
+      "dominant_emotion": "sad",
+      "probabilities": {
+        "angry": 0.09454043954610825,
+        "disgust": 0.00011741284106392413,
+        "fear": 0.349638432264328,
+        "happy": 0.046862389892339706,
+        "sad": 78.8734359741211,
+        "surprise": 1.0871404754198011e-07,
+        "neutral": 20.635404586791992
+      },
+      "face_size": [
+        1279,
+        719
+      ],
+      "face_confidence": null
+    },
+    "scene_analysis": {
+      "top_scene": "lecture_room",
+      "top_k_scenes": [
+        {
+          "label": "lecture_room",
+          "probability": 0.44679954648017883
+        },
+        {
+          "label": "auditorium",
+          "probability": 0.17978781461715698
+        },
+        {
+          "label": "conference_center",
+          "probability": 0.175185427069664
+        },
+        {
+          "label": "movie_theater/indoor",
+          "probability": 0.10897073149681091
+        },
+        {
+          "label": "legislative_chamber",
+          "probability": 0.03843611478805542
+        }
+      ]
+    },
+    "selected_path": "C:\\Users\\EvanN\\MiCRA\\MiCRA\\backend\\app\\agents\\image_extraction\\outputs\\keyframes\\Inspirational Corporate Keynote Speech Michael's Story\\20260126_111733\\selected\\scene_15_t_354153.jpg"
+  }
+]
