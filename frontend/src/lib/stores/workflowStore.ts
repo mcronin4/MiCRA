@@ -29,6 +29,11 @@ interface WorkflowStore {
   // Centralized image bucket
   imageBucket: ImageBucketItem[]
 
+  // Workflow metadata
+  currentWorkflowId: string | undefined
+  workflowName: string
+  workflowDescription: string | undefined
+
   addNode: (node: WorkflowNodeState) => void
   removeNode: (nodeId: string) => void
   updateNode: (nodeId: string, updates: Partial<WorkflowNodeState>) => void
@@ -37,6 +42,13 @@ interface WorkflowStore {
   addImagesToBucket: (images: Omit<ImageBucketItem, 'addedAt'>[]) => void
   removeImageFromBucket: (imageId: string) => void
   clearImageBucket: () => void
+
+  // Workflow metadata actions
+  setCurrentWorkflowId: (id: string | undefined) => void
+  setWorkflowName: (name: string) => void
+  setWorkflowDescription: (description: string | undefined) => void
+  setWorkflowMetadata: (id: string | undefined, name: string, description?: string | undefined) => void
+  clearWorkflowMetadata: () => void
 
   // Workflow persistence methods
   exportWorkflowStructure: (reactFlowNodes: Node[], reactFlowEdges: Edge[]) => SavedWorkflowData
@@ -50,6 +62,9 @@ interface WorkflowStore {
 export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   nodes: {},
   imageBucket: [],
+  currentWorkflowId: undefined,
+  workflowName: 'Untitled Workflow',
+  workflowDescription: undefined,
 
   addNode: (node) => set((state) => ({
     nodes: { ...state.nodes, [node.id]: node }
@@ -84,6 +99,21 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   })),
 
   clearImageBucket: () => set({ imageBucket: [] }),
+
+  // Workflow metadata actions
+  setCurrentWorkflowId: (id) => set({ currentWorkflowId: id }),
+  setWorkflowName: (name) => set({ workflowName: name }),
+  setWorkflowDescription: (description) => set({ workflowDescription: description }),
+  setWorkflowMetadata: (id, name, description) => set({
+    currentWorkflowId: id,
+    workflowName: name,
+    workflowDescription: description,
+  }),
+  clearWorkflowMetadata: () => set({
+    currentWorkflowId: undefined,
+    workflowName: 'Untitled Workflow',
+    workflowDescription: undefined,
+  }),
 
   /**
    * Export workflow structure for saving.
@@ -178,7 +208,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
   /**
    * Reset workflow store to empty state.
-   * Note: Does NOT clear imageBucket - images persist across workflow changes
+   * Note: Does NOT clear imageBucket or workflow metadata - they persist across workflow changes
    */
   reset: () => set({ nodes: {} }),
 }))

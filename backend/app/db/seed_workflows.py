@@ -17,12 +17,9 @@ backend_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(backend_root))
 
 from app.db.supabase import get_supabase
-from uuid import UUID
 from dotenv import load_dotenv
 load_dotenv()
 
-# Default user ID for system workflows
-SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000"
 
 TEMPLATES = [
     {
@@ -116,7 +113,7 @@ def seed_workflows():
             existing = supabase.table("workflows")\
                 .select("id")\
                 .eq("name", template["name"])\
-                .eq("is_system_workflow", True)\
+                .eq("is_system", True)\
                 .execute()
             
             if existing.data:
@@ -124,22 +121,38 @@ def seed_workflows():
                 skipped_count += 1
                 continue
             
-            data = {
+            # Create workflow metadata
+            # System workflows should have NULL user_id per schema
+            workflow_data = {
                 "name": template["name"],
                 "description": template["description"],
-                "user_id": SYSTEM_USER_ID,
-                "is_system_workflow": True,
-                "is_public": True,  # Public for prototype mode
-                "workflow_data": template["workflow_data"]
+                "user_id": None,  # NULL for system workflows
+                "is_system": True,
             }
             
-            result = supabase.table("workflows").insert(data).execute()
+            result = supabase.table("workflows").insert(workflow_data).execute()
             
-            if result.data:
+            if not result.data:
+                print(f"  ❌ Failed to create template: {template['name']}")
+                continue
+            
+            workflow_id = result.data[0]["id"]
+            
+            # Create initial version (version_number will be auto-incremented to 1)
+            version_data = {
+                "workflow_id": workflow_id,
+                "payload": template["workflow_data"]
+            }
+            
+            version_result = supabase.table("workflow_versions").insert(version_data).execute()
+            
+            if version_result.data:
                 print(f"  ✅ Created template: {template['name']}")
                 created_count += 1
             else:
-                print(f"  ❌ Failed to create template: {template['name']}")
+                # Rollback: delete the workflow if version creation fails
+                supabase.table("workflows").delete().eq("id", workflow_id).execute()
+                print(f"  ❌ Failed to create template version: {template['name']}")
         
         print(f"\n✅ Seeding complete!")
         print(f"   Created: {created_count} templates")

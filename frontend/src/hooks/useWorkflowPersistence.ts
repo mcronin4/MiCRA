@@ -51,13 +51,13 @@ export function useWorkflowPersistence() {
           // If it's a system workflow, create a new workflow instead of updating
           try {
             const existingWorkflow = await getWorkflow(existingWorkflowId)
-            if (existingWorkflow.is_system_workflow) {
+            if (existingWorkflow.is_system) {
               // Template was loaded and modified - create a new workflow instead
               const request: CreateWorkflowRequest = {
                 name,
                 description,
                 workflow_data: workflowData,
-                is_system_workflow: false,
+                is_system: false,
               }
 
               const response = await createWorkflow(request)
@@ -70,7 +70,7 @@ export function useWorkflowPersistence() {
               name,
               description,
               workflow_data: workflowData,
-              is_system_workflow: false,
+              is_system: false,
             }
 
             const response = await createWorkflow(request)
@@ -91,7 +91,7 @@ export function useWorkflowPersistence() {
             name,
             description,
             workflow_data: workflowData,
-            is_system_workflow: false,
+            is_system: false,
           }
 
           const response = await createWorkflow(request)
@@ -120,6 +120,7 @@ export function useWorkflowPersistence() {
       success: boolean
       nodes?: Node[]
       edges?: Edge[]
+      workflowName?: string
       error?: string
     }> => {
       setIsLoading(true)
@@ -143,6 +144,7 @@ export function useWorkflowPersistence() {
           success: true,
           nodes: reactFlowNodes,
           edges: reactFlowEdges,
+          workflowName: response.name,
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -156,14 +158,14 @@ export function useWorkflowPersistence() {
   )
 
   /**
-   * List user workflows and templates.
+   * List user workflows (non-system workflows for the current user).
    */
-  const fetchWorkflows = useCallback(async (includeTemplates = true) => {
+  const fetchWorkflows = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const workflows = await listWorkflows(includeTemplates)
+      const workflows = await listWorkflows()
       return { success: true, workflows }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
