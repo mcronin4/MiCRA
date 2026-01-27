@@ -3,13 +3,22 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { Node, Edge, ReactFlowInstance } from "@xyflow/react";
 import { useWorkflowPersistence } from "@/hooks/useWorkflowPersistence";
-import type { Workflow, WorkflowMetadata } from "@/lib/fastapi/workflows";
+import { useWorkflowStore } from "@/lib/stores/workflowStore";
+import type { WorkflowMetadata } from "@/lib/fastapi/workflows";
+import {
+  listWorkflowVersions,
+  getWorkflowVersion,
+  type WorkflowVersionMetadata,
+  type WorkflowVersion,
+} from "@/lib/fastapi/workflows";
 import {
   Trash2,
   X,
   Loader2,
   FileText,
   Sparkles,
+  History,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -19,8 +28,6 @@ interface WorkflowManagerProps {
   reactFlowInstance: ReactFlowInstance | null;
   setNodes: (nodes: Node[] | ((nodes: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((edges: Edge[]) => Edge[])) => void;
-  currentWorkflowId?: string;
-  onWorkflowChanged?: (workflowId: string | undefined) => void;
   showSaveDialogExternal?: boolean;
   showLoadDialogExternal?: boolean;
   onDialogClose?: () => void;
@@ -32,19 +39,30 @@ export function WorkflowManager({
   reactFlowInstance,
   setNodes,
   setEdges,
-  currentWorkflowId,
-  onWorkflowChanged,
   showSaveDialogExternal,
   showLoadDialogExternal,
   onDialogClose,
 }: WorkflowManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [workflowName, setWorkflowName] = useState("");
-  const [workflowDescription, setWorkflowDescription] = useState("");
+  const [localWorkflowName, setLocalWorkflowName] = useState("");
+  const [localWorkflowDescription, setLocalWorkflowDescription] = useState("");
   const [workflows, setWorkflows] = useState<WorkflowMetadata[]>([]);
   const [templates, setTemplates] = useState<WorkflowMetadata[]>([]);
   const [activeTab, setActiveTab] = useState<"mine" | "templates">("mine");
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  const [versions, setVersions] = useState<WorkflowVersionMetadata[]>([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+
+  // Get workflow metadata from store
+  const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
+  const workflowName = useWorkflowStore((state) => state.workflowName);
+  const workflowDescription = useWorkflowStore((state) => state.workflowDescription);
+  const setCurrentWorkflowId = useWorkflowStore((state) => state.setCurrentWorkflowId);
+  const setWorkflowName = useWorkflowStore((state) => state.setWorkflowName);
+  const setWorkflowDescription = useWorkflowStore((state) => state.setWorkflowDescription);
+  const setWorkflowMetadata = useWorkflowStore((state) => state.setWorkflowMetadata);
 
   const {
     isLoading,
@@ -55,6 +73,9 @@ export function WorkflowManager({
     fetchTemplates,
     removeWorkflow,
   } = useWorkflowPersistence();
+  const importWorkflowStructure = useWorkflowStore(
+    (state) => state.importWorkflowStructure
+  );
 
   // Handle external dialog triggers
   useEffect(() => {
@@ -72,8 +93,8 @@ export function WorkflowManager({
   // Notify parent when dialogs close
   const handleCloseSaveDialog = useCallback(() => {
     setShowSaveDialog(false);
-    setWorkflowName("");
-    setWorkflowDescription("");
+    setLocalWorkflowName("");
+    setLocalWorkflowDescription("");
     onDialogClose?.();
   }, [onDialogClose]);
 
@@ -104,7 +125,8 @@ export function WorkflowManager({
   }, [isOpen, loadWorkflows]);
 
   const handleSave = useCallback(async () => {
-    if (!workflowName.trim()) {
+    const nameToSave = localWorkflowName.trim() || workflowName.trim();
+    if (!nameToSave) {
       alert("Please enter a workflow name");
       return;
     }
@@ -115,31 +137,32 @@ export function WorkflowManager({
     }
 
     const result = await saveWorkflow(
-      workflowName.trim(),
-      workflowDescription.trim() || undefined,
+      nameToSave,
+      localWorkflowDescription.trim() || workflowDescription || undefined,
       reactFlowNodes,
       reactFlowEdges,
       currentWorkflowId,
     );
 
     if (result.success) {
+      // Update store with saved workflow metadata
+      setWorkflowMetadata(result.workflowId, nameToSave, localWorkflowDescription.trim() || workflowDescription || undefined);
       handleCloseSaveDialog();
-      if (onWorkflowChanged && result.workflowId) {
-        onWorkflowChanged(result.workflowId);
-      }
       await loadWorkflows(); // Refresh list
       alert(currentWorkflowId ? "Workflow updated" : "Workflow saved");
     } else {
       alert(`Failed to save: ${result.error}`);
     }
   }, [
+    localWorkflowName,
+    localWorkflowDescription,
     workflowName,
     workflowDescription,
     reactFlowNodes,
     reactFlowEdges,
     currentWorkflowId,
     saveWorkflow,
-    onWorkflowChanged,
+    setWorkflowMetadata,
     loadWorkflows,
     handleCloseSaveDialog,
   ]);
@@ -156,14 +179,15 @@ export function WorkflowManager({
         if (result.success && result.nodes && result.edges) {
           setNodes(result.nodes);
           setEdges(result.edges);
+          // Update workflow metadata in store
+          // Don't set currentWorkflowId for system workflows/templates
+          // This allows users to modify and save as a new workflow
+          setWorkflowMetadata(
+            workflow.is_system ? undefined : workflow.id,
+            result.workflowName || workflow.name,
+            workflow.description || undefined,
+          );
           handleCloseLoadDialog();
-          if (onWorkflowChanged) {
-            // Don't set currentWorkflowId for system workflows/templates
-            // This allows users to modify and save as a new workflow
-            onWorkflowChanged(
-              workflow.is_system ? undefined : workflow.id,
-            );
-          }
         } else {
           alert(`Failed to load: ${result.error}`);
         }
@@ -174,7 +198,7 @@ export function WorkflowManager({
       reactFlowInstance,
       setNodes,
       setEdges,
-      onWorkflowChanged,
+      setWorkflowMetadata,
       handleCloseLoadDialog,
     ],
   );
@@ -191,29 +215,96 @@ export function WorkflowManager({
 
       if (result.success) {
         await loadWorkflows();
-        if (currentWorkflowId === workflowId && onWorkflowChanged) {
-          onWorkflowChanged(undefined);
+        if (currentWorkflowId === workflowId) {
+          // Clear workflow metadata if we deleted the current workflow
+          setWorkflowMetadata(undefined, 'Untitled Workflow', undefined);
         }
       } else {
         alert(`Failed to delete: ${result.error}`);
       }
     },
-    [removeWorkflow, currentWorkflowId, onWorkflowChanged, loadWorkflows],
+    [removeWorkflow, currentWorkflowId, setWorkflowMetadata, loadWorkflows],
   );
 
-  // Pre-fill name when opening save dialog if workflow already has a name
-  useEffect(() => {
-    if (showSaveDialog && currentWorkflowId) {
-      const workflow = workflows.find((w) => w.id === currentWorkflowId);
-      if (workflow) {
-        setWorkflowName(workflow.name);
-        setWorkflowDescription(workflow.description || "");
+  const handleShowVersionHistory = useCallback(
+    async (workflowId: string) => {
+      setSelectedWorkflowId(workflowId);
+      setShowVersionHistory(true);
+      setIsLoadingVersions(true);
+
+      try {
+        const versionList = await listWorkflowVersions(workflowId);
+        setVersions(versionList);
+      } catch (err) {
+        alert(`Failed to load version history: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setShowVersionHistory(false);
+      } finally {
+        setIsLoadingVersions(false);
       }
-    } else if (showSaveDialog && !currentWorkflowId) {
-      setWorkflowName("");
-      setWorkflowDescription("");
+    },
+    []
+  );
+
+  const handleLoadVersion = useCallback(
+    async (workflowId: string, versionNumber: number) => {
+      if (
+        !confirm(
+          `Load version ${versionNumber}? Your current workflow will be replaced.`
+        )
+      ) {
+        return;
+      }
+
+      try {
+        const version = await getWorkflowVersion(workflowId, versionNumber);
+        const { reactFlowNodes, reactFlowEdges } = importWorkflowStructure(
+          version.workflow_data
+        );
+
+        setNodes(reactFlowNodes);
+        setEdges(reactFlowEdges);
+        setShowVersionHistory(false);
+        handleCloseLoadDialog();
+
+        // Fit view after loading
+        setTimeout(() => {
+          reactFlowInstance?.fitView({ padding: 0.5, duration: 300 });
+        }, 100);
+
+        // Update workflow metadata in store
+        const workflow = workflows.find((w) => w.id === workflowId);
+        if (workflow) {
+          setWorkflowMetadata(
+            workflow.is_system ? undefined : workflowId,
+            workflow.name,
+            workflow.description || undefined,
+          );
+        }
+      } catch (err) {
+        alert(`Failed to load version: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    },
+    [reactFlowInstance, setNodes, setEdges, setWorkflowMetadata, workflows, handleCloseLoadDialog, importWorkflowStructure]
+  );
+
+  // Pre-fill name when opening save dialog
+  useEffect(() => {
+    if (showSaveDialog) {
+      // Use workflow name from store (which may have been edited in TopNavBar)
+      if (workflowName) {
+        setLocalWorkflowName(workflowName);
+      } else if (currentWorkflowId) {
+        const workflow = workflows.find((w) => w.id === currentWorkflowId);
+        if (workflow) {
+          setLocalWorkflowName(workflow.name);
+          setLocalWorkflowDescription(workflow.description || "");
+        }
+      } else {
+        setLocalWorkflowName("");
+        setLocalWorkflowDescription("");
+      }
     }
-  }, [showSaveDialog, currentWorkflowId, workflows]);
+  }, [showSaveDialog, currentWorkflowId, workflowName, workflows]);
 
   return (
     <>
@@ -229,8 +320,8 @@ export function WorkflowManager({
                 <label className="block text-sm font-medium mb-1">Name *</label>
                 <input
                   type="text"
-                  value={workflowName}
-                  onChange={(e) => setWorkflowName(e.target.value)}
+                  value={localWorkflowName}
+                  onChange={(e) => setLocalWorkflowName(e.target.value)}
                   placeholder="My Workflow"
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   autoFocus
@@ -241,8 +332,8 @@ export function WorkflowManager({
                   Description
                 </label>
                 <textarea
-                  value={workflowDescription}
-                  onChange={(e) => setWorkflowDescription(e.target.value)}
+                  value={localWorkflowDescription}
+                  onChange={(e) => setLocalWorkflowDescription(e.target.value)}
                   placeholder="Optional description"
                   rows={3}
                   className="w-full px-3 py-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -267,7 +358,7 @@ export function WorkflowManager({
                 </Button>
                 <Button
                   onClick={handleSave}
-                  disabled={isLoading || !workflowName.trim()}
+                  disabled={isLoading || (!localWorkflowName.trim() && !workflowName.trim())}
                 >
                   {isLoading ? (
                     <>
@@ -365,17 +456,28 @@ export function WorkflowManager({
                             Load
                           </Button>
                           {!workflow.is_system && (
-                            <Button
-                              onClick={() =>
-                                handleDelete(workflow.id, workflow.name)
-                              }
-                              variant="destructive"
-                              size="sm"
-                              disabled={isLoading}
-                              title="Delete workflow"
-                            >
-                              <Trash2 size={16} />
-                            </Button>
+                            <>
+                              <Button
+                                onClick={() => handleShowVersionHistory(workflow.id)}
+                                variant="outline"
+                                size="sm"
+                                disabled={isLoading}
+                                title="View version history"
+                              >
+                                <History size={16} />
+                              </Button>
+                              <Button
+                                onClick={() =>
+                                  handleDelete(workflow.id, workflow.name)
+                                }
+                                variant="destructive"
+                                size="sm"
+                                disabled={isLoading}
+                                title="Delete workflow"
+                              >
+                                <Trash2 size={16} />
+                              </Button>
+                            </>
                           )}
                         </div>
                       </div>
@@ -389,6 +491,96 @@ export function WorkflowManager({
                         : "No templates available"}
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Version History Modal */}
+      {showVersionHistory && selectedWorkflowId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Version History</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setShowVersionHistory(false);
+                  setSelectedWorkflowId(null);
+                  setVersions([]);
+                }}
+              >
+                <X size={20} />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {isLoadingVersions ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Loader2 size={24} className="animate-spin mx-auto mb-2" />
+                  Loading versions...
+                </div>
+              ) : versions.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No versions found
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {versions.map((version, index) => {
+                    const isLatest = index === 0;
+                    const date = new Date(version.created_at);
+                    const formattedDate = date.toLocaleString();
+
+                    return (
+                      <div
+                        key={version.version_number}
+                        className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
+                          isLatest
+                            ? "bg-blue-50 border-blue-200"
+                            : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              Version {version.version_number}
+                            </span>
+                            {isLatest && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                Latest
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                            <Clock size={14} />
+                            <span>{formattedDate}</span>
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {version.node_count} nodes • {version.edge_count}{" "}
+                            connections
+                          </div>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <Button
+                            onClick={() =>
+                              handleLoadVersion(
+                                selectedWorkflowId,
+                                version.version_number
+                              )
+                            }
+                            disabled={isLoading}
+                            size="sm"
+                            variant={isLatest ? "default" : "outline"}
+                          >
+                            {isLatest ? "Load" : "Restore"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

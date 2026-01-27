@@ -11,6 +11,7 @@ import { ImageGenerationNode } from "../workflow/nodes/ImageGenerationNode";
 import { StartNode } from "../workflow/nodes/StartNode";
 import { EndNode } from "../workflow/nodes/EndNode";
 import { WorkflowManager } from "../workflow/WorkflowManager";
+import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import type { NodeType } from "./types";
 
 const nodeTypes = {
@@ -116,9 +117,8 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
 }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [currentWorkflowId, setCurrentWorkflowId] = useState<
-    string | undefined
-  >();
+  const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
+  const setCurrentWorkflowId = useWorkflowStore((state) => state.setCurrentWorkflowId);
 
   // Store setNodes in the parent's ref
   useEffect(() => {
@@ -207,8 +207,6 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         reactFlowInstance={reactFlowInstance}
         setNodes={setNodes}
         setEdges={setEdges}
-        currentWorkflowId={currentWorkflowId}
-        onWorkflowChanged={setCurrentWorkflowId}
         showSaveDialogExternal={showSaveDialog}
         showLoadDialogExternal={showLoadDialog}
         onDialogClose={onDialogClose}

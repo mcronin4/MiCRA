@@ -5,23 +5,21 @@ NOTE: This system only saves workflow structure (nodes, edges, positions).
 Node inputs/outputs, attachments (e.g., base64 images), and execution state
 are NOT persisted. All workflows load with nodes in 'idle' state with empty inputs.
 
-In prototype mode (no authentication), all workflows are accessible to all users.
-System workflows (is_system=True) cannot be deleted or updated.
+System workflows (is_system=True) are read-only templates accessible to all users.
+User workflows belong to authenticated users and can only be modified by their owners.
 
 Workflow data is stored in workflow_versions table. The workflows table stores metadata only.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from app.db.supabase import get_supabase
+from app.auth.dependencies import User, get_current_user
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
-
-# Default user ID for anonymous users (until auth is implemented)
-DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000000"
 
 
 class WorkflowData(BaseModel):
@@ -68,6 +66,22 @@ class WorkflowResponse(BaseModel):
     updated_at: datetime
 
 
+class WorkflowVersionMetadata(BaseModel):
+    """Version metadata without full payload."""
+    version_number: int
+    created_at: datetime
+    node_count: int
+    edge_count: int
+
+
+class WorkflowVersionResponse(BaseModel):
+    """Full version response with payload."""
+    version_number: int
+    workflow_id: str
+    workflow_data: WorkflowData
+    created_at: datetime
+
+
 def get_latest_version(supabase, workflow_id: str) -> Optional[Dict[str, Any]]:
     """Get the latest version for a workflow."""
     result = supabase.table("workflow_versions")\
@@ -108,28 +122,20 @@ def get_latest_versions_batch(supabase, workflow_ids: List[str]) -> Dict[str, Di
 
 
 @router.get("", response_model=List[WorkflowMetadataResponse])
-async def list_workflows(user_id: Optional[str] = None):
+async def list_workflows(user: User = Depends(get_current_user)):
     """
-    List workflows for the current user (non-system workflows only).
+    List workflows for the current authenticated user (non-system workflows only).
     Returns only metadata (no payload) for efficient listing.
     
     System workflows/templates should be fetched via /templates endpoint.
-    
-    Args:
-        user_id: Filter by user ID. If None, returns workflows for current user.
-                 In prototype mode without auth, uses DEFAULT_USER_ID.
     """
     try:
         supabase = get_supabase().client
         
-        # Determine which user's workflows to fetch
-        # TODO: When auth is fully implemented, get user_id from JWT token
-        target_user_id = user_id if user_id else DEFAULT_USER_ID
-        
-        # Query workflows: only user's workflows (not system workflows)
+        # Query workflows: only current user's workflows (not system workflows)
         query = supabase.table("workflows")\
             .select("*")\
-            .eq("user_id", target_user_id)\
+            .eq("user_id", user.sub)\
             .eq("is_system", False)\
             .order("updated_at", desc=True)
         
@@ -173,8 +179,11 @@ async def list_workflows(user_id: Optional[str] = None):
 
 
 @router.get("/templates", response_model=List[WorkflowMetadataResponse])
-async def list_templates():
-    """Get only pre-built system workflow templates. Returns only metadata (no payload)."""
+async def list_templates(user: User = Depends(get_current_user)):
+    """
+    Get only pre-built system workflow templates. Returns only metadata (no payload).
+    Templates are read-only and accessible to all authenticated users.
+    """
     try:
         supabase = get_supabase().client
         
@@ -230,10 +239,10 @@ async def list_templates():
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
-async def get_workflow(workflow_id: str):
+async def get_workflow(workflow_id: str, user: User = Depends(get_current_user)):
     """
     Get a specific workflow by ID.
-    In prototype mode: all workflows are accessible to all users.
+    Users can access their own workflows or system templates.
     """
     try:
         supabase = get_supabase().client
@@ -247,6 +256,16 @@ async def get_workflow(workflow_id: str):
             raise HTTPException(status_code=404, detail="Workflow not found")
         
         item = result.data[0]
+        
+        # Check authorization: user can access their own workflows or system templates
+        workflow_user_id = str(item.get("user_id")) if item.get("user_id") else None
+        is_system = item.get("is_system", False)
+        
+        if not is_system and workflow_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this workflow"
+            )
         
         # Get latest version
         version = get_latest_version(supabase, workflow_id)
@@ -269,12 +288,130 @@ async def get_workflow(workflow_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get workflow: {str(e)}")
 
 
+@router.get("/{workflow_id}/versions", response_model=List[WorkflowVersionMetadata])
+async def list_workflow_versions(workflow_id: str, user: User = Depends(get_current_user)):
+    """
+    List all versions for a workflow.
+    Returns version metadata (version number, timestamps, node/edge counts) without full payload.
+    Users can access versions of their own workflows or system templates.
+    """
+    try:
+        supabase = get_supabase().client
+        
+        # Check if workflow exists and user has access
+        workflow_result = supabase.table("workflows")\
+            .select("*")\
+            .eq("id", workflow_id)\
+            .execute()
+        
+        if not workflow_result.data or len(workflow_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        workflow = workflow_result.data[0]
+        workflow_user_id = str(workflow.get("user_id")) if workflow.get("user_id") else None
+        is_system = workflow.get("is_system", False)
+        
+        # Check authorization
+        if not is_system and workflow_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this workflow"
+            )
+        
+        # Get all versions ordered by version_number descending (newest first)
+        result = supabase.table("workflow_versions")\
+            .select("*")\
+            .eq("workflow_id", workflow_id)\
+            .order("version_number", desc=True)\
+            .execute()
+        
+        if not result.data:
+            return []
+        
+        versions = []
+        for version in result.data:
+            payload = version["payload"]
+            node_count = len(payload.get("nodes", []))
+            edge_count = len(payload.get("edges", []))
+            
+            versions.append(WorkflowVersionMetadata(
+                version_number=version["version_number"],
+                created_at=version["created_at"],
+                node_count=node_count,
+                edge_count=edge_count
+            ))
+        
+        return versions
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list workflow versions: {str(e)}")
+
+
+@router.get("/{workflow_id}/versions/{version_number}", response_model=WorkflowVersionResponse)
+async def get_workflow_version(
+    workflow_id: str, 
+    version_number: int, 
+    user: User = Depends(get_current_user)
+):
+    """
+    Get a specific version of a workflow.
+    Returns the full workflow data for that version.
+    Users can access versions of their own workflows or system templates.
+    """
+    try:
+        supabase = get_supabase().client
+        
+        # Check if workflow exists and user has access
+        workflow_result = supabase.table("workflows")\
+            .select("*")\
+            .eq("id", workflow_id)\
+            .execute()
+        
+        if not workflow_result.data or len(workflow_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        workflow = workflow_result.data[0]
+        workflow_user_id = str(workflow.get("user_id")) if workflow.get("user_id") else None
+        is_system = workflow.get("is_system", False)
+        
+        # Check authorization
+        if not is_system and workflow_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this workflow"
+            )
+        
+        # Get specific version
+        result = supabase.table("workflow_versions")\
+            .select("*")\
+            .eq("workflow_id", workflow_id)\
+            .eq("version_number", version_number)\
+            .execute()
+        
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(status_code=404, detail=f"Version {version_number} not found for this workflow")
+        
+        version = result.data[0]
+        
+        return WorkflowVersionResponse(
+            version_number=version["version_number"],
+            workflow_id=str(version["workflow_id"]),
+            workflow_data=WorkflowData(**version["payload"]),
+            created_at=version["created_at"]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get workflow version: {str(e)}")
+
+
 @router.post("", response_model=WorkflowResponse, status_code=201)
-async def create_workflow(workflow: WorkflowCreate):
+async def create_workflow(workflow: WorkflowCreate, user: User = Depends(get_current_user)):
     """
     Create a new workflow.
-    In prototype mode: all workflows are created with DEFAULT_USER_ID.
     Creates workflow metadata and initial version.
+    Only admins can create system workflows (is_system=True).
     """
     try:
         supabase = get_supabase().client
@@ -283,12 +420,23 @@ async def create_workflow(workflow: WorkflowCreate):
         if not workflow.workflow_data.nodes:
             raise HTTPException(status_code=400, detail="Workflow must contain at least one node")
         
+        # Only allow system workflows to be created by admins (or if explicitly allowed)
+        # For now, regular users cannot create system workflows
+        if workflow.is_system:
+            # TODO: Add admin role check if needed
+            # For now, prevent regular users from creating system workflows
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can create system workflows"
+            )
+        
         # Create workflow metadata
         # System workflows should have NULL user_id per schema
+        # User workflows have the authenticated user's ID
         workflow_data = {
             "name": workflow.name,
             "description": workflow.description,
-            "user_id": None if workflow.is_system else DEFAULT_USER_ID,
+            "user_id": None if workflow.is_system else user.sub,
             "is_system": workflow.is_system,
         }
         
@@ -330,11 +478,15 @@ async def create_workflow(workflow: WorkflowCreate):
 
 
 @router.put("/{workflow_id}", response_model=WorkflowResponse)
-async def update_workflow(workflow_id: str, workflow: WorkflowUpdate):
+async def update_workflow(
+    workflow_id: str, 
+    workflow: WorkflowUpdate, 
+    user: User = Depends(get_current_user)
+):
     """
     Update an existing workflow.
     Cannot update system workflows (is_system=True).
-    In prototype mode: all non-system workflows can be updated by anyone.
+    Users can only update their own workflows.
     When updating workflow_data, saves current version to workflow_versions and creates new version.
     """
     try:
@@ -353,7 +505,18 @@ async def update_workflow(workflow_id: str, workflow: WorkflowUpdate):
         
         # Cannot update system workflows
         if existing_workflow.get("is_system", False):
-            raise HTTPException(status_code=403, detail="Cannot modify system workflows")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot modify system workflows"
+            )
+        
+        # Check authorization: user can only update their own workflows
+        workflow_user_id = str(existing_workflow.get("user_id")) if existing_workflow.get("user_id") else None
+        if workflow_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to update this workflow"
+            )
         
         # If workflow_data is being updated, we need to save current version first
         if workflow.workflow_data is not None:
@@ -421,11 +584,11 @@ async def update_workflow(workflow_id: str, workflow: WorkflowUpdate):
 
 
 @router.delete("/{workflow_id}", status_code=204)
-async def delete_workflow(workflow_id: str):
+async def delete_workflow(workflow_id: str, user: User = Depends(get_current_user)):
     """
     Delete a workflow.
     Cannot delete system workflows (is_system=True).
-    In prototype mode: all non-system workflows can be deleted by anyone.
+    Users can only delete their own workflows.
     Deleting a workflow will cascade delete all versions (via foreign key).
     """
     try:
@@ -444,7 +607,18 @@ async def delete_workflow(workflow_id: str):
         
         # Cannot delete system workflows
         if existing_workflow.get("is_system", False):
-            raise HTTPException(status_code=403, detail="Cannot delete system workflows")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot delete system workflows"
+            )
+        
+        # Check authorization: user can only delete their own workflows
+        workflow_user_id = str(existing_workflow.get("user_id")) if existing_workflow.get("user_id") else None
+        if workflow_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to delete this workflow"
+            )
         
         # Delete workflow (cascades to workflow_versions via foreign key)
         supabase.table("workflows")\

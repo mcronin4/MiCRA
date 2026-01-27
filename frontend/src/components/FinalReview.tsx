@@ -21,7 +21,6 @@ import { WORKFLOW_NODES, FLOW_NODES } from "./final-review/types";
 
 const FinalReview = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [workflowName, setWorkflowName] = useState("Untitled Workflow");
   const [interactionMode, setInteractionMode] = useState<"select" | "pan">(
     "select",
   );
@@ -163,8 +162,6 @@ const FinalReview = () => {
     <div className="h-screen flex flex-col font-sans text-[#1d1d1f] overflow-hidden bg-white">
       {/* Top Navigation Bar */}
       <TopNavBar
-        workflowName={workflowName}
-        onWorkflowNameChange={setWorkflowName}
         onSave={() => setShowSaveDialog(true)}
         onLoad={() => setShowLoadDialog(true)}
         canSave={true}

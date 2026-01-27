@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Save, FolderOpen } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import type { User } from "@supabase/supabase-js";
 
 interface TopNavBarProps {
-  workflowName?: string;
-  onWorkflowNameChange?: (name: string) => void;
   onSave?: () => void;
   onLoad?: () => void;
   canSave?: boolean;
@@ -29,22 +28,29 @@ function displayNameFromUser(user: User | null): string | null {
 }
 
 export const TopNavBar: React.FC<TopNavBarProps> = ({
-  workflowName = "Untitled Workflow",
-  onWorkflowNameChange,
   onSave,
   onLoad,
   canSave = true,
 }) => {
+  const workflowName = useWorkflowStore((state) => state.workflowName);
+  const setWorkflowName = useWorkflowStore((state) => state.setWorkflowName);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(workflowName);
+
+  // Sync editedName when workflowName from store changes (e.g., when loading a workflow)
+  useEffect(() => {
+    if (!isEditingName) {
+      setEditedName(workflowName);
+    }
+  }, [workflowName, isEditingName]);
   const { user } = useAuth();
   const displayName = displayNameFromUser(user);
   const projectsLabel = user && displayName ? `${displayName}'s Projects` : "My Projects";
 
   const handleNameSubmit = () => {
     setIsEditingName(false);
-    if (onWorkflowNameChange && editedName.trim()) {
-      onWorkflowNameChange(editedName.trim());
+    if (editedName.trim()) {
+      setWorkflowName(editedName.trim());
     }
   };
 
