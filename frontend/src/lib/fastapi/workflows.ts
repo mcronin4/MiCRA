@@ -36,13 +36,24 @@ export interface SavedWorkflowData {
   edges: SavedWorkflowEdge[]
 }
 
+export interface WorkflowMetadata {
+  id: string
+  name: string
+  description: string | null
+  user_id: string
+  is_system: boolean
+  node_count: number
+  edge_count: number
+  created_at: string
+  updated_at: string
+}
+
 export interface Workflow {
   id: string
   name: string
   description: string | null
   user_id: string
-  is_system_workflow: boolean
-  is_public: boolean
+  is_system: boolean
   workflow_data: SavedWorkflowData
   created_at: string
   updated_at: string
@@ -52,7 +63,7 @@ export interface CreateWorkflowRequest {
   name: string
   description?: string
   workflow_data: SavedWorkflowData
-  is_system_workflow?: boolean
+  is_system?: boolean
 }
 
 export interface UpdateWorkflowRequest {
@@ -61,11 +72,26 @@ export interface UpdateWorkflowRequest {
   workflow_data?: SavedWorkflowData
 }
 
+export interface WorkflowVersionMetadata {
+  version_number: number
+  created_at: string
+  node_count: number
+  edge_count: number
+}
+
+export interface WorkflowVersion {
+  version_number: number
+  workflow_id: string
+  workflow_data: SavedWorkflowData
+  created_at: string
+}
+
 /**
  * List all workflows accessible to the user (user workflows + system templates).
+ * Returns only metadata (no payload) for efficient listing.
  */
-export async function listWorkflows(includeSystem = true): Promise<Workflow[]> {
-  return apiClient.request<Workflow[]>(`/v1/workflows?include_system=${includeSystem}`, {
+export async function listWorkflows(): Promise<WorkflowMetadata[]> {
+  return apiClient.request<WorkflowMetadata[]>('/v1/workflows', {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   })
@@ -73,9 +99,10 @@ export async function listWorkflows(includeSystem = true): Promise<Workflow[]> {
 
 /**
  * List only pre-built system workflow templates.
+ * Returns only metadata (no payload) for efficient listing.
  */
-export async function listTemplates(): Promise<Workflow[]> {
-  return apiClient.request<Workflow[]>('/v1/workflows/templates', {
+export async function listTemplates(): Promise<WorkflowMetadata[]> {
+  return apiClient.request<WorkflowMetadata[]>('/v1/workflows/templates', {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   })
@@ -127,4 +154,37 @@ export async function deleteWorkflow(workflowId: string): Promise<void> {
   return apiClient.request<void>(`/v1/workflows/${workflowId}`, {
     method: 'DELETE',
   })
+}
+
+/**
+ * List all versions for a workflow.
+ * Returns version metadata without full payload.
+ */
+export async function listWorkflowVersions(
+  workflowId: string
+): Promise<WorkflowVersionMetadata[]> {
+  return apiClient.request<WorkflowVersionMetadata[]>(
+    `/v1/workflows/${workflowId}/versions`,
+    {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  )
+}
+
+/**
+ * Get a specific version of a workflow.
+ * Returns the full workflow data for that version.
+ */
+export async function getWorkflowVersion(
+  workflowId: string,
+  versionNumber: number
+): Promise<WorkflowVersion> {
+  return apiClient.request<WorkflowVersion>(
+    `/v1/workflows/${workflowId}/versions/${versionNumber}`,
+    {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  )
 }

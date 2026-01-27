@@ -37,17 +37,15 @@ tqdm
 python-multipart
 Pillow
 
-# VLM dependencies for image_text_matching (VLM approaches)
+# VLM dependencies for V2 image_text_matching (vlm_anslysis.py) (VLM V2)
 fireworks-ai
 
 # Supabase Storage integration
 supabase
 asyncpg
 
-# Testing dependencies
-pytest
-pytest-asyncio
-httpx
+# JWT verification for Supabase Auth
+PyJWT[cryptography]
 
 # Optional ML dependencies (uncomment if needed for original image_text_matching implementation)
 # torch
@@ -55,4 +53,4 @@ httpx
 # transformers
 # sentencepiece
 # scikit-learn
-# pytesseract
+# easyocr

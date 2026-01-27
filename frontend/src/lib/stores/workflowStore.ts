@@ -13,13 +13,43 @@ export interface WorkflowNodeState {
   error?: string
 }
 
+// Image bucket item for centralized image storage
+export interface ImageBucketItem {
+  id: string
+  base64?: string  // Optional for backward compatibility, prefer signedUrl
+  fileId?: string  // File ID from R2 storage
+  signedUrl?: string  // Presigned URL for R2 storage
+  name: string
+  addedAt: number
+}
+
 interface WorkflowStore {
   nodes: Record<string, WorkflowNodeState>
-  
+
+  // Centralized image bucket
+  imageBucket: ImageBucketItem[]
+
+  // Workflow metadata
+  currentWorkflowId: string | undefined
+  workflowName: string
+  workflowDescription: string | undefined
+
   addNode: (node: WorkflowNodeState) => void
   removeNode: (nodeId: string) => void
   updateNode: (nodeId: string, updates: Partial<WorkflowNodeState>) => void
-  
+
+  // Image bucket actions
+  addImagesToBucket: (images: Omit<ImageBucketItem, 'addedAt'>[]) => void
+  removeImageFromBucket: (imageId: string) => void
+  clearImageBucket: () => void
+
+  // Workflow metadata actions
+  setCurrentWorkflowId: (id: string | undefined) => void
+  setWorkflowName: (name: string) => void
+  setWorkflowDescription: (description: string | undefined) => void
+  setWorkflowMetadata: (id: string | undefined, name: string, description?: string | undefined) => void
+  clearWorkflowMetadata: () => void
+
   // Workflow persistence methods
   exportWorkflowStructure: (reactFlowNodes: Node[], reactFlowEdges: Edge[]) => SavedWorkflowData
   importWorkflowStructure: (savedData: SavedWorkflowData) => {
@@ -31,23 +61,59 @@ interface WorkflowStore {
 
 export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   nodes: {},
-  
+  imageBucket: [],
+  currentWorkflowId: undefined,
+  workflowName: 'Untitled Workflow',
+  workflowDescription: undefined,
+
   addNode: (node) => set((state) => ({
     nodes: { ...state.nodes, [node.id]: node }
   })),
-  
+
   removeNode: (nodeId) => set((state) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [nodeId]: _, ...rest } = state.nodes
     return { nodes: rest }
   }),
-  
+
   updateNode: (nodeId, updates) => set((state) => ({
     nodes: {
       ...state.nodes,
       [nodeId]: { ...state.nodes[nodeId], ...updates }
     }
   })),
+
+  // Image bucket actions
+  addImagesToBucket: (images) => set((state) => ({
+    imageBucket: [
+      ...state.imageBucket,
+      ...images.map((img) => ({
+        ...img,
+        addedAt: Date.now(),
+      })),
+    ],
+  })),
+
+  removeImageFromBucket: (imageId) => set((state) => ({
+    imageBucket: state.imageBucket.filter((img) => img.id !== imageId),
+  })),
+
+  clearImageBucket: () => set({ imageBucket: [] }),
+
+  // Workflow metadata actions
+  setCurrentWorkflowId: (id) => set({ currentWorkflowId: id }),
+  setWorkflowName: (name) => set({ workflowName: name }),
+  setWorkflowDescription: (description) => set({ workflowDescription: description }),
+  setWorkflowMetadata: (id, name, description) => set({
+    currentWorkflowId: id,
+    workflowName: name,
+    workflowDescription: description,
+  }),
+  clearWorkflowMetadata: () => set({
+    currentWorkflowId: undefined,
+    workflowName: 'Untitled Workflow',
+    workflowDescription: undefined,
+  }),
 
   /**
    * Export workflow structure for saving.
@@ -64,8 +130,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       type: node.type || 'default',
       position: node.position,
       // Only preserve label from data if present and is a string, ignore everything else
-      data: (node.data?.label && typeof node.data.label === 'string') 
-        ? { label: node.data.label } 
+      data: (node.data?.label && typeof node.data.label === 'string')
+        ? { label: node.data.label }
         : undefined,
       // Preserve other ReactFlow node properties generically (width, height, etc.)
       // but exclude anything that looks like workflow-specific state
@@ -97,10 +163,10 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
    */
   importWorkflowStructure: (savedData) => {
     const store = get()
-    
+
     // Reset store first
     store.reset()
-    
+
     // Convert saved nodes to ReactFlow format
     const reactFlowNodes: Node[] = savedData.nodes.map((savedNode) => {
       // Create base ReactFlow node structure
@@ -110,7 +176,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
         position: savedNode.position,
         data: savedNode.data || { label: `${savedNode.type} node` },
       }
-      
+
       // Initialize workflow store state for this node (idle, empty inputs)
       store.addNode({
         id: savedNode.id,
@@ -119,10 +185,10 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
         inputs: {},
         outputs: null,
       })
-      
+
       return node
     })
-    
+
     // Convert saved edges to ReactFlow format
     const reactFlowEdges: Edge[] = savedData.edges.map((savedEdge) => ({
       id: savedEdge.id,
@@ -133,7 +199,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       // Preserve other edge properties if present
       ...(savedEdge.type && typeof savedEdge.type === 'string' ? { type: savedEdge.type } : {}),
     }))
-    
+
     return {
       reactFlowNodes,
       reactFlowEdges,
@@ -142,7 +208,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
   /**
    * Reset workflow store to empty state.
+   * Note: Does NOT clear imageBucket or workflow metadata - they persist across workflow changes
    */
   reset: () => set({ nodes: {} }),
 }))
-

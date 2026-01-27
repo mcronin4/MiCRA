@@ -1,15 +1,13 @@
 """
 Tests for workflows API endpoints.
 
-NOTE: In prototype mode, all workflows are shared (no authentication).
-All users can access all workflows, but system workflows cannot be deleted or updated.
+All endpoints require authentication. Users can only access/modify their own workflows.
+System workflows are read-only templates accessible to all authenticated users.
 """
 
 import pytest
 from fastapi.testclient import TestClient
-from datetime import datetime
 from uuid import uuid4
-import json
 
 # Import the app - adjust path as needed
 import sys
@@ -20,11 +18,29 @@ sys.path.insert(0, str(backend_root))
 
 from app.main import app
 from app.db.supabase import get_supabase
+from app.auth.dependencies import User, get_current_user
+
+# Test users
+TEST_USER_1_ID = "11111111-1111-1111-1111-111111111111"
+TEST_USER_2_ID = "22222222-2222-2222-2222-222222222222"
+TEST_ADMIN_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+def get_test_user_1():
+    """Test user 1 for most tests."""
+    return User(sub=TEST_USER_1_ID, email="test1@example.com", role="authenticated")
+
+def get_test_user_2():
+    """Test user 2 for authorization tests."""
+    return User(sub=TEST_USER_2_ID, email="test2@example.com", role="authenticated")
+
+def get_test_admin():
+    """Test admin user (for system workflow creation if needed)."""
+    return User(sub=TEST_ADMIN_ID, email="admin@example.com", role="authenticated")
+
+# Override authentication dependency for testing
+app.dependency_overrides[get_current_user] = get_test_user_1
 
 client = TestClient(app)
-
-# Test data
-DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000000"
 
 def get_test_workflow_data():
     """Helper to create test workflow data structure."""
@@ -60,8 +76,8 @@ def cleanup_test_workflow(workflow_id: str):
     try:
         supabase = get_supabase()
         # Only delete if it's not a system workflow
-        result = supabase.client.table("workflows").select("is_system_workflow").eq("id", workflow_id).execute()
-        if result.data and not result.data[0].get("is_system_workflow", False):
+        result = supabase.client.table("workflows").select("is_system").eq("id", workflow_id).execute()
+        if result.data and not result.data[0].get("is_system", False):
             supabase.client.table("workflows").delete().eq("id", workflow_id).execute()
     except Exception:
         pass  # Ignore cleanup errors
@@ -86,7 +102,7 @@ class TestWorkflowsAPI:
             "name": "Test Workflow",
             "description": "A test workflow",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -95,8 +111,8 @@ class TestWorkflowsAPI:
         data = response.json()
         assert data["name"] == "Test Workflow"
         assert data["description"] == "A test workflow"
-        assert data["is_system_workflow"] == False
-        assert data["user_id"] == DEFAULT_USER_ID
+        assert data["is_system"] == False
+        assert data["user_id"] == TEST_USER_1_ID
         assert data["workflow_data"]["nodes"] == workflow_data["nodes"]
         assert data["workflow_data"]["edges"] == workflow_data["edges"]
         assert "id" in data
@@ -111,7 +127,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Test Workflow No Desc",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -130,7 +146,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -144,56 +160,43 @@ class TestWorkflowsAPI:
                 "nodes": [],
                 "edges": []
             },
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
         assert response.status_code == 400  # Bad request
 
-    def test_create_system_workflow(self):
-        """Test creating a system workflow."""
+    def test_create_system_workflow_forbidden(self):
+        """Test that regular users cannot create system workflows."""
         workflow_data = get_test_workflow_data()
         payload = {
             "name": "System Template",
             "description": "A system template",
             "workflow_data": workflow_data,
-            "is_system_workflow": True
+            "is_system": True
         }
         
         response = client.post("/api/v1/workflows", json=payload)
         
-        assert response.status_code == 201
-        data = response.json()
-        assert data["is_system_workflow"] == True
-        assert data["name"] == "System Template"
-        
-        # Don't add to cleanup list - system workflows shouldn't be deleted in cleanup
-        # But we'll clean it up manually if it was created
-        workflow_id = data["id"]
-        
-        # Manually delete it after test
-        try:
-            supabase = get_supabase()
-            supabase.client.table("workflows").update({"is_system_workflow": False}).eq("id", workflow_id).execute()
-            cleanup_test_workflow(workflow_id)
-        except Exception:
-            pass
+        # Regular users cannot create system workflows
+        assert response.status_code == 403
+        assert "admin" in response.json()["detail"].lower() or "system" in response.json()["detail"].lower()
 
-    def test_list_workflows_includes_user_and_system(self):
-        """Test listing workflows includes both user and system workflows."""
+    def test_list_workflows_only_user_workflows(self):
+        """Test listing workflows returns only current user's workflows."""
         # Create a user workflow
         workflow_data = get_test_workflow_data()
         user_payload = {
             "name": "User Workflow for List",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         user_response = client.post("/api/v1/workflows", json=user_payload)
         user_workflow_id = user_response.json()["id"]
         self.created_workflow_ids.append(user_workflow_id)
         
-        # List workflows
-        response = client.get("/api/v1/workflows?include_system=true")
+        # List workflows (should only return current user's workflows)
+        response = client.get("/api/v1/workflows")
         
         assert response.status_code == 200
         workflows = response.json()
@@ -201,6 +204,15 @@ class TestWorkflowsAPI:
         # Should include at least our created workflow
         workflow_ids = [w["id"] for w in workflows]
         assert user_workflow_id in workflow_ids
+        # All workflows should belong to current user
+        for w in workflows:
+            assert w["user_id"] == TEST_USER_1_ID
+            assert w["is_system"] == False
+        # List endpoint returns metadata only (no workflow_data)
+        if workflows:
+            assert "workflow_data" not in workflows[0] or workflows[0].get("workflow_data") is None
+            assert "node_count" in workflows[0]
+            assert "edge_count" in workflows[0]
 
     def test_list_workflows_exclude_system(self):
         """Test listing workflows excluding system workflows."""
@@ -209,34 +221,30 @@ class TestWorkflowsAPI:
         user_payload = {
             "name": "User Workflow for List Exclude",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         user_response = client.post("/api/v1/workflows", json=user_payload)
         user_workflow_id = user_response.json()["id"]
         self.created_workflow_ids.append(user_workflow_id)
         
-        # List workflows excluding system
-        response = client.get("/api/v1/workflows?include_system=false")
+        # List workflows (should only return user workflows, not system)
+        response = client.get("/api/v1/workflows")
         
         assert response.status_code == 200
         workflows = response.json()
         assert isinstance(workflows, list)
-        # Should not include system workflows
-        system_workflows = [w for w in workflows if w.get("is_system_workflow", False)]
+        # Should not include system workflows (list endpoint returns user workflows only)
+        system_workflows = [w for w in workflows if w.get("is_system", False)]
         assert len(system_workflows) == 0
+        # List endpoint returns metadata only
+        if workflows:
+            assert "workflow_data" not in workflows[0] or workflows[0].get("workflow_data") is None
+            assert "node_count" in workflows[0]
+            assert "edge_count" in workflows[0]
 
     def test_list_templates_only(self):
         """Test listing only system workflow templates."""
-        # Create a system workflow
-        workflow_data = get_test_workflow_data()
-        system_payload = {
-            "name": "Template for List Test",
-            "workflow_data": workflow_data,
-            "is_system_workflow": True
-        }
-        system_response = client.post("/api/v1/workflows", json=system_payload)
-        system_workflow_id = system_response.json()["id"]
-        
+        # Templates are seeded, so we can just list them
         # List templates
         response = client.get("/api/v1/workflows/templates")
         
@@ -245,15 +253,11 @@ class TestWorkflowsAPI:
         assert isinstance(templates, list)
         # Should only include system workflows
         for template in templates:
-            assert template["is_system_workflow"] == True
-        
-        # Cleanup
-        try:
-            supabase = get_supabase()
-            supabase.client.table("workflows").update({"is_system_workflow": False}).eq("id", system_workflow_id).execute()
-            cleanup_test_workflow(system_workflow_id)
-        except Exception:
-            pass
+            assert template["is_system"] == True
+            # Templates endpoint returns metadata only (no workflow_data)
+            assert "workflow_data" not in template or template.get("workflow_data") is None
+            assert "node_count" in template
+            assert "edge_count" in template
 
     def test_get_workflow_by_id(self):
         """Test getting a specific workflow by ID."""
@@ -263,7 +267,7 @@ class TestWorkflowsAPI:
             "name": "Workflow to Get",
             "description": "Getting this one",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -293,7 +297,7 @@ class TestWorkflowsAPI:
             "name": "Original Name",
             "description": "Original description",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -323,7 +327,7 @@ class TestWorkflowsAPI:
             "name": "Partial Update Test",
             "description": "Original",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -340,15 +344,15 @@ class TestWorkflowsAPI:
 
     def test_update_system_workflow_forbidden(self):
         """Test that system workflows cannot be updated."""
-        # Create a system workflow
-        workflow_data = get_test_workflow_data()
-        payload = {
-            "name": "System Workflow Update Test",
-            "workflow_data": workflow_data,
-            "is_system_workflow": True
-        }
-        create_response = client.post("/api/v1/workflows", json=payload)
-        system_workflow_id = create_response.json()["id"]
+        # Get a system workflow (from templates)
+        templates_response = client.get("/api/v1/workflows/templates")
+        assert templates_response.status_code == 200
+        templates = templates_response.json()
+        
+        if not templates:
+            pytest.skip("No system templates available for testing")
+        
+        system_workflow_id = templates[0]["id"]
         
         # Try to update it
         update_payload = {"name": "Trying to Update System"}
@@ -356,14 +360,6 @@ class TestWorkflowsAPI:
         
         assert response.status_code == 403  # Forbidden
         assert "system" in response.json()["detail"].lower() or "modify" in response.json()["detail"].lower()
-        
-        # Cleanup
-        try:
-            supabase = get_supabase()
-            supabase.client.table("workflows").update({"is_system_workflow": False}).eq("id", system_workflow_id).execute()
-            cleanup_test_workflow(system_workflow_id)
-        except Exception:
-            pass
 
     def test_update_workflow_not_found(self):
         """Test updating non-existent workflow returns 404."""
@@ -379,7 +375,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Update Empty Test",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -402,7 +398,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Workflow to Delete",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -417,15 +413,15 @@ class TestWorkflowsAPI:
 
     def test_delete_system_workflow_forbidden(self):
         """Test that system workflows cannot be deleted."""
-        # Create a system workflow
-        workflow_data = get_test_workflow_data()
-        payload = {
-            "name": "System Workflow Delete Test",
-            "workflow_data": workflow_data,
-            "is_system_workflow": True
-        }
-        create_response = client.post("/api/v1/workflows", json=payload)
-        system_workflow_id = create_response.json()["id"]
+        # Get a system workflow (from templates)
+        templates_response = client.get("/api/v1/workflows/templates")
+        assert templates_response.status_code == 200
+        templates = templates_response.json()
+        
+        if not templates:
+            pytest.skip("No system templates available for testing")
+        
+        system_workflow_id = templates[0]["id"]
         
         # Try to delete it
         response = client.delete(f"/api/v1/workflows/{system_workflow_id}")
@@ -436,14 +432,6 @@ class TestWorkflowsAPI:
         # Verify it still exists
         get_response = client.get(f"/api/v1/workflows/{system_workflow_id}")
         assert get_response.status_code == 200
-        
-        # Cleanup - convert to non-system first, then delete
-        try:
-            supabase = get_supabase()
-            supabase.client.table("workflows").update({"is_system_workflow": False}).eq("id", system_workflow_id).execute()
-            cleanup_test_workflow(system_workflow_id)
-        except Exception:
-            pass
 
     def test_delete_workflow_not_found(self):
         """Test deleting non-existent workflow returns 404."""
@@ -463,7 +451,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Structure Test",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -486,25 +474,80 @@ class TestWorkflowsAPI:
         # The important thing is that when we load, we reset nodes to idle state
         # This test verifies the structure is saved correctly
 
-    def test_all_users_access_all_workflows(self):
-        """Test that in prototype mode, all workflows are accessible to all users."""
-        # Create a workflow (simulates user A)
+    def test_user_cannot_access_other_users_workflows(self):
+        """Test that users cannot access other users' workflows."""
+        # Create a workflow as user 1
         workflow_data = get_test_workflow_data()
         payload = {
-            "name": "Shared Workflow",
+            "name": "User 1 Workflow",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
         self.created_workflow_ids.append(workflow_id)
         
-        # Any user (no auth) should be able to access it
-        response = client.get(f"/api/v1/workflows/{workflow_id}")
-        assert response.status_code == 200
-        assert response.json()["id"] == workflow_id
+        # Switch to user 2
+        app.dependency_overrides[get_current_user] = get_test_user_2
         
-        # Any user should be able to list it
-        list_response = client.get("/api/v1/workflows")
-        workflow_ids = [w["id"] for w in list_response.json()]
-        assert workflow_id in workflow_ids
+        try:
+            # User 2 should not be able to access user 1's workflow
+            response = client.get(f"/api/v1/workflows/{workflow_id}")
+            assert response.status_code == 403  # Forbidden
+            
+            # User 2 should not see user 1's workflow in their list
+            list_response = client.get("/api/v1/workflows")
+            workflow_ids = [w["id"] for w in list_response.json()]
+            assert workflow_id not in workflow_ids
+            
+            # User 2 should not be able to update user 1's workflow
+            update_response = client.put(
+                f"/api/v1/workflows/{workflow_id}",
+                json={"name": "Hacked Name"}
+            )
+            assert update_response.status_code == 403
+            
+            # User 2 should not be able to delete user 1's workflow
+            delete_response = client.delete(f"/api/v1/workflows/{workflow_id}")
+            assert delete_response.status_code == 403
+        finally:
+            # Restore user 1
+            app.dependency_overrides[get_current_user] = get_test_user_1
+    
+    def test_user_can_access_system_templates(self):
+        """Test that users can access system templates."""
+        # Get a system template
+        templates_response = client.get("/api/v1/workflows/templates")
+        assert templates_response.status_code == 200
+        templates = templates_response.json()
+        
+        if not templates:
+            pytest.skip("No system templates available for testing")
+        
+        template_id = templates[0]["id"]
+        
+        # User should be able to access system templates
+        response = client.get(f"/api/v1/workflows/{template_id}")
+        assert response.status_code == 200
+        assert response.json()["id"] == template_id
+        assert response.json()["is_system"] == True
+    
+    def test_unauthenticated_access_forbidden(self):
+        """Test that unauthenticated requests are rejected."""
+        # Remove authentication override
+        app.dependency_overrides.pop(get_current_user, None)
+        
+        try:
+            # All endpoints should return 401
+            response = client.get("/api/v1/workflows")
+            assert response.status_code == 401
+            
+            response = client.post("/api/v1/workflows", json={
+                "name": "Test",
+                "workflow_data": get_test_workflow_data(),
+                "is_system": False
+            })
+            assert response.status_code == 401
+        finally:
+            # Restore authentication
+            app.dependency_overrides[get_current_user] = get_test_user_1

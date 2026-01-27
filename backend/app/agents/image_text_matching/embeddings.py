@@ -8,74 +8,47 @@ Matches video frames to text summary sections using three scoring metrics:
 """
 
 import os
-from typing import List, Dict, Optional, Tuple
+import base64
+import io
+import json
+from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass
 import numpy as np
 from PIL import Image
+import torch
+from sklearn.preprocessing import MinMaxScaler
 import re
+from difflib import SequenceMatcher
+import easyocr
+#The models we are using the transformers library from HuggingFace
+from transformers import AutoProcessor, AutoModel, Blip2Processor, Blip2ForConditionalGeneration
 
-# Lazy import heavy ML dependencies to avoid deployment issues if not needed
 try:
-    import torch
-    from sklearn.preprocessing import MinMaxScaler
-    import pytesseract
-    from transformers import AutoProcessor, AutoModel, Blip2Processor, Blip2ForConditionalGeneration
-    ML_DEPS_AVAILABLE = True
-except ImportError as e:
-    ML_DEPS_AVAILABLE = False
-    # Create dummy classes for type hints when ML deps are not available
-    torch = None  # type: ignore
-    MinMaxScaler = None  # type: ignore
-    pytesseract = None  # type: ignore
-    AutoProcessor = None  # type: ignore
-    AutoModel = None  # type: ignore
-    Blip2Processor = None  # type: ignore
-    Blip2ForConditionalGeneration = None  # type: ignore
+    from ...llm import gemini as gemini_llm
+except Exception:
+    gemini_llm = None
 
-from .config import MatchingConfig
+from .config_vlm_v1 import MatchingConfig
 
-# Configure Tesseract path for Windows
-import platform
+# Global EasyOCR reader instance (loaded once, reused)
+_easyocr_reader = None
 
-#added this bevause tesseract wasnt working, works now if you have it installed
-def _configure_tesseract():
-    """Configure tesseract path, especially for Windows systems."""
-    # First check if explicitly set in config
-    if MatchingConfig.TESSERACT_CMD:
-        if os.path.exists(MatchingConfig.TESSERACT_CMD):
-            pytesseract.pytesseract.tesseract_cmd = MatchingConfig.TESSERACT_CMD
-            return True
-        else:
-            print(f"⚠️ Tesseract path set in config but not found: {MatchingConfig.TESSERACT_CMD}")
-    
-    # Auto-detect on Windows
-    if platform.system() == 'Windows':
-        possible_paths = [
-            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-            r"C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe".format(os.getenv('USERNAME', ''))
-        ]
-        for path in possible_paths:
-            if os.path.exists(path):
-                pytesseract.pytesseract.tesseract_cmd = path
-                print(f"✓ Found Tesseract at: {path}")
-                return True
-        
-        print("⚠️ Tesseract not found in common Windows locations.")
-        print(" Or set TESSERACT_CMD in config.py")
-        return False
-    
-    return True  # On Linux/Mac, assume it's in PATH
-
-_configure_tesseract()
+def _get_easyocr_reader():
+    """Get or create the EasyOCR reader instance."""
+    global _easyocr_reader
+    if _easyocr_reader is None:
+        print("Loading EasyOCR model...")
+        _easyocr_reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
+        print("✓ EasyOCR loaded successfully")
+    return _easyocr_reader
 
 #Data classes for the text summary, image candidate, and image match, to be used throughout
 @dataclass
 class TextSummary:
     #Represents a text summary segment with optional timestamps.
     summary_id: str
+    video_id: str
     text_content: str
-    video_id: Optional[str] = None
     start_time: Optional[float] = None  # in seconds (None if timestamps unavailable)
     end_time: Optional[float] = None    # in seconds (None if timestamps unavailable)
 
@@ -84,10 +57,9 @@ class TextSummary:
 class ImageCandidate:
     #Represents a candidate image/frame with metadata
     image_id: str
-    timestamp: Optional[float] = None # in seconds
-    filepath: Optional[str] = None
-    video_id: Optional[str] = None
-
+    video_id: str
+    timestamp: float  # in seconds
+    filepath: str
 
 
 @dataclass
@@ -99,6 +71,14 @@ class ImageMatch:
     semantic_score: float
     detail_score: float
     combined_score: float
+    caption: str = ""
+    ocr_text: str = ""  # All extracted OCR text
+    matched_words: str = ""  # Words that matched with the summary
+    caption_match_score: float = 0.0  # How well the caption matches the text
+    gemini_description: str = ""
+    gemini_quality_score: float = 0.0
+    gemini_text_match_score: float = 0.0
+    gemini_raw_response: str = ""
 
 
 class ImageTextMatcher:
@@ -117,12 +97,6 @@ class ImageTextMatcher:
         use_timestamp_matching: bool = None,
         use_detail_verification: bool = None
     ):
-        if not ML_DEPS_AVAILABLE:
-            raise ImportError(
-                "ML dependencies (torch, transformers, scikit-learn, pytesseract) are not installed. "
-                "Install them with: pip install torch transformers scikit-learn pytesseract"
-            )
-        
         #from my understanding this is where the models are loaded, cuda if gpu is available that's what we want
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Initializing ImageTextMatcher on device: {self.device}")
@@ -174,6 +148,7 @@ class ImageTextMatcher:
         # Initialize caches for expensive operations
         self._caption_cache = {}  # image_id -> caption
         self._ocr_cache = {}      # image_id -> ocr_text
+        self._gemini_cache = {}   # cache_key -> gemini analysis
         
         # Config is all set up, load up the models!!!!!!
         self._load_siglip()
@@ -287,37 +262,109 @@ class ImageTextMatcher:
             
         return score
     
-    def generate_image_caption(self, image: Image.Image, image_id: str) -> str:
+    def generate_image_caption(self, image: Image.Image, image_id: str, content_type: str = "", content_description: str = "") -> str:
         """
-        If detail matching is enabled, we'll generate a caption for the image using BLIP-2.
-        Takes in a image and image_id, outputs a caption.
-        Uses cache to avoid recomputing captions for the same image.
+        Generate a caption for the image using BLIP-2.
+        
+        BLIP-2 OPT models work best with:
+        1. Unconditional generation (no text prompt) for general captions
+        2. Question format ("Question: What is in this image? Answer:") for VQA
+        
+        Args:
+            image: PIL Image
+            image_id: Unique identifier for caching
+            content_type: Type of content (e.g., "keynote", "product demo")
+            content_description: User's brief description of the content
+        
+        Returns:
+            Image caption string
         """
         # Check cache first
-        if image_id in self._caption_cache:
-            return self._caption_cache[image_id]
+        cache_key = f"{image_id}_{content_type}_{content_description[:50] if content_description else ''}"
+        if cache_key in self._caption_cache:
+            return self._caption_cache[cache_key]
         
-        # Generate caption if not cached
+        caption = ""
+        
         with torch.no_grad():
-            inputs = self.blip2_processor(image, return_tensors="pt").to(self.device,torch.float16 if self.device == 'cuda' else torch.float32)
+            dtype = torch.float16 if self.device == 'cuda' else torch.float32
             
-            #generate the caption, max length is in config
-            generated_ids = self.blip2_model.generate(**inputs, max_length=MatchingConfig.BLIP2_MAX_LENGTH)
-            #gives a list of toxen ids(the words in the caption), which we then decode into a string
-            caption = self.blip2_processor.batch_decode(
-                generated_ids,
-                skip_special_tokens=True
-            )[0].strip()
-            #strip the whitespace from the caption
+            try:
+                # Method 1: Unconditional captioning (most reliable for BLIP-2 OPT)
+                # Just pass the image without any text prompt
+                inputs = self.blip2_processor(image, return_tensors="pt").to(self.device, dtype)
+                generated_ids = self.blip2_model.generate(
+                    **inputs,
+                    max_length=MatchingConfig.BLIP2_MAX_LENGTH,
+                    num_beams=5,
+                    do_sample=False
+                )
+                caption = self.blip2_processor.batch_decode(
+                    generated_ids,
+                    skip_special_tokens=True
+                )[0].strip()
+                
+                # Check if caption is garbage (common garbage patterns)
+                garbage_patterns = [
+                    r'^click',
+                    r'larger (version|view|image)',
+                    r'^(the|a|an)\s*$',
+                    r'^\d+$',
+                    r'^http',
+                    r'^www\.',
+                ]
+                is_garbage = any(re.search(p, caption, re.IGNORECASE) for p in garbage_patterns)
+                
+                # If caption is too short or garbage, try VQA format
+                if not caption or len(caption) < 15 or is_garbage:
+                    # Method 2: VQA format with proper question structure
+                    vqa_prompt = "Question: What is shown in this image? Answer:"
+                    inputs = self.blip2_processor(image, text=vqa_prompt, return_tensors="pt").to(self.device, dtype)
+                    generated_ids = self.blip2_model.generate(
+                        **inputs,
+                        max_length=MatchingConfig.BLIP2_MAX_LENGTH,
+                        num_beams=5,
+                        do_sample=False
+                    )
+                    vqa_caption = self.blip2_processor.batch_decode(
+                        generated_ids,
+                        skip_special_tokens=True
+                    )[0].strip()
+                    
+                    # Clean VQA response - remove question/answer markers
+                    vqa_caption = re.sub(r'^(Question:|Answer:)\s*', '', vqa_caption, flags=re.IGNORECASE)
+                    vqa_caption = re.sub(r'What is shown in this image\?\s*(Answer:)?\s*', '', vqa_caption, flags=re.IGNORECASE)
+                    vqa_caption = vqa_caption.strip()
+                    
+                    # Use VQA caption if it's better
+                    if vqa_caption and len(vqa_caption) > len(caption):
+                        caption = vqa_caption
+                
+                # Final cleanup
+                caption = caption.strip()
+                
+                # If still garbage or empty, indicate failure
+                if not caption or len(caption) < 5:
+                    caption = "[Caption generation failed]"
+                    
+            except Exception as e:
+                print(f"  ⚠️ Caption generation error: {e}")
+                caption = "[Caption generation error]"
         
         # Cache the result
-        self._caption_cache[image_id] = caption
+        self._caption_cache[cache_key] = caption
+        
+        print(f"\n  📸 BLIP-2 Caption for {image_id}:")
+        if content_description:
+            print(f"     Context: {content_description[:80]}")
+        print(f"     Caption: {caption[:200]}{'...' if len(caption) > 200 else ''}")
+        
         return caption
     
     def extract_text_from_image(self, image: Image.Image, image_id: str) -> str:
         """
-        Extract text from image using Tesseract OCR.
-        Takes in a image and image_id, outputs a string of text.
+        Extract text from image using EasyOCR (deep learning based).
+        Much more accurate than Tesseract for stylized text, screenshots, presentations.
         Uses cache to avoid recomputing OCR for the same image.
         """
         if not self.use_ocr:
@@ -327,36 +374,206 @@ class ImageTextMatcher:
         if image_id in self._ocr_cache:
             return self._ocr_cache[image_id]
         
-        # Extract OCR text if not cached
+        all_words = set()
+        
         try:
-            # Convert to RGB if needed, tesseract only works with RGB images
+            # Convert PIL to numpy array for EasyOCR
             if image.mode != 'RGB':
                 image = image.convert('RGB')
+            img_array = np.array(image)
             
-            # Extract text
-            text = pytesseract.image_to_string(image)
-            ocr_text = text.strip()
+            # Get EasyOCR reader
+            reader = _get_easyocr_reader()
+            
+            # Run EasyOCR - returns list of (bbox, text, confidence)
+            results = reader.readtext(img_array, detail=1, paragraph=False)
+            
+            # Extract all text with confidence > 0.3
+            for (bbox, text, confidence) in results:
+                if confidence > 0.3 and text.strip():
+                    # Split multi-word results and add each word
+                    for word in text.strip().split():
+                        cleaned = re.sub(r'[^\w]', '', word)  # Remove punctuation
+                        if len(cleaned) >= 2:
+                            all_words.add(cleaned.lower())
+            
+            # Combine all words
+            ocr_text = ' '.join(sorted(all_words))
+            
+            # Print detailed output
+            print(f"\n  📝 EasyOCR Results for {image_id}:")
+            print(f"     Text regions found: {len(results)}")
+            print(f"     Unique words extracted: {len(all_words)}")
+            if all_words:
+                print(f"     Words: {ocr_text}")
+            else:
+                print(f"     ⚠️ No text found in image")
+            
         except Exception as e:
-            print(f"OCR extraction failed: {e}")
+            print(f"  ❌ EasyOCR extraction failed for {image_id}: {e}")
+            import traceback
+            traceback.print_exc()
             ocr_text = ""
         
         # Cache the result
         self._ocr_cache[image_id] = ocr_text
         return ocr_text
     
-    def compute_detail_verification_score(self, image: Image.Image, image_id: str, text: str) -> float:
+    def _fuzzy_match_words(self, word1: str, word2: str, threshold: float = 0.75) -> bool:
+        """
+        Check if two words are similar enough using fuzzy matching.
+        Handles OCR errors like 'l' vs '1', 'O' vs '0', partial matches, etc.
+        """
+        # Exact match
+        if word1 == word2:
+            return True
+        
+        # One word contains the other (partial match)
+        if len(word1) >= 4 and len(word2) >= 4:
+            if word1 in word2 or word2 in word1:
+                return True
+        
+        # Check if words start the same (handles plurals, tenses, etc.)
+        min_len = min(len(word1), len(word2))
+        if min_len >= 4:
+            # If first 80% of shorter word matches
+            prefix_len = int(min_len * 0.8)
+            if word1[:prefix_len] == word2[:prefix_len]:
+                return True
+        
+        # Fuzzy match using sequence matcher (handles OCR errors)
+        ratio = SequenceMatcher(None, word1, word2).ratio()
+        if ratio >= threshold:
+            return True
+        
+        # Common OCR substitutions check
+        ocr_subs = {
+            '0': 'o', 'o': '0',
+            '1': 'l', 'l': '1', '1': 'i', 'i': '1',
+            '5': 's', 's': '5',
+            '8': 'b', 'b': '8',
+            'rn': 'm', 'm': 'rn',
+            'vv': 'w', 'w': 'vv',
+        }
+        
+        # Try common substitutions
+        word1_normalized = word1
+        word2_normalized = word2
+        for old, new in ocr_subs.items():
+            word1_normalized = word1_normalized.replace(old, new)
+            word2_normalized = word2_normalized.replace(old, new)
+        
+        if word1_normalized == word2_normalized:
+            return True
+        
+        return False
+
+    def _parse_gemini_response(self, raw_text: str) -> Dict[str, Any]:
+        """
+        Parse Gemini JSON output and clamp scores to 0-1.
+        """
+        cleaned = raw_text.strip()
+        if not cleaned:
+            return {}
+        
+        # Try to locate the first JSON object in the response
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            cleaned = cleaned[start:end + 1]
+        
+        try:
+            parsed = json.loads(cleaned)
+        except Exception:
+            return {}
+        
+        def clamp_score(value: float) -> float:
+            try:
+                return max(0.0, min(1.0, float(value)))
+            except Exception:
+                return 0.0
+        
+        return {
+            "description": parsed.get("description", ""),
+            "quality_score": clamp_score(parsed.get("quality_score", 0.0)),
+            "text_match_score": clamp_score(parsed.get("text_match_score", 0.0)),
+            "raw": raw_text
+        }
+
+    def analyze_image_with_gemini(self, image: Image.Image, image_id: str, text: str) -> Dict[str, Any]:
+        """
+        Send the image and related text to Gemini for a detailed description
+        plus quality and text-match scores.
+        """
+        # Bail early if Gemini is not configured
+        if gemini_llm is None or getattr(gemini_llm, "client", None) is None:
+            print("Skipping Gemini analysis (Gemini client not available)")
+            return {"description": "", "quality_score": 0.0, "text_match_score": 0.0, "raw": ""}
+        
+        cache_key = f"{image_id}_{hash(text)}"
+        if cache_key in self._gemini_cache:
+            return self._gemini_cache[cache_key]
+        
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        image_bytes = buffer.getvalue()
+        encoded_image = base64.b64encode(image_bytes).decode("utf-8")
+        
+        prompt = (
+            "You are a meticulous visual fact extractor. Given an image and related text, return ONLY a JSON object "
+            'with fields: description (detailed, 80-150 words), quality_score (0-1 confidence in description detail), '
+            'text_match_score (0-1 for how well the image content aligns with the provided text). '
+            "Do not include any explanations outside the JSON.\n\n"
+            f"Related text to align with:\n{text[:1200]}"
+        )
+        
+        contents = [
+            {"text": prompt},
+            {"inline_data": {"mime_type": "image/png", "data": encoded_image}},
+        ]
+        
+        try:
+            response = gemini_llm.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+            )
+            raw_text = response.text or ""
+        except Exception as e:
+            print(f"Gemini analysis failed for {image_id}: {e}")
+            return {"description": "", "quality_score": 0.0, "text_match_score": 0.0, "raw": ""}
+        
+        parsed = self._parse_gemini_response(raw_text)
+        result = {
+            "description": parsed.get("description", ""),
+            "quality_score": parsed.get("quality_score", 0.0),
+            "text_match_score": parsed.get("text_match_score", 0.0),
+            "raw": parsed.get("raw", raw_text),
+        }
+        
+        self._gemini_cache[cache_key] = result
+        
+        print(f"\n  Gemini analysis for {image_id}: quality={result['quality_score']:.2f}, match={result['text_match_score']:.2f}")
+        
+        return result
+
+    def compute_detail_verification_score(self, image: Image.Image, image_id: str, text: str, content_type: str = "", content_description: str = "") -> Tuple[float, str, float]:
         """
         Verify that content mentioned in text appears in the image.
+        Uses FUZZY MATCHING to handle OCR errors and word variations.
         
         checks for:
-        - Word overlap between text content and image caption/OCR
+        - Fuzzy word overlap between text content and image caption/OCR
         - specific visual indicators (chart, graph, etc.) if mentioned
-        - quoted text that could should appear in OCR
+        - quoted text that could should appear in OCR (fuzzy)
         
-        takes in image, image_id, and text and returns a score between 0 and 1
+        takes in image, image_id, text, content_type, and content_description
+        returns a tuple of (score, matched_words_string, caption_match_score)
         """
         # Generate caption and extract OCR text, the two functions above (with caching)
-        caption = self.generate_image_caption(image, image_id)
+        caption = self.generate_image_caption(image, image_id, content_type, content_description)
         ocr_text = self.extract_text_from_image(image, image_id)
         
         # Combine visual information
@@ -364,56 +581,115 @@ class ImageTextMatcher:
         text_lower = text.lower()
 
         
-        # PRIMARY: Content-based word overlap
-        # Extract meaningful words (4+ characters to avoid noise)
-        text_words = set(re.findall(r'\b\w{4,}\b', text_lower))
-        visual_words = set(re.findall(r'\b\w{4,}\b', visual_info))
+        # PRIMARY: Content-based word overlap with FUZZY MATCHING
+        # Extract meaningful words (3+ characters to capture more)
+        text_words = set(re.findall(r'\b\w{3,}\b', text_lower))
+        visual_words = set(re.findall(r'\b\w{3,}\b', visual_info))
         
-        # Calculate base overlap score, handled if 0
-        overlap = len(text_words & visual_words)
+        # Find matches using fuzzy matching
+        matched_words = set()
+        matched_pairs = []  # Track what matched with what
+        
+        for text_word in text_words:
+            for visual_word in visual_words:
+                if self._fuzzy_match_words(text_word, visual_word):
+                    matched_words.add(text_word)
+                    if text_word != visual_word:
+                        matched_pairs.append(f"{text_word}≈{visual_word}")
+                    else:
+                        matched_pairs.append(text_word)
+                    break  # Found a match for this text word
+        
+        # Calculate base overlap score
         if len(text_words) > 0:
-            base_score = overlap / len(text_words)
+            base_score = len(matched_words) / len(text_words)
         else:
             base_score = 0.0
         
-        # BONUS: Check for specific visual indicators
+        # BONUS: Check for specific visual indicators (also fuzzy)
         visual_keywords = MatchingConfig.VISUAL_KEYWORDS
         visual_indicator_matches = 0
         visual_indicators_found = 0
+        matched_visual_keywords = []
         
         for keyword in visual_keywords:
             if keyword in text_lower:
                 visual_indicators_found += 1
-                if keyword in visual_info:
-                    visual_indicator_matches += 1
+                # Check fuzzy match for visual keywords
+                for visual_word in visual_words:
+                    if self._fuzzy_match_words(keyword, visual_word, threshold=0.7):
+                        visual_indicator_matches += 1
+                        matched_visual_keywords.append(keyword)
+                        break
         
         # Bonus points if visual indicators match (up to 20% boost)
         visual_indicator_bonus = 0.0
         if visual_indicators_found > 0:
             visual_indicator_bonus = 0.2 * (visual_indicator_matches / visual_indicators_found)
         
-        # BONUS 2: Check for quoted text in OCR (should match exactly)
-        #Uses regex to find quoted text in the text
+        # BONUS 2: Check for quoted text in OCR (fuzzy match)
         quoted_pattern = r'["\']([^"\']{3,})["\']'
         quoted_texts = re.findall(quoted_pattern, text)
         quoted_bonus = 0.0
+        matched_quoted = []
         
         if quoted_texts:
-            #Sum of matches with the OCR text
-            quoted_matches = sum(1 for quoted in quoted_texts if quoted.lower() in ocr_text.lower())
+            for quoted in quoted_texts:
+                quoted_lower = quoted.lower()
+                # Check if quoted text appears (fuzzy)
+                if quoted_lower in ocr_text.lower():
+                    matched_quoted.append(quoted)
+                else:
+                    # Try fuzzy match on individual words of the quote
+                    quote_words = quoted_lower.split()
+                    matches_found = sum(1 for qw in quote_words 
+                                       for vw in visual_words 
+                                       if self._fuzzy_match_words(qw, vw))
+                    if matches_found >= len(quote_words) * 0.6:  # 60% of quote words match
+                        matched_quoted.append(f"{quoted}(fuzzy)")
+            
             # Strong bonus for quoted text matches
-            quoted_bonus = 0.3 * (quoted_matches / len(quoted_texts))
+            quoted_bonus = 0.3 * (len(matched_quoted) / len(quoted_texts))
         
-        # Combine scores base + bonuses, if its greater than 1.0 it should be a very detailed match
+        # Combine scores base + bonuses
         final_score = min(base_score + visual_indicator_bonus + quoted_bonus, 1.0)
         
-        return final_score
+        # Caption quality score: measures how detailed/informative the caption is
+        # (not based on word matching, since captions describe the scene/people
+        # while text describes the content - both are valid)
+        caption_quality_score = 0.0
+        if caption:
+            # Score based on caption length and detail (longer, more detailed = better)
+            caption_length = len(caption.split())
+            # Normalize: 10+ words = good quality, 5-10 = medium, <5 = low
+            if caption_length >= 10:
+                caption_quality_score = 1.0
+            elif caption_length >= 5:
+                caption_quality_score = 0.6
+            elif caption_length >= 3:
+                caption_quality_score = 0.3
+            else:
+                caption_quality_score = 0.1
+        
+        # Combine all matched content into a string (show fuzzy matches)
+        all_matched = matched_pairs + matched_visual_keywords + matched_quoted
+        matched_words_str = ', '.join(sorted(set(all_matched)))
+        
+        # Print matching details
+        print(f"\n  🔍 Detail Match for {image_id}:")
+        print(f"     Words from text: {len(text_words)}")
+        print(f"     Words from image (caption+OCR): {len(visual_words)}")
+        print(f"     Caption quality: {caption_quality_score:.1%} ({len(caption.split()) if caption else 0} words)")
+        print(f"     Fuzzy matched words ({len(matched_words)}): {matched_words_str[:200]}{'...' if len(matched_words_str) > 200 else ''}")
+        print(f"     Detail score: {final_score:.3f}")
+        
+        return final_score, matched_words_str, caption_quality_score
     
-    def match_single_pair(self, image_candidate: ImageCandidate,text_summary: TextSummary) -> ImageMatch:
+    def match_single_pair(self, image_candidate: ImageCandidate, text_summary: TextSummary, content_type: str = "", content_description: str = "") -> ImageMatch:
         """
         Match a single image to a single text summary.
         
-        Takes in a image candidate and text summary
+        Takes in a image candidate, text summary, and optional content_type for better captioning
         Computes all score metrics and returns a ImageMatch object with all scores
         """
         # Load image, opens the image from the filepath, and converts it to RGB
@@ -430,11 +706,20 @@ class ImageTextMatcher:
         # Compute semantic score (always computed)
         semantic_score = self.compute_semantic_similarity_score(image, text_summary.text_content)
         
-        # Compute detail score only if enabled
+        # Compute detail score and get matched words if enabled
+        matched_words = ""
+        caption_match_score = 0.0
         if self.use_detail_verification:
-            detail_score = self.compute_detail_verification_score(image, image_candidate.image_id, text_summary.text_content)
+            detail_score, matched_words, caption_match_score = self.compute_detail_verification_score(
+                image, image_candidate.image_id, text_summary.text_content, content_type, content_description
+            )
         else:
             detail_score = 0.0 #this gets weighted as 0 anyway        
+        
+        # Gemini vision analysis for richer detail and alignment scoring
+        gemini_analysis = self.analyze_image_with_gemini(
+            image, image_candidate.image_id, text_summary.text_content
+        )
         
         # Compute weighted combined score
         combined_score = (
@@ -443,26 +728,47 @@ class ImageTextMatcher:
             self.detail_weight * detail_score
         )
         
+        # Get caption and OCR from cache if available (include content_type and description in cache key)
+        cache_key = f"{image_candidate.image_id}_{content_type}_{content_description[:50]}"
+        caption = self._caption_cache.get(cache_key, self._caption_cache.get(image_candidate.image_id, ""))
+        ocr_text = self._ocr_cache.get(image_candidate.image_id, "")
+        
         return ImageMatch(
             image_id=image_candidate.image_id,
             summary_id=text_summary.summary_id,
             timestamp_score=timestamp_score,
             semantic_score=semantic_score,
             detail_score=detail_score,
-            combined_score=combined_score
+            combined_score=combined_score,
+            caption=caption,
+            ocr_text=ocr_text,
+            matched_words=matched_words,
+            caption_match_score=caption_match_score,
+            gemini_description=gemini_analysis.get("description", ""),
+            gemini_quality_score=gemini_analysis.get("quality_score", 0.0),
+            gemini_text_match_score=gemini_analysis.get("text_match_score", 0.0),
+            gemini_raw_response=gemini_analysis.get("raw", "")
         )
     
-    def match_images_to_summary(self,text_summary: TextSummary, image_candidates: List[ImageCandidate], top_k: int = 3) -> List[ImageMatch]:
+    def match_images_to_summary(self, text_summary: TextSummary, image_candidates: List[ImageCandidate], top_k: int = 3, content_type: str = "", content_description: str = "") -> List[ImageMatch]:
         """
         Find the best matching images for a single text summary.
         
         Given a text summary and a list of image candidates, it finds the best (top_k) matching images for the text summary.
         Note: BLIP-2 captions and OCR text are cached per image to avoid redundant computation (O(N) instead of O(N*M)).
+        
+        Args:
+            content_type: Type of content (e.g., "keynote") for better BLIP-2 captioning
+            content_description: User's brief description of the content
         """
         #array to store the matches
         matches = []
         
         print(f"\nMatching {len(image_candidates)} images to summary '{text_summary.summary_id}'...")
+        if content_type:
+            print(f"Content type: {content_type}")
+        if content_description:
+            print(f"Content description: {content_description[:100]}")
         
         for candidate in image_candidates:
             # make sure we only considering images from the same video
@@ -471,7 +777,7 @@ class ImageTextMatcher:
             
             try:
                 #Get the image match and add it to the array
-                match = self.match_single_pair(candidate, text_summary)
+                match = self.match_single_pair(candidate, text_summary, content_type, content_description)
                 matches.append(match)
             except Exception as e:
                 print(f"Error matching image {candidate.image_id}: {e}")
@@ -483,12 +789,16 @@ class ImageTextMatcher:
         # Return top-k
         return matches[:top_k]
     
-    def match_summaries_to_images(self,text_summaries: List[TextSummary],image_candidates: List[ImageCandidate], top_k: int = 3) -> Dict[str, List[ImageMatch]]:
+    def match_summaries_to_images(self, text_summaries: List[TextSummary], image_candidates: List[ImageCandidate], top_k: int = 3, content_type: str = "", content_description: str = "") -> Dict[str, List[ImageMatch]]:
         """
         Match all text summaries to their best matching images.
         Given list of TextSummary objects, list of ImageCandidate objects and top_k
         Returns Dictionary mapping summary_id to list of top-k ImageMatch objects
         Note: BLIP-2 captions and OCR text are cached per image to avoid redundant computation (O(N) instead of O(N*M)).
+        
+        Args:
+            content_type: Type of content (e.g., "keynote") for better BLIP-2 captioning
+            content_description: User's brief description of the content
         """
         results = {}
         
@@ -496,7 +806,7 @@ class ImageTextMatcher:
         
         for i, summary in enumerate(text_summaries):
             print(f"Processing summary: {summary.summary_id}")
-            matches = self.match_images_to_summary(summary, image_candidates, top_k)
+            matches = self.match_images_to_summary(summary, image_candidates, top_k, content_type, content_description)
             results[summary.summary_id] = matches
             
             # Print top match
@@ -517,7 +827,8 @@ class ImageTextMatcher:
         """
         self._caption_cache.clear()
         self._ocr_cache.clear()
-        print(f"Cache cleared: {len(self._caption_cache)} captions, {len(self._ocr_cache)} OCR texts")
+        self._gemini_cache.clear()
+        print(f"Cache cleared: {len(self._caption_cache)} captions, {len(self._ocr_cache)} OCR texts, {len(self._gemini_cache)} Gemini analyses")
     
     def get_cache_stats(self) -> Dict[str, int]:
         """
@@ -526,7 +837,8 @@ class ImageTextMatcher:
         """
         return {
             "cached_captions": len(self._caption_cache),
-            "cached_ocr_texts": len(self._ocr_cache)
+            "cached_ocr_texts": len(self._ocr_cache),
+            "cached_gemini": len(self._gemini_cache)
         }
     
 #BAAAAAAANG!!!!

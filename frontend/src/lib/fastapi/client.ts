@@ -1,5 +1,7 @@
 // Base configuration
 
+import { supabase } from '@/lib/supabase/client';
+
 class HttpError extends Error {
     status: number;
     
@@ -21,11 +23,29 @@ class ApiClient {
         return '/backend';
     }
 
+    private async getAuthHeaders(): Promise<HeadersInit> {
+        const headers: HeadersInit = {};
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+                headers['Authorization'] = `Bearer ${session.access_token}`;
+            }
+        } catch (error) {
+            // If we can't get session, continue without auth header
+            console.warn('Failed to get auth session for API request:', error);
+        }
+        return headers;
+    }
+
     async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
         // Don't set Content-Type for FormData - browser will set it with boundary
         const isFormData = options.body instanceof FormData;
         const headers: HeadersInit = {};
-
+        
+        // Get auth headers (includes Bearer token if available)
+        const authHeaders = await this.getAuthHeaders();
+        Object.assign(headers, authHeaders);
+        
         if (!isFormData && options.headers) {
             Object.assign(headers, options.headers);
         } else if (options.headers && !isFormData) {
@@ -34,11 +54,37 @@ class ApiClient {
 
         const baseUrl = this.getBaseUrl();
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        const fullUrl = `${baseUrl}${cleanEndpoint}`;
 
-        const response = await fetch(`${baseUrl}${cleanEndpoint}`, {
-            ...options,
-            headers: isFormData ? {} : headers, // Let browser set headers for FormData
-        });
+        let response: Response;
+        try {
+            response = await fetch(fullUrl, {
+                ...options,
+                headers: isFormData ? authHeaders : headers, // Preserve auth headers even for FormData
+            });
+        } catch (error) {
+            // Handle network errors (Failed to fetch, CORS, etc.)
+            const errorMessage = error instanceof Error ? error.message : "Unknown network error";
+            let detailedMessage = `Network error: ${errorMessage}`;
+            
+            // Provide helpful context for common network errors
+            if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
+                detailedMessage = `Failed to connect to backend at ${fullUrl}. ` +
+                    `Please ensure the backend server is running and accessible. ` +
+                    `Error: ${errorMessage}`;
+            } else if (errorMessage.includes("CORS")) {
+                detailedMessage = `CORS error: The backend may not be configured to allow requests from this origin. ` +
+                    `Error: ${errorMessage}`;
+            }
+            
+            console.error("API request failed:", {
+                url: fullUrl,
+                method: options.method || "GET",
+                error: detailedMessage,
+            });
+            
+            throw new HttpError(detailedMessage, 0); // Status 0 indicates network error
+        }
 
         if (!response.ok) {
             // Try to extract error details from FastAPI response
