@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { Node, Edge, ReactFlowInstance } from "@xyflow/react";
 import { useWorkflowPersistence } from "@/hooks/useWorkflowPersistence";
-import type { Workflow } from "@/lib/fastapi/workflows";
+import type { Workflow, WorkflowMetadata } from "@/lib/fastapi/workflows";
 import {
   Trash2,
   X,
@@ -42,8 +42,8 @@ export function WorkflowManager({
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [workflowName, setWorkflowName] = useState("");
   const [workflowDescription, setWorkflowDescription] = useState("");
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [templates, setTemplates] = useState<Workflow[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowMetadata[]>([]);
+  const [templates, setTemplates] = useState<WorkflowMetadata[]>([]);
   const [activeTab, setActiveTab] = useState<"mine" | "templates">("mine");
 
   const {
@@ -85,7 +85,7 @@ export function WorkflowManager({
   // Load workflows on mount when dialog opens
   const loadWorkflows = useCallback(async () => {
     const [workflowsResult, templatesResult] = await Promise.all([
-      fetchWorkflows(false), // Only user workflows (non-system)
+      fetchWorkflows(), // User workflows (non-system)
       fetchTemplates(),
     ]);
 
@@ -145,10 +145,10 @@ export function WorkflowManager({
   ]);
 
   const handleLoad = useCallback(
-    async (workflow: Workflow) => {
+    async (workflow: WorkflowMetadata) => {
       if (
         confirm(
-          `Load ${workflow.is_system_workflow ? "template" : "workflow"} "${workflow.name}"? Your current workflow will be replaced.`,
+          `Load ${workflow.is_system ? "template" : "workflow"} "${workflow.name}"? Your current workflow will be replaced.`,
         )
       ) {
         const result = await loadWorkflow(workflow.id, reactFlowInstance);
@@ -161,7 +161,7 @@ export function WorkflowManager({
             // Don't set currentWorkflowId for system workflows/templates
             // This allows users to modify and save as a new workflow
             onWorkflowChanged(
-              workflow.is_system_workflow ? undefined : workflow.id,
+              workflow.is_system ? undefined : workflow.id,
             );
           }
         } else {
@@ -352,8 +352,8 @@ export function WorkflowManager({
                             </div>
                           )}
                           <div className="text-xs text-gray-400 mt-1">
-                            {workflow.workflow_data.nodes.length} nodes •{" "}
-                            {workflow.workflow_data.edges.length} connections
+                            {workflow.node_count} nodes •{" "}
+                            {workflow.edge_count} connections
                           </div>
                         </div>
                         <div className="flex gap-2 ml-4">
@@ -364,7 +364,7 @@ export function WorkflowManager({
                           >
                             Load
                           </Button>
-                          {!workflow.is_system_workflow && (
+                          {!workflow.is_system && (
                             <Button
                               onClick={() =>
                                 handleDelete(workflow.id, workflow.name)

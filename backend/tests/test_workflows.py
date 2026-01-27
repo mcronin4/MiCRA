@@ -60,8 +60,8 @@ def cleanup_test_workflow(workflow_id: str):
     try:
         supabase = get_supabase()
         # Only delete if it's not a system workflow
-        result = supabase.client.table("workflows").select("is_system_workflow").eq("id", workflow_id).execute()
-        if result.data and not result.data[0].get("is_system_workflow", False):
+        result = supabase.client.table("workflows").select("is_system").eq("id", workflow_id).execute()
+        if result.data and not result.data[0].get("is_system", False):
             supabase.client.table("workflows").delete().eq("id", workflow_id).execute()
     except Exception:
         pass  # Ignore cleanup errors
@@ -86,7 +86,7 @@ class TestWorkflowsAPI:
             "name": "Test Workflow",
             "description": "A test workflow",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -95,7 +95,7 @@ class TestWorkflowsAPI:
         data = response.json()
         assert data["name"] == "Test Workflow"
         assert data["description"] == "A test workflow"
-        assert data["is_system_workflow"] == False
+        assert data["is_system"] == False
         assert data["user_id"] == DEFAULT_USER_ID
         assert data["workflow_data"]["nodes"] == workflow_data["nodes"]
         assert data["workflow_data"]["edges"] == workflow_data["edges"]
@@ -111,7 +111,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Test Workflow No Desc",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -130,7 +130,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -144,7 +144,7 @@ class TestWorkflowsAPI:
                 "nodes": [],
                 "edges": []
             },
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -157,14 +157,14 @@ class TestWorkflowsAPI:
             "name": "System Template",
             "description": "A system template",
             "workflow_data": workflow_data,
-            "is_system_workflow": True
+            "is_system": True
         }
         
         response = client.post("/api/v1/workflows", json=payload)
         
         assert response.status_code == 201
         data = response.json()
-        assert data["is_system_workflow"] == True
+        assert data["is_system"] == True
         assert data["name"] == "System Template"
         
         # Don't add to cleanup list - system workflows shouldn't be deleted in cleanup
@@ -174,7 +174,7 @@ class TestWorkflowsAPI:
         # Manually delete it after test
         try:
             supabase = get_supabase()
-            supabase.client.table("workflows").update({"is_system_workflow": False}).eq("id", workflow_id).execute()
+            supabase.client.table("workflows").update({"is_system": False}).eq("id", workflow_id).execute()
             cleanup_test_workflow(workflow_id)
         except Exception:
             pass
@@ -186,14 +186,14 @@ class TestWorkflowsAPI:
         user_payload = {
             "name": "User Workflow for List",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         user_response = client.post("/api/v1/workflows", json=user_payload)
         user_workflow_id = user_response.json()["id"]
         self.created_workflow_ids.append(user_workflow_id)
         
         # List workflows
-        response = client.get("/api/v1/workflows?include_system=true")
+        response = client.get("/api/v1/workflows")
         
         assert response.status_code == 200
         workflows = response.json()
@@ -201,6 +201,10 @@ class TestWorkflowsAPI:
         # Should include at least our created workflow
         workflow_ids = [w["id"] for w in workflows]
         assert user_workflow_id in workflow_ids
+        # List endpoint returns metadata only (no workflow_data)
+        assert "workflow_data" not in workflows[0] or workflows[0].get("workflow_data") is None
+        assert "node_count" in workflows[0]
+        assert "edge_count" in workflows[0]
 
     def test_list_workflows_exclude_system(self):
         """Test listing workflows excluding system workflows."""
@@ -209,21 +213,26 @@ class TestWorkflowsAPI:
         user_payload = {
             "name": "User Workflow for List Exclude",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         user_response = client.post("/api/v1/workflows", json=user_payload)
         user_workflow_id = user_response.json()["id"]
         self.created_workflow_ids.append(user_workflow_id)
         
-        # List workflows excluding system
-        response = client.get("/api/v1/workflows?include_system=false")
+        # List workflows (should only return user workflows, not system)
+        response = client.get("/api/v1/workflows")
         
         assert response.status_code == 200
         workflows = response.json()
         assert isinstance(workflows, list)
-        # Should not include system workflows
-        system_workflows = [w for w in workflows if w.get("is_system_workflow", False)]
+        # Should not include system workflows (list endpoint returns user workflows only)
+        system_workflows = [w for w in workflows if w.get("is_system", False)]
         assert len(system_workflows) == 0
+        # List endpoint returns metadata only
+        if workflows:
+            assert "workflow_data" not in workflows[0] or workflows[0].get("workflow_data") is None
+            assert "node_count" in workflows[0]
+            assert "edge_count" in workflows[0]
 
     def test_list_templates_only(self):
         """Test listing only system workflow templates."""
@@ -232,7 +241,7 @@ class TestWorkflowsAPI:
         system_payload = {
             "name": "Template for List Test",
             "workflow_data": workflow_data,
-            "is_system_workflow": True
+            "is_system": True
         }
         system_response = client.post("/api/v1/workflows", json=system_payload)
         system_workflow_id = system_response.json()["id"]
@@ -245,12 +254,16 @@ class TestWorkflowsAPI:
         assert isinstance(templates, list)
         # Should only include system workflows
         for template in templates:
-            assert template["is_system_workflow"] == True
+            assert template["is_system"] == True
+            # Templates endpoint returns metadata only (no workflow_data)
+            assert "workflow_data" not in template or template.get("workflow_data") is None
+            assert "node_count" in template
+            assert "edge_count" in template
         
         # Cleanup
         try:
             supabase = get_supabase()
-            supabase.client.table("workflows").update({"is_system_workflow": False}).eq("id", system_workflow_id).execute()
+            supabase.client.table("workflows").update({"is_system": False}).eq("id", system_workflow_id).execute()
             cleanup_test_workflow(system_workflow_id)
         except Exception:
             pass
@@ -263,7 +276,7 @@ class TestWorkflowsAPI:
             "name": "Workflow to Get",
             "description": "Getting this one",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -293,7 +306,7 @@ class TestWorkflowsAPI:
             "name": "Original Name",
             "description": "Original description",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -323,7 +336,7 @@ class TestWorkflowsAPI:
             "name": "Partial Update Test",
             "description": "Original",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -345,7 +358,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "System Workflow Update Test",
             "workflow_data": workflow_data,
-            "is_system_workflow": True
+            "is_system": True
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         system_workflow_id = create_response.json()["id"]
@@ -360,7 +373,7 @@ class TestWorkflowsAPI:
         # Cleanup
         try:
             supabase = get_supabase()
-            supabase.client.table("workflows").update({"is_system_workflow": False}).eq("id", system_workflow_id).execute()
+            supabase.client.table("workflows").update({"is_system": False}).eq("id", system_workflow_id).execute()
             cleanup_test_workflow(system_workflow_id)
         except Exception:
             pass
@@ -379,7 +392,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Update Empty Test",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -402,7 +415,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Workflow to Delete",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
@@ -422,7 +435,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "System Workflow Delete Test",
             "workflow_data": workflow_data,
-            "is_system_workflow": True
+            "is_system": True
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         system_workflow_id = create_response.json()["id"]
@@ -440,7 +453,7 @@ class TestWorkflowsAPI:
         # Cleanup - convert to non-system first, then delete
         try:
             supabase = get_supabase()
-            supabase.client.table("workflows").update({"is_system_workflow": False}).eq("id", system_workflow_id).execute()
+            supabase.client.table("workflows").update({"is_system": False}).eq("id", system_workflow_id).execute()
             cleanup_test_workflow(system_workflow_id)
         except Exception:
             pass
@@ -463,7 +476,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Structure Test",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         
         response = client.post("/api/v1/workflows", json=payload)
@@ -493,7 +506,7 @@ class TestWorkflowsAPI:
         payload = {
             "name": "Shared Workflow",
             "workflow_data": workflow_data,
-            "is_system_workflow": False
+            "is_system": False
         }
         create_response = client.post("/api/v1/workflows", json=payload)
         workflow_id = create_response.json()["id"]
