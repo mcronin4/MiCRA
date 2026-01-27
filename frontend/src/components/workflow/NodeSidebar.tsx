@@ -10,7 +10,8 @@ import {
   FileText,
   Image as ImageIcon,
   Sparkles,
-  Video,
+  Film,
+  Mic,
   Play,
   Flag,
   GitBranch,
@@ -54,6 +55,11 @@ const nodeCategories = [
         icon: FileText,
       },
       {
+        type: "Transcription" as NodeType,
+        label: "Transcribe Media",
+        icon: Mic,
+      },
+      {
         type: "ImageGeneration" as NodeType,
         label: "Generate Image",
         icon: Sparkles,
@@ -61,7 +67,7 @@ const nodeCategories = [
       {
         type: "ImageExtraction" as NodeType,
         label: "Image Extraction",
-        icon: Video,
+        icon: Film,
       },
       {
         type: "ImageMatching" as NodeType,

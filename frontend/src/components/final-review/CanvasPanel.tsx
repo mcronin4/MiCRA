@@ -9,6 +9,7 @@ import { ImageMatchingNode } from "../workflow/nodes/ImageMatchingNode";
 import { TextGenerationNode } from "../workflow/nodes/TextGenerationNode";
 import { ImageGenerationNode } from "../workflow/nodes/ImageGenerationNode";
 import { ImageExtractionNode } from "../workflow/nodes/ImageExtractionNode";
+import { TranscriptionNode } from "../workflow/nodes/TranscriptionNode";
 import { StartNode } from "../workflow/nodes/StartNode";
 import { EndNode } from "../workflow/nodes/EndNode";
 import { WorkflowManager } from "../workflow/WorkflowManager";
@@ -23,6 +24,7 @@ const nodeTypes = {
   TextGeneration: TextGenerationNode,
   ImageGeneration: ImageGenerationNode,
   ImageExtraction: ImageExtractionNode,
+  Transcription: TranscriptionNode,
   Start: StartNode,
   End: EndNode,
 };

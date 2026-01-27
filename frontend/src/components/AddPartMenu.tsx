@@ -8,7 +8,8 @@ import {
   Image as ImageIcon,
   FileText,
   Sparkles,
-  Video,
+  Film,
+  Mic,
 } from "lucide-react";
 import { FaTiktok } from "react-icons/fa";
 import { NodeType } from "./final-review/types";
@@ -64,6 +65,11 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({
       icon: <FileText size={16} className="mr-2" />,
     },
     {
+      name: "Transcription",
+      label: "Transcription",
+      icon: <Mic size={16} className="mr-2" aria-label="Transcription" />,
+    },
+    {
       name: "ImageMatching",
       label: "Image-Text Matching",
       icon: (
@@ -78,7 +84,7 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({
     {
       name: "ImageExtraction",
       label: "Image Extraction",
-      icon: <Video size={16} className="mr-2" aria-label="Image extraction" />,
+      icon: <Film size={16} className="mr-2" aria-label="Image extraction" />,
     },
   ];
 
