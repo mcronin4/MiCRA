@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Node, ReactFlowInstance } from '@xyflow/react';
-import type { NodeType, NodeContent, WorkflowNodeType } from '@/components/final-review/types';
-import { WORKFLOW_NODES } from '@/components/final-review/types';
+import type { NodeType, NodeContent, WorkflowNodeType, BucketNodeType } from '@/components/final-review/types';
+import { WORKFLOW_NODES, BUCKET_NODES } from '@/components/final-review/types';
 import { useWorkflowStore } from '@/lib/stores/workflowStore';
 
 export const useCanvasOperations = () => {
@@ -28,8 +28,8 @@ export const useCanvasOperations = () => {
 
     const newNodeId = `${nodeType}-${nextId.current++}`;
 
-    // For workflow nodes, initialize in Zustand store
-    if (WORKFLOW_NODES.includes(nodeType as WorkflowNodeType)) {
+    // For workflow nodes and bucket nodes, initialize in Zustand store
+    if (WORKFLOW_NODES.includes(nodeType as WorkflowNodeType) || BUCKET_NODES.includes(nodeType as BucketNodeType)) {
       useWorkflowStore.getState().addNode({
         id: newNodeId,
         type: nodeType,
@@ -41,6 +41,11 @@ export const useCanvasOperations = () => {
 
     // Handle both string content and structured content
     let nodeData: NodeContent = { label: `${nodeType} node` };
+    
+    // Initialize bucket nodes with empty selected_file_ids array
+    if (BUCKET_NODES.includes(nodeType as BucketNodeType)) {
+      nodeData.params = { selected_file_ids: [] };
+    }
     
     if (content) {
       if (typeof content === 'string') {

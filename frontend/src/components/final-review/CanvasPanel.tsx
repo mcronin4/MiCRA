@@ -8,7 +8,10 @@ import { EmailComponent } from "../canvas/EmailComponent";
 import { ImageMatchingNode } from "../workflow/nodes/ImageMatchingNode";
 import { TextGenerationNode } from "../workflow/nodes/TextGenerationNode";
 import { ImageGenerationNode } from "../workflow/nodes/ImageGenerationNode";
-import { StartNode } from "../workflow/nodes/StartNode";
+import { ImageBucketNode } from "../workflow/nodes/ImageBucketNode";
+import { AudioBucketNode } from "../workflow/nodes/AudioBucketNode";
+import { VideoBucketNode } from "../workflow/nodes/VideoBucketNode";
+import { TextBucketNode } from "../workflow/nodes/TextBucketNode";
 import { EndNode } from "../workflow/nodes/EndNode";
 import { WorkflowManager } from "../workflow/WorkflowManager";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
@@ -21,7 +24,10 @@ const nodeTypes = {
   ImageMatching: ImageMatchingNode,
   TextGeneration: TextGenerationNode,
   ImageGeneration: ImageGenerationNode,
-  Start: StartNode,
+  ImageBucket: ImageBucketNode,
+  AudioBucket: AudioBucketNode,
+  VideoBucket: VideoBucketNode,
+  TextBucket: TextBucketNode,
   End: EndNode,
 };
 

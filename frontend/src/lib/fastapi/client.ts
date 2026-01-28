@@ -89,11 +89,18 @@ class ApiClient {
         if (!response.ok) {
             // Try to extract error details from FastAPI response
             let errorMessage = `HTTP error! status: ${response.status}`;
+            let errorDetail: unknown = null;
             try {
                 const errorData = await response.json();
                 // FastAPI returns errors in a 'detail' field
                 if (errorData.detail) {
-                    errorMessage = errorData.detail;
+                    errorDetail = errorData.detail;
+                    // If detail is an object, stringify it as JSON so it can be parsed back
+                    if (typeof errorData.detail === 'object') {
+                        errorMessage = JSON.stringify(errorData.detail);
+                    } else {
+                        errorMessage = String(errorData.detail);
+                    }
                 } else if (errorData.error) {
                     errorMessage = errorData.error;
                 } else if (typeof errorData === 'string') {
@@ -103,7 +110,12 @@ class ApiClient {
                 // If we can't parse the error, use the status message
                 errorMessage = `HTTP error! status: ${response.status} ${response.statusText}`;
             }
-            throw new HttpError(errorMessage, response.status);
+            const httpError = new HttpError(errorMessage, response.status);
+            // Attach the original detail object if available for structured error handling
+            if (errorDetail) {
+                (httpError as { detail?: unknown }).detail = errorDetail;
+            }
+            throw httpError;
         }
 
         // Handle 204 No Content responses (common for DELETE operations)
