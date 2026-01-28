@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-"""
-important comms:
-    python run_keyframes.py --video path/to/video.mp4
-    python run_keyframes.py --url "https://youtube.com/watch?v=..."
-    python run_keyframes.py --url "https://youtube.com/watch?v=..." --keep-video
-    python run_keyframes.py --url "..." --debug-viz 5  # Show debug visualizations for 5 random frames
-"""
 
 import argparse
 import sys
@@ -20,10 +13,7 @@ from app.agents.image_extraction.scene_detection import download_youtube_video
 
 
 def generate_debug_visualizations(output_dir: str, num_samples: int = 5):
-    """
-    Generate debug visualizations for randomly selected candidate frames.
-    Shows: original image, blur map, face/eye detection boxes.
-    """
+
     import cv2
     import numpy as np
     from pathlib import Path
@@ -46,10 +36,10 @@ def generate_debug_visualizations(output_dir: str, num_samples: int = 5):
         print("⚠️ No candidate images found for debug visualization.")
         return
     
-    # Randomly sample
+    #Randomly sample
     sample_files = random.sample(image_files, min(num_samples, len(image_files)))
     
-    # Load Haar cascades
+    #Load Haar cascades
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
     
@@ -74,7 +64,7 @@ def generate_debug_visualizations(output_dir: str, num_samples: int = 5):
         blur_roi_coords = None
         if len(faces) > 0:
             fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
-            # Expand for body region
+            #Expand for body region
             expand_x = int(fw * 0.75)
             expand_y_up = int(fh * 0.3)
             expand_y_down = int(fh * 1.5)

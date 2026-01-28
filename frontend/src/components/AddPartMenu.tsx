@@ -10,6 +10,7 @@ import {
   Sparkles,
   Film,
   Mic,
+  TextQuote,
 } from "lucide-react";
 import { FaTiktok } from "react-icons/fa";
 import { NodeType } from "./final-review/types";
@@ -85,6 +86,11 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({
       name: "ImageExtraction",
       label: "Image Extraction",
       icon: <Film size={16} className="mr-2" aria-label="Image extraction" />,
+    },
+    {
+      name: "QuoteExtraction",
+      label: "Quote Extraction",
+      icon: <TextQuote size={16} className="mr-2" aria-label="Quote extraction" />,
     },
   ];
 

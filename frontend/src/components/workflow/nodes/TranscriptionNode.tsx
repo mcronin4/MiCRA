@@ -6,7 +6,7 @@ import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import { transcribeFile, transcribeUrl } from "@/lib/fastapi/transcription";
 import { NodeConfig } from "@/types/workflow";
-import { Upload, Link, X, Mic } from "lucide-react";
+import { Upload, Link, X, Mic, Copy } from "lucide-react";
 
 const config: NodeConfig = {
   type: "transcription",
@@ -44,6 +44,7 @@ export function TranscriptionNode({ id }: NodeProps) {
   >(initialSegments);
   const [isDragging, setIsDragging] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied">("idle");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isRunning = node?.status === "running";
@@ -110,6 +111,23 @@ export function TranscriptionNode({ id }: NodeProps) {
   const clearFile = () => {
     setSelectedFile(null);
     setFileName("");
+  };
+
+  const handleCopyTranscript = async (
+    event?: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    const fullText = segments.map((seg) => seg.text).join(" ").trim();
+    if (!fullText) return;
+    try {
+      await navigator.clipboard.writeText(fullText);
+      setCopyStatus("copied");
+      setTimeout(() => setCopyStatus("idle"), 1500);
+    } catch {
+      setCopyStatus("idle");
+    }
   };
 
   const handleExecute = async () => {
@@ -306,7 +324,18 @@ export function TranscriptionNode({ id }: NodeProps) {
               <span className="font-semibold uppercase tracking-wide">
                 Transcript
               </span>
-              <span>{segments.length} segments</span>
+              <div className="flex items-center gap-2">
+                <span>{segments.length} segments</span>
+                <button
+                  type="button"
+                  onClick={handleCopyTranscript}
+                  className="nodrag inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 text-[10px] font-medium text-slate-600 hover:text-teal-600 hover:border-teal-200 hover:bg-teal-50 transition-colors"
+                  title="Copy transcript"
+                >
+                  <Copy size={11} />
+                  {copyStatus === "copied" ? "Copied" : "Copy"}
+                </button>
+              </div>
             </div>
             <div className="space-y-1 text-xs text-slate-600">
               {segments.slice(0, 2).map((seg, index) => {
@@ -367,16 +396,27 @@ export function TranscriptionNode({ id }: NodeProps) {
                   {segments.length} segments
                 </p>
               </div>
-              <button
-                type="button"
-                className="nodrag p-2 rounded-full hover:bg-slate-100 transition-colors"
-                onClick={() => setShowTranscript(false)}
-                aria-label="Close transcript"
-              >
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyTranscript}
+                  className="nodrag inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-teal-600 text-white hover:bg-teal-700 transition-colors"
+                  title="Copy transcript"
+                >
+                  <Copy size={12} />
+                  {copyStatus === "copied" ? "Copied" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  className="nodrag p-2 rounded-full hover:bg-slate-100 transition-colors"
+                  onClick={() => setShowTranscript(false)}
+                  aria-label="Close transcript"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
-            <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)] space-y-2 text-xs text-slate-600">
+            <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)] space-y-2 text-xs text-slate-600 select-text">
               {segments.map((seg, index) => {
                 const minutes = Math.floor(seg.start / 60);
                 const seconds = Math.floor(seg.start % 60);

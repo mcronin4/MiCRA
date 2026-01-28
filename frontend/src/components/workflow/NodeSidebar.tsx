@@ -18,6 +18,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Layers,
+  TextQuote,
 } from "lucide-react";
 import { FaTiktok } from "react-icons/fa";
 import type { NodeType } from "../final-review/types";
@@ -68,6 +69,11 @@ const nodeCategories = [
         type: "ImageExtraction" as NodeType,
         label: "Image Extraction",
         icon: Film,
+      },
+      {
+        type: "QuoteExtraction" as NodeType,
+        label: "Quote Extraction",
+        icon: TextQuote,
       },
       {
         type: "ImageMatching" as NodeType,

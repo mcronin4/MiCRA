@@ -10,6 +10,7 @@ from .v1 import (
     auth,
     workflows,
     image_generation,
+    quote_extraction,
 )
 
 api_router = APIRouter(prefix="/api", tags=["content-pipeline"])
@@ -24,6 +25,7 @@ api_router.include_router(text_generation.router, prefix="/v1", tags=["text-gene
 api_router.include_router(auth.router, prefix="/v1", tags=["auth"])
 api_router.include_router(workflows.router, prefix="/v1", tags=["workflows"])
 api_router.include_router(image_generation.router, prefix="/v1", tags=["image-generation"])
+api_router.include_router(quote_extraction.router, prefix="/v1", tags=["quote-extraction"])
 
 @api_router.get("/")
 def read_root():

@@ -12,13 +12,14 @@ import {
   Film,
   Mic,
   Play,
+  TextQuote,
 } from "lucide-react";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import { NodeConfig } from "@/types/workflow";
 
 // Minimalist Apple-inspired theme configurations
 export interface NodeTheme {
-  id: "indigo" | "emerald" | "amber" | "sky" | "teal";
+  id: "indigo" | "emerald" | "amber" | "sky" | "teal" | "rose";
   // Header - minimal/white
   iconColor: string;
   iconBg: string;
@@ -88,6 +89,17 @@ export const nodeThemes: Record<string, NodeTheme> = {
     handleInput: "#14b8a6",
     handleOutput: "#5eead4",
     icon: Mic,
+  },
+  rose: {
+    id: "rose",
+    iconColor: "text-rose-600",
+    iconBg: "bg-rose-50",
+    accentColor: "bg-rose-600",
+    accentHover: "hover:bg-rose-700",
+    accentRing: "focus:ring-rose-500/30",
+    handleInput: "#fb7185",
+    handleOutput: "#fda4af",
+    icon: TextQuote,
   },
 };
 
