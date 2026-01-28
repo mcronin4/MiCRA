@@ -81,6 +81,10 @@ class InitUploadRequest(BaseModel):
         bucket = info.data.get("bucket")
         file_type = info.data.get("type")
         
+        # "other" type accepts any content type
+        if file_type == "other":
+            return v
+        
         if bucket == "media":
             allowed_prefixes = []
             if file_type == "image":
@@ -90,7 +94,7 @@ class InitUploadRequest(BaseModel):
             elif file_type == "audio":
                 allowed_prefixes = MEDIA_CONTENT_TYPES["audio"]
             
-            if not any(v.startswith(prefix) for prefix in allowed_prefixes):
+            if allowed_prefixes and not any(v.startswith(prefix) for prefix in allowed_prefixes):
                 raise ValueError(
                     f"For bucket 'media' and type '{file_type}', "
                     f"contentType must start with one of: {', '.join(allowed_prefixes)}"
@@ -102,7 +106,7 @@ class InitUploadRequest(BaseModel):
             elif file_type == "pdf":
                 allowed_prefixes = DOCS_CONTENT_TYPES["pdf"]
             
-            if not any(v.startswith(prefix) for prefix in allowed_prefixes):
+            if allowed_prefixes and not any(v.startswith(prefix) for prefix in allowed_prefixes):
                 raise ValueError(
                     f"For bucket 'docs' and type '{file_type}', "
                     f"contentType must start with one of: {', '.join(allowed_prefixes)}"
