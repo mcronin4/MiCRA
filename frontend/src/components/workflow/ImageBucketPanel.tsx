@@ -37,6 +37,23 @@ export function ImageBucketPanel() {
     setTimeout(() => setUploadError(null), 5000);
   };
 
+  // Helper function to determine file type from MIME type
+  const getFileType = (contentType: string): 'image' | 'video' | 'audio' | 'text' | 'pdf' | 'other' => {
+    if (!contentType) return 'other';
+    if (contentType.startsWith('image/')) return 'image';
+    if (contentType.startsWith('video/')) return 'video';
+    if (contentType.startsWith('audio/')) return 'audio';
+    if (contentType === 'application/pdf') return 'pdf';
+    if (contentType.startsWith('text/') || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'text';
+    return 'other';
+  };
+
+  // Helper function to determine bucket from file type
+  const getBucket = (fileType: 'image' | 'video' | 'audio' | 'text' | 'pdf' | 'other'): 'media' | 'docs' => {
+    if (fileType === 'text' || fileType === 'pdf') return 'docs';
+    return 'media';
+  };
+
   const processFiles = async (files: FileList | File[]) => {
     // Check authentication
     if (!user) {
@@ -46,23 +63,20 @@ export function ImageBucketPanel() {
 
     const fileArray = Array.from(files);
     console.log("Processing files:", fileArray.map(f => ({ name: f.name, type: f.type })));
-    const validFiles = fileArray.filter((f) => f.type.startsWith("image/"));
 
-    if (validFiles.length === 0) {
-      const fileTypes = fileArray.map(f => f.type || "unknown").join(", ");
-      console.warn("No valid image files found. Types:", fileTypes);
-      setUploadError("Please drop image files only (PNG, JPG, GIF, etc.)");
+    if (fileArray.length === 0) {
+      setUploadError("No files selected");
       setTimeout(() => setUploadError(null), 5000);
       return;
     }
 
-    console.log("Valid image files:", validFiles.length);
+    console.log("Processing", fileArray.length, "files");
     setIsUploading(true);
     setUploadError(null); // Clear any previous errors
 
     const newImages: Omit<ImageBucketItem, "addedAt">[] = [];
 
-    for (const file of validFiles) {
+    for (const file of fileArray) {
       try {
         console.log("Processing file:", file.name);
         // Step 1: Calculate hash
@@ -100,12 +114,16 @@ export function ImageBucketPanel() {
           }
         } else {
           // Step 3: Initialize upload
+          const contentType = file.type || 'application/octet-stream';
+          const fileType = getFileType(contentType);
+          const bucket = getBucket(fileType);
+          
           let initResponse;
           try {
             initResponse = await initUpload({
-              bucket: "media",
-              type: "image",
-              contentType: file.type,
+              bucket,
+              type: fileType,
+              contentType,
               name: file.name,
               contentHash,
               metadata: {
@@ -181,10 +199,10 @@ export function ImageBucketPanel() {
     if (newImages.length > 0) {
       console.log("Adding", newImages.length, "images to bucket");
       addImagesToBucket(newImages);
-    } else if (validFiles.length > 0) {
-      // If we had valid files but none succeeded, show a generic error
+    } else if (fileArray.length > 0) {
+      // If we had files but none succeeded, show a generic error
       console.error("No images were successfully uploaded");
-      setUploadError("Failed to upload images. Please check your connection and try again.");
+      setUploadError("Failed to upload media. Please check your connection and try again.");
       setTimeout(() => setUploadError(null), 5000);
     }
   };
@@ -243,7 +261,7 @@ export function ImageBucketPanel() {
             <ImageIcon size={14} strokeWidth={2.5} />
           </div>
           <span className="text-sm font-semibold text-slate-700 tracking-tight">
-            Media Assets
+            Upload Media
           </span>
           {imageBucket.length > 0 && (
             <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full border border-indigo-100">
@@ -271,7 +289,7 @@ export function ImageBucketPanel() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="*/*"
             multiple
             onChange={handleFileSelect}
             className="hidden"
@@ -310,7 +328,7 @@ export function ImageBucketPanel() {
                     isDragging ? "text-indigo-700" : "text-slate-700"
                   }`}
                 >
-                  {isDragging ? "Drop images now" : "Upload Images"}
+                  {isDragging ? "Drop media now" : "Upload Media"}
                 </p>
                 <p className="text-[10px] text-slate-400 mt-0.5">
                   Drag & drop or click to browse
@@ -371,7 +389,7 @@ export function ImageBucketPanel() {
             <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-xs text-blue-600 flex items-center gap-2">
                 <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></span>
-                Uploading images...
+                Uploading media...
               </p>
             </div>
           )}
