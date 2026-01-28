@@ -10,6 +10,8 @@
  */
 
 import { apiClient } from './client'
+import type { CompilationResult, CompilationDiagnostic } from '@/types/blueprint'
+import type { WorkflowExecutionResult } from '@/types/workflow-execution'
 
 export interface SavedWorkflowNode {
   id: string
@@ -185,6 +187,95 @@ export async function getWorkflowVersion(
     {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
+    }
+  )
+}
+
+/**
+ * Compile a raw (unsaved) workflow into a Blueprint.
+ */
+export async function compileWorkflow(
+  workflowData: SavedWorkflowData
+): Promise<CompilationResult> {
+  try {
+    return await apiClient.request<CompilationResult>('/v1/workflows/compile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workflowData),
+    })
+  } catch (err: unknown) {
+    // Handle 422 compilation errors - extract diagnostics from error response
+    if (err instanceof Error && 'status' in err && (err as { status: number }).status === 422) {
+      // Check if error has a detail property with diagnostics
+      const errorWithDetail = err as { detail?: { diagnostics?: unknown[]; message?: string } }
+      if (errorWithDetail.detail?.diagnostics) {
+        return {
+          success: false,
+          blueprint: null,
+          diagnostics: errorWithDetail.detail.diagnostics as CompilationResult['diagnostics'],
+        }
+      }
+      // Try parsing the error message as JSON (it might be stringified)
+      try {
+        const parsed = JSON.parse(err.message)
+        if (parsed.diagnostics && Array.isArray(parsed.diagnostics)) {
+          return {
+            success: false,
+            blueprint: null,
+            diagnostics: parsed.diagnostics,
+          }
+        }
+      } catch {
+        // Not JSON, continue to throw original error
+      }
+    }
+    throw err
+  }
+}
+
+/**
+ * Compile a saved workflow by ID (uses latest version).
+ */
+export async function compileWorkflowById(
+  workflowId: string
+): Promise<CompilationResult> {
+  return apiClient.request<CompilationResult>(
+    `/v1/workflows/${workflowId}/compile`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  )
+}
+
+/**
+ * Execute a raw (unsaved) workflow.
+ */
+export async function executeWorkflow(
+  workflowData: SavedWorkflowData
+): Promise<WorkflowExecutionResult> {
+  return apiClient.request<WorkflowExecutionResult>('/v1/workflows/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nodes: workflowData.nodes,
+      edges: workflowData.edges,
+    }),
+  })
+}
+
+/**
+ * Execute a saved workflow by ID (uses latest version).
+ */
+export async function executeWorkflowById(
+  workflowId: string
+): Promise<WorkflowExecutionResult> {
+  return apiClient.request<WorkflowExecutionResult>(
+    `/v1/workflows/${workflowId}/execute`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     }
   )
 }
