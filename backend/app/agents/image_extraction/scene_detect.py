@@ -1,1 +1,0 @@
-# Will will use pyscenedetect to split the video into scenes

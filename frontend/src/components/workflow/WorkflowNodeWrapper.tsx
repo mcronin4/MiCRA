@@ -9,13 +9,17 @@ import {
   Type,
   Images,
   Loader2,
+  Film,
+  Mic,
+  Play,
+  TextQuote,
 } from "lucide-react";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import { NodeConfig } from "@/types/workflow";
 
 // Minimalist Apple-inspired theme configurations
 export interface NodeTheme {
-  id: "indigo" | "emerald" | "amber";
+  id: "indigo" | "emerald" | "amber" | "sky" | "teal" | "rose";
   // Header - minimal/white
   iconColor: string;
   iconBg: string;
@@ -63,6 +67,39 @@ export const nodeThemes: Record<string, NodeTheme> = {
     handleInput: "#f59e0b",
     handleOutput: "#fbbf24",
     icon: Images,
+  },
+  sky: {
+    id: "sky",
+    iconColor: "text-sky-600",
+    iconBg: "bg-sky-50",
+    accentColor: "bg-sky-600",
+    accentHover: "hover:bg-sky-700",
+    accentRing: "focus:ring-sky-500/30",
+    handleInput: "#38bdf8",
+    handleOutput: "#7dd3fc",
+    icon: Film,
+  },
+  teal: {
+    id: "teal",
+    iconColor: "text-teal-600",
+    iconBg: "bg-teal-50",
+    accentColor: "bg-teal-600",
+    accentHover: "hover:bg-teal-700",
+    accentRing: "focus:ring-teal-500/30",
+    handleInput: "#14b8a6",
+    handleOutput: "#5eead4",
+    icon: Mic,
+  },
+  rose: {
+    id: "rose",
+    iconColor: "text-rose-600",
+    iconBg: "bg-rose-50",
+    accentColor: "bg-rose-600",
+    accentHover: "hover:bg-rose-700",
+    accentRing: "focus:ring-rose-500/30",
+    handleInput: "#fb7185",
+    handleOutput: "#fda4af",
+    icon: TextQuote,
   },
 };
 
@@ -191,21 +228,41 @@ export function WorkflowNodeWrapper({
               )}
             </div>
           </div>
-          <div
-            className={`
-            flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase
-            ${statusConfig.color}
-            transition-colors duration-200
-          `}
-          >
-            {StatusIcon && (
-              <StatusIcon
-                size={12}
-                className={node?.status === "running" ? "animate-spin" : ""}
-                strokeWidth={2.5}
-              />
-            )}
-            <span>{statusConfig.text}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onExecute}
+              disabled={node?.status === "running"}
+              className={`
+                nodrag inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide
+                ${theme.accentColor} ${theme.accentHover} text-white
+                transition-colors duration-200
+                disabled:opacity-50 disabled:cursor-not-allowed
+              `}
+              title="Test this node"
+            >
+              {node?.status === "running" ? (
+                <Loader2 size={12} className="animate-spin" strokeWidth={2.5} />
+              ) : (
+                <Play size={12} strokeWidth={2.5} />
+              )}
+              Test
+            </button>
+            <div
+              className={`
+              flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase
+              ${statusConfig.color}
+              transition-colors duration-200
+            `}
+            >
+              {StatusIcon && (
+                <StatusIcon
+                  size={12}
+                  className={node?.status === "running" ? "animate-spin" : ""}
+                  strokeWidth={2.5}
+                />
+              )}
+              <span>{statusConfig.text}</span>
+            </div>
           </div>
         </div>
       </div>

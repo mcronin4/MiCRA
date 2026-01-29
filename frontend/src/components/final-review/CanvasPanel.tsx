@@ -8,6 +8,9 @@ import { EmailComponent } from "../canvas/EmailComponent";
 import { ImageMatchingNode } from "../workflow/nodes/ImageMatchingNode";
 import { TextGenerationNode } from "../workflow/nodes/TextGenerationNode";
 import { ImageGenerationNode } from "../workflow/nodes/ImageGenerationNode";
+import { ImageExtractionNode } from "../workflow/nodes/ImageExtractionNode";
+import { TranscriptionNode } from "../workflow/nodes/TranscriptionNode";
+import { QuoteExtractionNode } from "../workflow/nodes/QuoteExtractionNode";
 import { StartNode } from "../workflow/nodes/StartNode";
 import { EndNode } from "../workflow/nodes/EndNode";
 import { WorkflowManager } from "../workflow/WorkflowManager";
@@ -21,6 +24,9 @@ const nodeTypes = {
   ImageMatching: ImageMatchingNode,
   TextGeneration: TextGenerationNode,
   ImageGeneration: ImageGenerationNode,
+  ImageExtraction: ImageExtractionNode,
+  Transcription: TranscriptionNode,
+  QuoteExtraction: QuoteExtractionNode,
   Start: StartNode,
   End: EndNode,
 };

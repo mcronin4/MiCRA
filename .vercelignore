@@ -1,0 +1,102 @@
+# Backend code is needed for FastAPI deployment, but exclude large generated files
+
+# Large output directories (generated files, not needed for deployment)
+backend/app/agents/image_extraction/outputs/
+backend/app/agents/image_extraction/downloads/
+**/outputs/
+**/downloads/
+
+# Model files (can be downloaded at runtime - exclude from deployment)
+backend/app/agents/image_extraction/resnet18_places365.pth.tar
+**/*.pth.tar
+**/*.pth
+**/*.pt
+**/*.ckpt
+**/*.h5
+**/*.pb
+**/*.onnx
+
+# Python virtual environments (not needed for deployment)
+backend/venv/
+backend/.venv/
+**/venv/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Node modules (should already be excluded, but being explicit)
+node_modules/
+**/node_modules/
+
+# Next.js build cache
+.next/
+**/.next/
+
+# Build artifacts
+build/
+dist/
+out/
+**/build/
+**/dist/
+**/out/
+
+# Test files and coverage
+coverage/
+**/coverage/
+**/*.test.js
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.js
+**/*.spec.ts
+**/*.spec.tsx
+
+# Logs
+*.log
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env*.local
+**/.env
+**/.env*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+**/.DS_Store
+**/Thumbs.db
+
+# Git files
+.git/
+.gitignore
+
+# Large media files (if any are accidentally committed)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.mp3
+*.wav
+*.flac
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+

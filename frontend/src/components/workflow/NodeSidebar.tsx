@@ -10,12 +10,15 @@ import {
   FileText,
   Image as ImageIcon,
   Sparkles,
+  Film,
+  Mic,
   Play,
   Flag,
   GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
   Layers,
+  TextQuote,
 } from "lucide-react";
 import { FaTiktok } from "react-icons/fa";
 import type { NodeType } from "../final-review/types";
@@ -53,9 +56,24 @@ const nodeCategories = [
         icon: FileText,
       },
       {
+        type: "Transcription" as NodeType,
+        label: "Transcribe Media",
+        icon: Mic,
+      },
+      {
         type: "ImageGeneration" as NodeType,
         label: "Generate Image",
         icon: Sparkles,
+      },
+      {
+        type: "ImageExtraction" as NodeType,
+        label: "Image Extraction",
+        icon: Film,
+      },
+      {
+        type: "QuoteExtraction" as NodeType,
+        label: "Quote Extraction",
+        icon: TextQuote,
       },
       {
         type: "ImageMatching" as NodeType,
