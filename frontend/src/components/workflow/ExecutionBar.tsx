@@ -11,6 +11,7 @@ import {
   Maximize2,
   MessageCircle,
   Play,
+  Loader2,
 } from "lucide-react";
 import type { ReactFlowInstance } from "@xyflow/react";
 
@@ -138,14 +139,23 @@ export const ExecutionBar: React.FC<ExecutionBarProps> = ({
         <button
           onClick={onExecuteWorkflow}
           disabled={isExecuting}
-          className={`h-9 px-4 flex items-center gap-2 rounded-lg font-medium text-sm transition-colors ${
+          className={`h-9 px-4 flex items-center gap-2 rounded-lg font-medium text-sm transition-all ${
             isExecuting
-              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-              : "bg-emerald-500 hover:bg-emerald-600 text-white"
+              ? "bg-emerald-100 text-emerald-700 cursor-wait"
+              : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm hover:shadow-md"
           }`}
         >
-          <Play size={14} fill="currentColor" />
-          {isExecuting ? "Executing..." : "Execute Workflow"}
+          {isExecuting ? (
+            <>
+              <Loader2 size={14} className="animate-spin" />
+              <span>Running...</span>
+            </>
+          ) : (
+            <>
+              <Play size={14} fill="currentColor" />
+              <span>Execute</span>
+            </>
+          )}
         </button>
       </div>
     </div>

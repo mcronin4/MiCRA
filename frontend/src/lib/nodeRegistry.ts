@@ -46,7 +46,7 @@ export const NODE_REGISTRY: Record<string, NodeTypeSpec> = {
   },
   TextGeneration: {
     inputs: [port('text', 'Text')],
-    outputs: [port('generated_text', 'JSON')],
+    outputs: [port('generated_text', 'Text')],
     defaultImplementation: 'fireworks:llama-v3p1',
   },
   ImageGeneration: {

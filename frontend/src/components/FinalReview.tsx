@@ -151,83 +151,72 @@ const FinalReview = () => {
     handleAddPart(nodeType);
   };
 
-  const handleExecuteWorkflow = async () => {
-    if (!canvasOps.reactFlowInstance) {
-      setToast({ message: "ReactFlow instance not available", type: "error" });
-      return;
-    }
+  /**
+   * Prepares workflow data for execution by syncing runtime params from the Zustand store.
+   * This ensures params like selected_file_ids, preset_id, and aspect_ratio are available to the backend.
+   */
+  const prepareWorkflowForExecution = () => {
+    if (!canvasOps.reactFlowInstance) return null;
 
-    let nodes = canvasOps.reactFlowInstance.getNodes();
+    const nodes = canvasOps.reactFlowInstance.getNodes();
     const edges = canvasOps.reactFlowInstance.getEdges();
 
-    if (nodes.length === 0) {
-      setToast({ message: "No nodes to execute", type: "warning" });
-      return;
-    }
+    if (nodes.length === 0) return null;
 
-    // Sync params from Zustand store to node.data before compilation
-    // This ensures params like preset_id and aspect_ratio are available to the compiler
-    // Note: Some values in storeNode.inputs are actually params (config), not runtime inputs
-    const { nodes: storeNodes } = useWorkflowStore.getState();
-    nodes = nodes.map((node) => {
+    // Use the store's exportWorkflowForExecution which handles bucket nodes
+    const { exportWorkflowForExecution, nodes: storeNodes } = useWorkflowStore.getState();
+    const workflowData = exportWorkflowForExecution(nodes, edges);
+
+    // Also sync params for other node types (TextGeneration, ImageGeneration)
+    workflowData.nodes = workflowData.nodes.map((node) => {
       const storeNode = storeNodes[node.id];
-      if (storeNode) {
-        // Extract params from store based on node type
-        // Params are configuration values, not runtime inputs from connections
-        const params: Record<string, unknown> = {};
-        
-        if (storeNode.type === 'TextGeneration') {
-          // preset_id is a param (configuration), text is a runtime input
-          if (storeNode.inputs.preset_id) {
-            params.preset_id = storeNode.inputs.preset_id;
-          }
-        } else if (storeNode.type === 'ImageGeneration') {
-          // aspect_ratio is a param (configuration), prompt/image are runtime inputs
-          if (storeNode.inputs.aspect_ratio) {
-            params.aspect_ratio = storeNode.inputs.aspect_ratio;
-          }
-        } else if (storeNode.type === 'ImageBucket' || storeNode.type === 'AudioBucket' || 
-                   storeNode.type === 'VideoBucket' || storeNode.type === 'TextBucket') {
-          // selected_file_ids is a param for bucket nodes
-          if (Array.isArray(storeNode.inputs.selected_file_ids)) {
-            params.selected_file_ids = storeNode.inputs.selected_file_ids;
-          }
-        }
-        
-        // Merge params into node.data (preserving existing data)
+      if (!storeNode) return node;
+
+      const params: Record<string, unknown> = {};
+
+      if (storeNode.type === 'TextGeneration' && storeNode.inputs.preset_id) {
+        params.preset_id = storeNode.inputs.preset_id;
+      } else if (storeNode.type === 'ImageGeneration' && storeNode.inputs.aspect_ratio) {
+        params.aspect_ratio = storeNode.inputs.aspect_ratio;
+      }
+
+      // Merge additional params if any
+      if (Object.keys(params).length > 0) {
         return {
           ...node,
-          data: {
-            ...node.data,
-            ...params,
-          },
+          data: { ...node.data, ...params },
         };
       }
       return node;
     });
 
-    // Convert ReactFlow nodes to SavedWorkflowNode format (ensuring type is string)
-    const savedNodes: SavedWorkflowNode[] = nodes.map((node) => ({
-      id: node.id,
-      type: node.type || 'default',
-      position: node.position,
-      data: node.data,
-    }));
+    return workflowData;
+  };
 
-    // Convert ReactFlow edges to SavedWorkflowEdge format
-    const savedEdges: SavedWorkflowEdge[] = edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.sourceHandle ?? undefined,
-      targetHandle: edge.targetHandle ?? undefined,
-    }));
+  const handleExecuteWorkflow = async () => {
+    // Check if workflow is saved first
+    const { currentWorkflowId } = useWorkflowStore.getState();
+    if (!currentWorkflowId) {
+      setToast({ message: "Please save the workflow before executing", type: "warning" });
+      setShowSaveDialog(true);
+      return;
+    }
+
+    const workflowData = prepareWorkflowForExecution();
+
+    if (!workflowData) {
+      if (!canvasOps.reactFlowInstance) {
+        setToast({ message: "ReactFlow instance not available", type: "error" });
+      } else {
+        setToast({ message: "No nodes to execute", type: "warning" });
+      }
+      return;
+    }
 
     // First, compile to check for errors
-    const compilationResult = await compileRaw({ nodes: savedNodes, edges: savedEdges });
-    
+    const compilationResult = await compileRaw(workflowData);
+
     if (!compilationResult || !compilationResult.success) {
-      // Show compilation diagnostics modal
       setShowCompilationModal(true);
       return;
     }
@@ -240,28 +229,26 @@ const FinalReview = () => {
 
     // Proceed with execution
     try {
-      const result = await execute({ nodes: savedNodes, edges: savedEdges });
-      // Always show modal if we have a result (even if execution failed)
+      const { currentWorkflowId, workflowName } = useWorkflowStore.getState();
+      const result = await execute(workflowData, currentWorkflowId || undefined, workflowName || undefined);
       if (result) {
         setShowResultsModal(true);
-        setToast({ 
-          message: result.success 
-            ? "Workflow executed successfully" 
-            : "Workflow execution completed with errors", 
-          type: result.success ? "success" : "warning" 
+        setToast({
+          message: result.success
+            ? "Workflow executed successfully"
+            : "Workflow execution completed with errors",
+          type: result.success ? "success" : "warning"
         });
       } else {
-        // If no result but execution completed, still show modal with error
         setShowResultsModal(true);
-        setToast({ 
-          message: "Workflow execution completed but no result returned", 
-          type: "warning" 
+        setToast({
+          message: "Workflow execution completed but no result returned",
+          type: "warning"
         });
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Workflow execution failed";
       setToast({ message: errorMessage, type: "error" });
-      // Show modal even on error if we have execution result
       if (executionResult) {
         setShowResultsModal(true);
       }
@@ -269,51 +256,41 @@ const FinalReview = () => {
   };
 
   const handleProceedWithExecution = async () => {
-    if (!canvasOps.reactFlowInstance) return;
-    
-    const nodes = canvasOps.reactFlowInstance.getNodes();
-    const edges = canvasOps.reactFlowInstance.getEdges();
+    // Double-check workflow is saved (should already be checked in handleExecuteWorkflow)
+    const { currentWorkflowId } = useWorkflowStore.getState();
+    if (!currentWorkflowId) {
+      setToast({ message: "Please save the workflow before executing", type: "warning" });
+      setShowCompilationModal(false);
+      setShowSaveDialog(true);
+      return;
+    }
 
-    // Convert ReactFlow nodes to SavedWorkflowNode format (ensuring type is string)
-    const savedNodes: SavedWorkflowNode[] = nodes.map((node) => ({
-      id: node.id,
-      type: node.type || 'default',
-      position: node.position,
-      data: node.data,
-    }));
+    const workflowData = prepareWorkflowForExecution();
 
-    // Convert ReactFlow edges to SavedWorkflowEdge format
-    const savedEdges: SavedWorkflowEdge[] = edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.sourceHandle ?? undefined,
-      targetHandle: edge.targetHandle ?? undefined,
-    }));
+    if (!workflowData) return;
+
+    setShowCompilationModal(false);
 
     try {
-      const result = await execute({ nodes: savedNodes, edges: savedEdges });
-      // Always show modal if we have a result (even if execution failed)
+      const result = await execute(workflowData);
       if (result) {
         setShowResultsModal(true);
-        setToast({ 
-          message: result.success 
-            ? "Workflow executed successfully" 
-            : "Workflow execution completed with errors", 
-          type: result.success ? "success" : "warning" 
+        setToast({
+          message: result.success
+            ? "Workflow executed successfully"
+            : "Workflow execution completed with errors",
+          type: result.success ? "success" : "warning"
         });
       } else {
-        // If no result but execution completed, still show modal with error
         setShowResultsModal(true);
-        setToast({ 
-          message: "Workflow execution completed but no result returned", 
-          type: "warning" 
+        setToast({
+          message: "Workflow execution completed but no result returned",
+          type: "warning"
         });
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Workflow execution failed";
       setToast({ message: errorMessage, type: "error" });
-      // Show modal even on error if we have execution result
       if (executionResult) {
         setShowResultsModal(true);
       }

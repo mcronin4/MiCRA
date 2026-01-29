@@ -252,7 +252,9 @@ export async function compileWorkflowById(
  * Execute a raw (unsaved) workflow.
  */
 export async function executeWorkflow(
-  workflowData: SavedWorkflowData
+  workflowData: SavedWorkflowData,
+  workflowId?: string | null,
+  workflowName?: string | null
 ): Promise<WorkflowExecutionResult> {
   return apiClient.request<WorkflowExecutionResult>('/v1/workflows/execute', {
     method: 'POST',
@@ -260,6 +262,8 @@ export async function executeWorkflow(
     body: JSON.stringify({
       nodes: workflowData.nodes,
       edges: workflowData.edges,
+      workflow_id: workflowId || null,
+      workflow_name: workflowName || null,
     }),
   })
 }

@@ -32,7 +32,7 @@ export function useWorkflowExecution() {
   }, [storeNodes, updateNode])
 
   const execute = useCallback(
-    async (workflowData: SavedWorkflowData) => {
+    async (workflowData: SavedWorkflowData, workflowId?: string | null, workflowName?: string | null) => {
       setIsExecuting(true)
       setError(null)
       setExecutionResult(null)
@@ -44,7 +44,7 @@ export function useWorkflowExecution() {
       }
 
       try {
-        const result = await executeWorkflow(workflowData)
+        const result = await executeWorkflow(workflowData, workflowId, workflowName)
         setExecutionResult(result)
         applyResults(result)
         return result
