@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import { NodeConfig } from "@/types/workflow";
+import { ManualInputToggle } from "./nodes/ManualInputToggle";
+import { getNodeSpec } from "@/lib/nodeRegistry";
+import type { RuntimeType } from "@/types/blueprint";
 
 // Minimalist Apple-inspired theme configurations
 export interface NodeTheme {
@@ -123,6 +126,51 @@ function HandleTooltip({
   );
 }
 
+// Color mapping for data types (matches edge colors)
+const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
+  Text: '#10b981', // emerald-500
+  ImageRef: '#3b82f6', // blue-500
+  AudioRef: '#8b5cf6', // violet-500
+  VideoRef: '#ec4899', // pink-500
+  JSON: '#f59e0b', // amber-500
+};
+
+// Map NodePort type to RuntimeType
+function getRuntimeTypeFromPortType(portType: string, portId: string, nodeType: string, isInput: boolean): RuntimeType | null {
+  // First try to get from node registry
+  const nodeSpec = getNodeSpec(nodeType);
+  if (nodeSpec) {
+    const ports = isInput ? nodeSpec.inputs : nodeSpec.outputs;
+    const port = ports.find(p => p.key === portId);
+    if (port) {
+      return port.runtime_type;
+    }
+  }
+  
+  // Fallback mapping from NodePort type to RuntimeType
+  const typeMap: Record<string, RuntimeType> = {
+    'string': 'Text',
+    'text': 'Text',
+    'image': 'ImageRef',
+    'file': 'ImageRef',
+    'image[]': 'ImageRef',
+    'json': 'JSON',
+    'audio': 'AudioRef',
+    'video': 'VideoRef',
+  };
+  
+  return typeMap[portType.toLowerCase()] || null;
+}
+
+// Get handle color based on data type
+function getHandleColor(portType: string, portId: string, nodeType: string, isInput: boolean): string {
+  const runtimeType = getRuntimeTypeFromPortType(portType, portId, nodeType, isInput);
+  if (runtimeType && DATA_TYPE_COLORS[runtimeType]) {
+    return DATA_TYPE_COLORS[runtimeType];
+  }
+  return '#94a3b8'; // default gray
+}
+
 export function WorkflowNodeWrapper({
   nodeId,
   config,
@@ -156,6 +204,7 @@ export function WorkflowNodeWrapper({
     <div
       className="
         group
+        relative
         bg-white
         rounded-2xl 
         shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)]
@@ -211,42 +260,48 @@ export function WorkflowNodeWrapper({
       </div>
 
       {/* Input handles with minimalist tooltips */}
-      {config.inputs.map((input, idx) => (
-        <div
-          key={input.id}
-          className="absolute"
-          style={{
-            left: -6,
-            top: `${((idx + 1) / (config.inputs.length + 1)) * 100}%`,
-            transform: "translateY(-50%)",
-          }}
-          onMouseEnter={() => setHoveredHandle(input.id)}
-          onMouseLeave={() => setHoveredHandle(null)}
-        >
-          <Handle
-            type="target"
-            position={Position.Left}
-            id={input.id}
+      {config.inputs.map((input, idx) => {
+        const handleColor = getHandleColor(input.type, input.id, node?.type || config.type, true);
+        return (
+          <div
+            key={input.id}
+            className="absolute"
             style={{
-              background: "white",
-              width: 12,
-              height: 12,
-              border: `3px solid ${theme.handleInput}`,
-              boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
-              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-              cursor: "crosshair",
+              left: -6,
+              top: `${((idx + 1) / (config.inputs.length + 1)) * 100}%`,
+              transform: "translateY(-50%)",
             }}
-            className="hover:scale-125 hover:border-[4px]"
-          />
-          <HandleTooltip
-            label={input.label}
-            type="input"
-            dataType={input.type}
-            visible={hoveredHandle === input.id}
-            position="left"
-          />
-        </div>
-      ))}
+            onMouseEnter={() => setHoveredHandle(input.id)}
+            onMouseLeave={() => setHoveredHandle(null)}
+          >
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={input.id}
+              style={{
+                background: "white",
+                width: 12,
+                height: 12,
+                border: `3px solid ${handleColor}`,
+                boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                cursor: "crosshair",
+              }}
+              className="hover:scale-125 hover:border-[4px]"
+            />
+            <HandleTooltip
+              label={input.label}
+              type="input"
+              dataType={input.type}
+              visible={hoveredHandle === input.id}
+              position="left"
+            />
+          </div>
+        );
+      })}
+
+      {/* Manual Input Toggle - positioned relative to wrapper */}
+      <ManualInputToggle nodeId={nodeId} />
 
       {/* Content */}
       <div className="p-6 pt-2">
@@ -261,42 +316,45 @@ export function WorkflowNodeWrapper({
       </div>
 
       {/* Output handles with minimalist tooltips */}
-      {config.outputs.map((output, idx) => (
-        <div
-          key={output.id}
-          className="absolute"
-          style={{
-            right: -6,
-            top: `${((idx + 1) / (config.outputs.length + 1)) * 100}%`,
-            transform: "translateY(-50%)",
-          }}
-          onMouseEnter={() => setHoveredHandle(output.id)}
-          onMouseLeave={() => setHoveredHandle(null)}
-        >
-          <Handle
-            type="source"
-            position={Position.Right}
-            id={output.id}
+      {config.outputs.map((output, idx) => {
+        const handleColor = getHandleColor(output.type, output.id, node?.type || config.type, false);
+        return (
+          <div
+            key={output.id}
+            className="absolute"
             style={{
-              background: "white",
-              width: 12,
-              height: 12,
-              border: `3px solid ${theme.handleOutput}`,
-              boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
-              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-              cursor: "crosshair",
+              right: -6,
+              top: `${((idx + 1) / (config.outputs.length + 1)) * 100}%`,
+              transform: "translateY(-50%)",
             }}
-            className="hover:scale-125 hover:border-[4px]"
-          />
-          <HandleTooltip
-            label={output.label}
-            type="output"
-            dataType={output.type}
-            visible={hoveredHandle === output.id}
-            position="right"
-          />
-        </div>
-      ))}
+            onMouseEnter={() => setHoveredHandle(output.id)}
+            onMouseLeave={() => setHoveredHandle(null)}
+          >
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={output.id}
+              style={{
+                background: "white",
+                width: 12,
+                height: 12,
+                border: `3px solid ${handleColor}`,
+                boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                cursor: "crosshair",
+              }}
+              className="hover:scale-125 hover:border-[4px]"
+            />
+            <HandleTooltip
+              label={output.label}
+              type="output"
+              dataType={output.type}
+              visible={hoveredHandle === output.id}
+              position="right"
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { NodeProps, useReactFlow } from "@xyflow/react";
+import { NodeProps } from "@xyflow/react";
 import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore, ImageBucketItem } from "@/lib/stores/workflowStore";
 import {
@@ -17,6 +17,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import Image from "next/image";
+import { useNodeConnections } from "@/hooks/useNodeConnections";
 
 // Config for this node type
 const config: NodeConfig = {
@@ -34,27 +35,19 @@ export function ImageMatchingNode({ id }: NodeProps) {
   // Get the node from Zustand store
   const node = useWorkflowStore((state) => state.nodes[id]);
   const updateNode = useWorkflowStore((state) => state.updateNode);
-  const { getEdges } = useReactFlow();
-  
-  // Check if node has incoming connections (inputs from bucket nodes)
-  const edges = getEdges();
-  const hasImageInput = edges.some(e => e.target === id && e.targetHandle === "images");
-  const hasTextInput = edges.some(e => e.target === id && e.targetHandle === "text");
-  const hasConnectedInputs = hasImageInput || hasTextInput;
-  
-  // Get connected inputs from node outputs (set during execution)
-  // These come from ImageBucket and TextBucket nodes via connections
-  const connectedImages = Array.isArray(node?.outputs?.images) 
-    ? node.outputs.images as string[] 
-    : [];
-  const connectedText = typeof node?.outputs?.text === "string"
-    ? node.outputs.text as string
-    : "";
+  const { hasConnections, connections } = useNodeConnections(id);
 
-  // For display: use connected inputs if available, otherwise allow manual input
-  // Manual input is only for testing - workflow execution uses connected inputs
+  // Check which specific inputs are connected
+  const hasImageInput = connections.some((c) => c.inputKey === "images");
+  const hasTextInput = connections.some((c) => c.inputKey === "text");
+
+  // Determine if manual inputs should be shown
+  // Only show manual inputs when test mode is enabled
+  const showManualInputs = node?.manualInputEnabled ?? false;
+
+  // Initial state from node inputs
   const initialText =
-    connectedText || (typeof node?.inputs?.text === "string" ? node.inputs.text : "");
+    typeof node?.inputs?.text === "string" ? node.inputs.text : "";
   const initialSelectedIds = Array.isArray(node?.inputs?.selectedImageIds)
     ? (node.inputs.selectedImageIds as string[])
     : [];
@@ -67,12 +60,18 @@ export function ImageMatchingNode({ id }: NodeProps) {
     Map<string, ImageMatchResult>
   >(new Map());
 
-  // Use connected images if available (from execution results) or if connections exist
-  const hasConnectedInputsFromExecution = connectedImages.length > 0 || connectedText.length > 0;
+  // Clear outputs when test mode is disabled
+  useEffect(() => {
+    if (!node?.manualInputEnabled && hasConnections) {
+      setImageResults(new Map());
+      updateNode(id, { outputs: null, status: "idle" });
+    }
+  }, [node?.manualInputEnabled, hasConnections, id, updateNode]);
+
   const imageBucket = useWorkflowStore((state) => state.imageBucket);
-  const selectedImages: ImageBucketItem[] = hasConnectedInputs
-    ? [] // Don't use bucket when connected inputs are available
-    : imageBucket.filter((img) => selectedImageIds.has(img.id));
+  const selectedImages: ImageBucketItem[] = showManualInputs
+    ? imageBucket.filter((img) => selectedImageIds.has(img.id))
+    : [];
 
   // Syncing to Zustand store
   useEffect(() => {
@@ -165,102 +164,58 @@ export function ImageMatchingNode({ id }: NodeProps) {
       theme={nodeThemes.amber}
     >
       <div className="space-y-4">
-        {/* Text input */}
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-            Text Description
-            {hasTextInput && (
-              <span className="ml-2 text-xs text-amber-600 font-normal normal-case">(from TextBucket)</span>
-            )}
-          </label>
-          {hasConnectedInputsFromExecution && connectedText ? (
-            <div className="w-full px-3.5 py-3 text-sm border border-amber-200 rounded-xl bg-amber-50 text-slate-700">
-              {connectedText}
-            </div>
-          ) : (
+        {/* Text input - only show in test mode */}
+        {showManualInputs && (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Text Description
+            </label>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Enter text to match... (or connect TextBucket node)"
+              placeholder="Enter text to match..."
               className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all placeholder:text-slate-400"
               rows={3}
             />
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Image Selection from Bucket */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-                Select Images
-                {hasImageInput && (
-                  <span className="ml-2 text-xs text-amber-600 font-normal normal-case">(from ImageBucket)</span>
+        {showManualInputs && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+                  Select Images
+                  {hasImageInput && (
+                    <span className="ml-2 text-xs text-amber-600 font-normal normal-case">(from ImageBucket)</span>
+                  )}
+                </label>
+                {selectedImageIds.size > 0 && (
+                  <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                    {selectedImageIds.size} selected
+                  </span>
                 )}
-              </label>
-              {!hasConnectedInputs && !hasConnectedInputsFromExecution && selectedImageIds.size > 0 && (
-                <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                  {selectedImageIds.size} selected
-                </span>
+              </div>
+              {imageBucket.length > 0 && (
+                <div className="flex gap-1">
+                  <button
+                    onClick={selectAll}
+                    className="text-[10px] text-slate-500 hover:text-amber-600 transition-colors px-2 py-0.5"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    onClick={deselectAll}
+                    className="text-[10px] text-slate-500 hover:text-amber-600 transition-colors px-2 py-0.5"
+                  >
+                    Clear
+                  </button>
+                </div>
               )}
             </div>
-            {!hasConnectedInputs && !hasConnectedInputsFromExecution && imageBucket.length > 0 && (
-              <div className="flex gap-1">
-                <button
-                  onClick={selectAll}
-                  className="text-[10px] text-slate-500 hover:text-amber-600 transition-colors px-2 py-0.5"
-                >
-                  Select all
-                </button>
-                <button
-                  onClick={deselectAll}
-                  className="text-[10px] text-slate-500 hover:text-amber-600 transition-colors px-2 py-0.5"
-                >
-                  Clear
-                </button>
-              </div>
-            )}
-          </div>
 
-          {hasConnectedInputsFromExecution && connectedImages.length > 0 ? (
-            // Show connected images from ImageBucket node
-            <div className="nodrag grid grid-cols-3 gap-2 p-3 border border-amber-200 rounded-xl bg-amber-50 max-h-48 overflow-y-auto">
-              {connectedImages.map((imageUrl, idx) => {
-                const result = imageResults.get(`connected-${idx}`);
-                return (
-                  <div
-                    key={idx}
-                    className="relative aspect-square rounded-lg overflow-hidden border-2 border-amber-400"
-                  >
-                    <Image
-                      src={imageUrl}
-                      alt={`Connected image ${idx + 1}`}
-                      fill
-                      className="object-cover"
-                      unoptimized
-                    />
-                    {result && (
-                      <div
-                        className={`absolute bottom-0 left-0 right-0 text-[9px] px-1 py-0.5 ${
-                          result.status === "success"
-                            ? "bg-green-500 text-white"
-                            : "bg-red-500 text-white"
-                        }`}
-                      >
-                        {result.status === "success" ? (
-                          <span>
-                            {(result.combined_score! * 100).toFixed(0)}%
-                          </span>
-                        ) : (
-                          <span>Failed</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : imageBucket.length === 0 ? (
+            {imageBucket.length === 0 ? (
             // Empty bucket state
             <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
               <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
@@ -347,9 +302,28 @@ export function ImageMatchingNode({ id }: NodeProps) {
                   </button>
                 );
               })}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
+        )}
+        {/* Test Node button - show when test mode is enabled */}
+        {node?.manualInputEnabled && (
+          <button
+            onClick={handleExecute}
+            disabled={node?.status === "running" || selectedImages.length === 0 || !text.trim()}
+            className={`
+              nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
+              transition-all duration-200
+              ${
+                node?.status === "running" || selectedImages.length === 0 || !text.trim()
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
+              }
+            `}
+          >
+            {node?.status === "running" ? "Running..." : "Test Node"}
+          </button>
+        )}
       </div>
     </WorkflowNodeWrapper>
   );

@@ -19,6 +19,7 @@ import {
   Check,
 } from "lucide-react";
 import Image from "next/image";
+import { useNodeConnections } from "@/hooks/useNodeConnections";
 
 // Config for this node type
 const config: NodeConfig = {
@@ -44,6 +45,15 @@ export function ImageGenerationNode({ id }: NodeProps) {
   const node = useWorkflowStore((state) => state.nodes[id]);
   const updateNode = useWorkflowStore((state) => state.updateNode);
   const imageBucket = useWorkflowStore((state) => state.imageBucket);
+  const { hasConnections, connections } = useNodeConnections(id);
+
+  // Check which specific inputs are connected
+  const hasPromptInput = connections.some((c) => c.inputKey === "prompt");
+  const hasImageInput = connections.some((c) => c.inputKey === "image");
+
+  // Determine if manual inputs should be shown
+  // Only show manual inputs when test mode is enabled
+  const showManualInputs = node?.manualInputEnabled ?? false;
 
   const initialPrompt =
     typeof node?.inputs?.prompt === "string" ? node.inputs.prompt : "";
@@ -63,6 +73,14 @@ export function ImageGenerationNode({ id }: NodeProps) {
   );
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
+
+  // Clear outputs when test mode is disabled
+  useEffect(() => {
+    if (!node?.manualInputEnabled && hasConnections) {
+      setGeneratedImage(null);
+      updateNode(id, { outputs: null, status: "idle" });
+    }
+  }, [node?.manualInputEnabled, hasConnections, id, updateNode]);
 
   // Get selected reference image from bucket
   const selectedImage: ImageBucketItem | undefined = imageBucket.find(
@@ -151,21 +169,23 @@ export function ImageGenerationNode({ id }: NodeProps) {
       theme={nodeThemes.indigo}
     >
       <div className="space-y-4">
-        {/* Prompt Section */}
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-            Prompt
-          </label>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe your image..."
-            className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all placeholder:text-slate-400"
-            rows={3}
-          />
-        </div>
+        {/* Prompt Section - only show in test mode */}
+        {showManualInputs && (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Prompt
+            </label>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe your image..."
+              className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all placeholder:text-slate-400"
+              rows={3}
+            />
+          </div>
+        )}
 
-        {/* Aspect Ratio Pills */}
+        {/* Aspect Ratio Pills - always show as it's a configuration, not an input */}
         <div className="space-y-2">
           <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
             Aspect Ratio
@@ -196,7 +216,8 @@ export function ImageGenerationNode({ id }: NodeProps) {
         </div>
 
         {/* Reference Image from Bucket */}
-        <div className="space-y-2">
+        {showManualInputs && (
+          <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
@@ -305,7 +326,27 @@ export function ImageGenerationNode({ id }: NodeProps) {
               ))}
             </div>
           )}
-        </div>
+          </div>
+        )}
+        
+        {/* Test Node button - show when test mode is enabled */}
+        {node?.manualInputEnabled && (
+          <button
+            onClick={handleExecute}
+            disabled={node?.status === "running" || !prompt.trim()}
+            className={`
+              nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
+              transition-all duration-200
+              ${
+                node?.status === "running" || !prompt.trim()
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
+              }
+            `}
+          >
+            {node?.status === "running" ? "Running..." : "Test Node"}
+          </button>
+        )}
 
         {/* Generated Image Result */}
         {generatedImage && node?.status === "completed" && (
