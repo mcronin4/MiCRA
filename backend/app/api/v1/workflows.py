@@ -604,6 +604,8 @@ class ExecuteRawRequest(BaseModel):
     """Execute a raw (unsaved) workflow."""
     nodes: List[Dict[str, Any]]
     edges: List[Dict[str, Any]]
+    workflow_id: str | None = None
+    workflow_name: str | None = None
 
 
 class ExecuteByIdRequest(BaseModel):
@@ -623,10 +625,15 @@ async def execute_workflow_raw(
     from app.services.blueprint_compiler import compile_workflow
     from app.services.workflow_executor import execute_workflow
 
+    # Use provided workflow_id and name if available, otherwise use defaults
+    workflow_id = request.workflow_id
+    workflow_name = request.workflow_name or "Unsaved Workflow"
+    
     result = compile_workflow(
         nodes=request.nodes,
         edges=request.edges,
-        name="Unsaved Workflow",
+        name=workflow_name,
+        workflow_id=workflow_id,
         created_by=user.sub,
     )
 
@@ -643,9 +650,9 @@ async def execute_workflow_raw(
         blueprint=result.blueprint,
     )
     
-    # Save execution log even for unsaved workflows (workflow_id = None)
+    # Save execution log with workflow_id if provided
     from app.services.workflow_executor import save_execution_log
-    save_execution_log(execution_result, None, user.sub, blueprint=result.blueprint)
+    save_execution_log(execution_result, workflow_id, user.sub, blueprint=result.blueprint)
     
     return execution_result.model_dump()
 

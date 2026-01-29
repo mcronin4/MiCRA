@@ -5,6 +5,13 @@ Takes a compiled Blueprint, walks the toposorted execution order,
 resolves inputs from upstream outputs via connections, dispatches
 to the appropriate agent function, and returns all results.
 
+Key concepts:
+- Bucket nodes (ImageBucket, AudioBucket, VideoBucket, TextBucket) are source nodes
+  that pull files from R2 storage using selected_file_ids from their params.
+- Shape conversion (list <-> single) happens automatically based on port specs.
+- Execution is sequential in toposort order; first error stops execution.
+- Results are logged to the executions table for debugging and history.
+
 V1: Sequential execution, error stops execution, in-memory only.
 """
 
@@ -44,11 +51,23 @@ class WorkflowExecutionResult(BaseModel):
 # Executor registry
 # ---------------------------------------------------------------------------
 
+# Maps node type names to their async executor functions.
+# Each executor receives (params, inputs) and returns outputs dict.
+# Params come from the node's configuration (e.g., preset_id, selected_file_ids).
+# Inputs come from upstream nodes via connections, after shape conversion.
 _registry: dict[str, Callable] = {}
 
 
 def executor(node_type: str):
-    """Decorator that registers an async executor function for a node type."""
+    """
+    Decorator that registers an async executor function for a node type.
+
+    Usage:
+        @executor("MyNodeType")
+        async def _exec_my_node(params: dict, inputs: dict) -> dict[str, Any]:
+            # Process inputs using params configuration
+            return {"output_key": result}
+    """
     def decorator(fn: Callable):
         _registry[node_type] = fn
         return fn
@@ -417,24 +436,45 @@ async def _exec_end(params: dict, inputs: dict) -> dict[str, Any]:
 async def _exec_text_generation(params: dict, inputs: dict) -> dict[str, Any]:
     """
     Generate text using LLM.
-    
+
     Expected inputs (after shape conversion in resolve_node_inputs):
     - text: str (single text string, automatically converted from TextBucket list if needed)
+
+    Returns:
+    - generated_text: str (the generated text content)
     """
     from app.agents.text_generation.generator import generate_text
 
     text = inputs.get("text", "")
-    
+
     # Validate input (shape conversion should have already happened)
     if not isinstance(text, str):
         raise ValueError(f"Expected text to be a string (shape conversion should have handled list→single), got {type(text).__name__}")
-    
+
     preset_id = params.get("preset_id", "")
     if not preset_id:
         raise ValueError("TextGeneration node requires 'preset_id' in params")
 
     result = generate_text(input_text=text, preset_id=preset_id)
-    return {"generated_text": result}
+
+    # Extract text content from result
+    # Result is either {"content": "..."} or a structured JSON object
+    if isinstance(result, dict):
+        # Try common keys for text content
+        if "content" in result:
+            generated_text = result["content"]
+        elif "text" in result:
+            generated_text = result["text"]
+        elif "output" in result:
+            generated_text = result["output"]
+        else:
+            # Fallback: convert the whole dict to a formatted string
+            import json
+            generated_text = json.dumps(result, indent=2)
+    else:
+        generated_text = str(result)
+
+    return {"generated_text": generated_text}
 
 
 @executor("ImageGeneration")
@@ -532,14 +572,22 @@ async def _exec_transcription(params: dict, inputs: dict) -> dict[str, Any]:
 async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
     """
     Match images with text using VLM.
-    
+
     Expected inputs (after shape conversion in resolve_node_inputs):
     - images: list[ImageRef] (list of signed URLs from ImageBucket)
     - text: str (single text string, automatically converted from TextBucket list if needed)
+
+    Returns:
+    - matches: list of dicts with image_url, similarity_score, caption, and ocr_text
     """
+    import base64
+    import io
+    import httpx
+    from PIL import Image as PILImage
+
     images = inputs.get("images", [])
     text = inputs.get("text", "")
-    
+
     # Validate inputs (shape conversion should have already happened)
     if not images:
         raise ValueError("No images provided to ImageMatching node")
@@ -549,12 +597,145 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
         raise ValueError("No text provided to ImageMatching node")
     if not isinstance(text, str):
         raise ValueError(f"Expected text to be a string (shape conversion should have handled list→single), got {type(text).__name__}")
-    
-    logger.info("ImageMatching processing %d images with text: %s", len(images), text[:100])
-    
-    # TODO: Implement actual image-text matching via VLM
-    # Placeholder implementation until vlm_matcher is available
-    return {"matches": []}
+
+    logger.info("ImageMatching processing %d images with text: %s...", len(images), text[:100])
+
+    # Import VLM components
+    try:
+        from app.agents.image_text_matching.config_vlm_v2 import VLMConfig
+        from app.agents.image_text_matching.utils_vlm_v2 import (
+            create_async_fireworks_client,
+            parse_numeric_response,
+            format_image_content
+        )
+    except ImportError as e:
+        logger.error("Failed to import VLM components: %s", e)
+        raise RuntimeError(f"VLM components not available: {e}")
+
+    # Initialize Fireworks client
+    try:
+        api_key = VLMConfig.get_api_key()
+        client = create_async_fireworks_client(api_key)
+    except Exception as e:
+        logger.error("Failed to initialize Fireworks client: %s", e)
+        raise RuntimeError(f"Failed to initialize VLM client: {e}")
+
+    matches = []
+
+    for idx, image_url in enumerate(images):
+        try:
+            logger.info("Processing image %d/%d: %s", idx + 1, len(images), image_url[:80])
+
+            # Download image from signed URL
+            resp = httpx.get(image_url, timeout=30)
+            resp.raise_for_status()
+
+            # Convert to base64
+            img = PILImage.open(io.BytesIO(resp.content))
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+
+            # Optionally resize large images
+            max_dim = 1024
+            if img.width > max_dim or img.height > max_dim:
+                ratio = max_dim / max(img.width, img.height)
+                new_size = (int(img.width * ratio), int(img.height * ratio))
+                img = img.resize(new_size, PILImage.Resampling.LANCZOS)
+
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=85)
+            image_bytes = buffer.getvalue()
+            base64_str = base64.b64encode(image_bytes).decode('utf-8')
+            image_base64 = f"data:image/jpeg;base64,{base64_str}"
+
+            # Generate caption
+            caption_prompt = (
+                "Describe this image in 1-2 sentences. "
+                "Focus on: main subjects, activities, visible objects, text/graphics, and setting. "
+                "Be concise and factual."
+            )
+            caption_response = client.chat.completions.create(
+                model=VLMConfig.FIREWORKS_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": format_image_content(image_base64, caption_prompt)
+                }],
+                max_tokens=150,
+                temperature=0.3
+            )
+            caption = caption_response.choices[0].message.content.strip()
+
+            # Extract OCR text
+            ocr_prompt = (
+                "Extract all visible text from this image. "
+                "Return only the text you see, with no additional commentary. "
+                "If no text is visible, respond with 'NONE'."
+            )
+            ocr_response = client.chat.completions.create(
+                model=VLMConfig.FIREWORKS_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": format_image_content(image_base64, ocr_prompt)
+                }],
+                max_tokens=500,
+                temperature=0.1
+            )
+            ocr_text = ocr_response.choices[0].message.content.strip()
+            if ocr_text.upper() == "NONE":
+                ocr_text = ""
+
+            # Compute similarity score
+            similarity_prompt = (
+                f"Rate how well this image matches the following text on a scale from 0 to 100, where:\n"
+                f"- 0 = completely unrelated\n"
+                f"- 50 = somewhat related (shares general topic)\n"
+                f"- 100 = perfect match (image directly illustrates the text)\n\n"
+                f"Text to match:\n\"\"\"{text}\"\"\"\n\n"
+                f"Respond with ONLY a number from 0-100, no explanation."
+            )
+            similarity_response = client.chat.completions.create(
+                model=VLMConfig.FIREWORKS_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": format_image_content(image_base64, similarity_prompt)
+                }],
+                max_tokens=10,
+                temperature=0.1
+            )
+            similarity_text = similarity_response.choices[0].message.content.strip()
+
+            try:
+                similarity_score = parse_numeric_response(similarity_text) / 100.0
+                similarity_score = max(0.0, min(1.0, similarity_score))
+            except ValueError:
+                logger.warning("Could not parse similarity score: %s", similarity_text)
+                similarity_score = 0.5
+
+            matches.append({
+                "image_url": image_url,
+                "similarity_score": similarity_score,
+                "caption": caption,
+                "ocr_text": ocr_text,
+            })
+
+            logger.info("Image %d matched with score %.2f", idx + 1, similarity_score)
+
+        except Exception as e:
+            logger.error("Error processing image %d: %s", idx + 1, e)
+            matches.append({
+                "image_url": image_url,
+                "similarity_score": 0.0,
+                "caption": "",
+                "ocr_text": "",
+                "error": str(e),
+            })
+
+    # Sort by similarity score descending
+    matches.sort(key=lambda x: x.get("similarity_score", 0), reverse=True)
+
+    logger.info("ImageMatching completed: %d images processed", len(matches))
+
+    return {"matches": matches}
 
 
 @executor("ImageExtraction")

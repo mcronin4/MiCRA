@@ -66,7 +66,7 @@ NODE_REGISTRY: dict[str, NodeTypeSpec] = {
             PortSchema(key="text", runtime_type="Text", shape="single"),
         ],
         outputs=[
-            PortSchema(key="generated_text", runtime_type="JSON", shape="single"),
+            PortSchema(key="generated_text", runtime_type="Text", shape="single"),
         ],
         default_implementation="fireworks:llama-v3p1",
     ),
