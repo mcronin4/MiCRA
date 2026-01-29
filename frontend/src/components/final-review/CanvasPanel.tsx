@@ -20,6 +20,14 @@ import { getNodeSpec } from "@/lib/nodeRegistry";
 import type { NodeType } from "./types";
 import type { RuntimeType } from "@/types/blueprint";
 
+const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
+  Text: "#10b981", // emerald-500
+  ImageRef: "#3b82f6", // blue-500
+  AudioRef: "#8b5cf6", // violet-500
+  VideoRef: "#ec4899", // pink-500
+  JSON: "#f59e0b", // amber-500
+};
+
 const nodeTypes = {
   LinkedIn: LinkedInComponent,
   TikTok: TikTokComponent,
@@ -126,8 +134,6 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
 }) => {
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
-  const setCurrentWorkflowId = useWorkflowStore((state) => state.setCurrentWorkflowId);
   const removeNodeFromStore = useWorkflowStore((state) => state.removeNode);
   const workflowNodes = useWorkflowStore((state) => state.nodes);
 
@@ -183,14 +189,6 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
     [setEdges, addEdge],
   );
 
-  // Color mapping for data types
-  const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
-    Text: '#10b981', // emerald-500
-    ImageRef: '#3b82f6', // blue-500
-    AudioRef: '#8b5cf6', // violet-500
-    VideoRef: '#ec4899', // pink-500
-    JSON: '#f59e0b', // amber-500
-  };
   const TEST_MODE_COLOR = '#94a3b8'; // slate-400 (gray)
 
   // Style edges based on data type and test mode
@@ -205,7 +203,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       try {
         const nodeSpec = getNodeSpec(sourceNode.type || '');
         dataType = nodeSpec?.outputs.find(port => port.key === edge.sourceHandle)?.runtime_type || null;
-      } catch (error) {
+      } catch {
         // Node type not found in registry - use default color
         console.warn(`Node type "${sourceNode.type}" not found in registry for edge ${edge.id}`);
       }

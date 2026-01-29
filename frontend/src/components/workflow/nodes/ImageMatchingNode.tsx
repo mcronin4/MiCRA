@@ -39,7 +39,6 @@ export function ImageMatchingNode({ id }: NodeProps) {
 
   // Check which specific inputs are connected
   const hasImageInput = connections.some((c) => c.inputKey === "images");
-  const hasTextInput = connections.some((c) => c.inputKey === "text");
 
   // Determine if manual inputs should be shown
   // Only show manual inputs when test mode is enabled

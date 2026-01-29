@@ -45,11 +45,7 @@ export function ImageGenerationNode({ id }: NodeProps) {
   const node = useWorkflowStore((state) => state.nodes[id]);
   const updateNode = useWorkflowStore((state) => state.updateNode);
   const imageBucket = useWorkflowStore((state) => state.imageBucket);
-  const { hasConnections, connections } = useNodeConnections(id);
-
-  // Check which specific inputs are connected
-  const hasPromptInput = connections.some((c) => c.inputKey === "prompt");
-  const hasImageInput = connections.some((c) => c.inputKey === "image");
+  const { hasConnections } = useNodeConnections(id);
 
   // Determine if manual inputs should be shown
   // Only show manual inputs when test mode is enabled

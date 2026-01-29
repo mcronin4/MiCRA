@@ -10,7 +10,7 @@
  */
 
 import { apiClient } from './client'
-import type { CompilationResult, CompilationDiagnostic } from '@/types/blueprint'
+import type { CompilationResult } from '@/types/blueprint'
 import type { WorkflowExecutionResult } from '@/types/workflow-execution'
 
 export interface SavedWorkflowNode {

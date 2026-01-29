@@ -5,6 +5,14 @@ import type { WorkflowExecutionResult } from '@/types/workflow-execution';
 import { CheckCircle, XCircle, Clock, Image, Music, Video, FileText, Sparkles, Type, Mic, Layers, Flag } from 'lucide-react';
 import NextImage from 'next/image';
 
+type ImageMatchingMatch = {
+  image_url?: string
+  similarity_score?: number
+  caption?: string
+  ocr_text?: string
+  error?: string
+}
+
 interface ExecutionResultsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -228,7 +236,7 @@ export function ExecutionResultsModal({
                             Matches ({nr.outputs.matches.length}):
                           </div>
                           <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                            {nr.outputs.matches.map((match: any, idx: number) => (
+                            {(nr.outputs.matches as ImageMatchingMatch[]).map((match, idx) => (
                               <div
                                 key={idx}
                                 className="border border-gray-200 rounded-lg overflow-hidden bg-white"

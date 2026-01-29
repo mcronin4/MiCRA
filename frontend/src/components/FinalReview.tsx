@@ -17,7 +17,6 @@ import { useContextMenus } from "@/hooks/useContextMenus";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
 import { useBlueprintCompile } from "@/hooks/useBlueprintCompile";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
-import type { SavedWorkflowNode, SavedWorkflowEdge } from "@/lib/fastapi/workflows";
 import type {
   OutputNodeType,
   WorkflowNodeType,
