@@ -261,11 +261,12 @@ def _validate(
 
 def _types_compatible(src: PortSchema, tgt: PortSchema) -> bool:
     """
-    Check if two ports are type-compatible. 
-    
+    Check if two ports are type-compatible.
+
     Type compatibility rules:
     - Runtime types must match exactly (strict, no JSON fallback)
-    
+    - Special case: VideoRef can connect to AudioRef (video contains audio track)
+
     Shape compatibility rules (for matching runtime types):
     - list → single: ALLOWED (automatic conversion at runtime)
       * For Text: joins items with "\n\n"
@@ -273,13 +274,20 @@ def _types_compatible(src: PortSchema, tgt: PortSchema) -> bool:
     - single → list: ALLOWED (automatic conversion at runtime)
       * Wraps single value in list
     - same shape: ALWAYS ALLOWED
-    
+
     Note: Shape conversion happens automatically in resolve_node_inputs() during execution.
     This check ensures the conversion is safe and expected.
     """
-    # Strict type matching - no JSON compatibility fallback
-    if src.runtime_type != tgt.runtime_type:
-        return False
+    # Runtime type compatibility.
+    # Special case: JSON is treated as an "any" sink type — any source
+    # runtime_type can flow into a JSON target, as long as shapes are compatible.
+    if tgt.runtime_type != "JSON":
+        # Strict type matching for non-JSON targets
+        if src.runtime_type != tgt.runtime_type:
+            # Special case: VideoRef can connect to AudioRef
+            # (video files contain audio tracks that can be extracted/transcribed)
+            if not (src.runtime_type == "VideoRef" and tgt.runtime_type == "AudioRef"):
+                return False
     
     # Check shape compatibility:
     # - list -> single: allowed (can take first item or join)
