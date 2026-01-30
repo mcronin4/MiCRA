@@ -64,16 +64,19 @@ export const NODE_REGISTRY: Record<string, NodeTypeSpec> = {
     outputs: [port('matches', 'JSON')],
   },
   Transcription: {
-    inputs: [port('audio', 'AudioRef')],
+    inputs: [
+      port('audio', 'AudioRef', 'single', false),
+      port('video', 'VideoRef', 'single', false),
+    ],
     outputs: [port('transcription', 'Text')],
-  },
-  TextSummarization: {
-    inputs: [port('text', 'Text')],
-    outputs: [port('summary', 'Text')],
   },
   ImageExtraction: {
     inputs: [port('source', 'VideoRef')],
     outputs: [port('images', 'ImageRef', 'list')],
+  },
+  QuoteExtraction: {
+    inputs: [port('text', 'Text')],
+    outputs: [port('quotes', 'JSON')],
   },
 }
 

@@ -38,8 +38,15 @@ const nodeTypes = {
   ImageMatching: ImageMatchingNode,
   TextGeneration: TextGenerationNode,
   ImageGeneration: ImageGenerationNode,
-  Start: StartNode,
+  Transcription: TranscriptionNode,
+  ImageExtraction: ImageExtractionNode,
+  QuoteExtraction: QuoteExtractionNode,
+  ImageBucket: ImageBucketNode,
+  AudioBucket: AudioBucketNode,
+  VideoBucket: VideoBucketNode,
+  TextBucket: TextBucketNode,
   End: EndNode,
+  __unknown__: UnknownNode,
 };
 
 interface CanvasPanelProps {
@@ -79,6 +86,7 @@ interface CanvasPanelProps {
   handleDeletePart: (
     partId: string,
     setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
+    setEdges: React.Dispatch<React.SetStateAction<Edge[]>>,
   ) => void;
   handleDuplicatePart: (
     partId: string,
@@ -162,19 +170,23 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
     __unknown__: UnknownNode,
   }), []);
 
-  // Wrap onNodesChange to sync deletions with Zustand store
+  // Wrap onNodesChange to sync deletions with Zustand store and clean up edges
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       // Intercept remove changes and sync with Zustand store
       for (const change of changes) {
         if (change.type === 'remove') {
           removeNodeFromStore(change.id);
+          // Remove all edges connected to this node
+          setEdges((eds) => eds.filter(
+            (edge) => edge.source !== change.id && edge.target !== change.id
+          ));
         }
       }
       // Apply all changes to ReactFlow state
       onNodesChangeBase(changes);
     },
-    [onNodesChangeBase, removeNodeFromStore]
+    [onNodesChangeBase, removeNodeFromStore, setEdges]
   );
 
   // Store setNodes in the parent's ref
@@ -296,7 +308,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       {partContextMenu && (
         <PartContextMenu
           position={{ x: partContextMenu.x, y: partContextMenu.y }}
-          onDelete={() => handleDeletePart(partContextMenu.partId, setNodes)}
+          onDelete={() => handleDeletePart(partContextMenu.partId, setNodes, setEdges)}
           onDuplicate={() =>
             handleDuplicatePart(partContextMenu.partId, setNodes, nodes)
           }
