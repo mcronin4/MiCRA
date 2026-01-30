@@ -17,6 +17,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Layers,
+  FolderOpen,
+  Music,
+  Video,
+  TextQuote,
 } from "lucide-react";
 import { FaTiktok } from "react-icons/fa";
 import type { NodeType } from "../final-review/types";
