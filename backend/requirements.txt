@@ -44,6 +44,9 @@ fireworks-ai
 opencv-python-headless
 imagehash
 
+# Cloudflare R2 (S3-compatible) storage
+boto3
+
 # Supabase Storage integration
 supabase
 asyncpg
