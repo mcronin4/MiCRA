@@ -503,69 +503,61 @@ async def _exec_image_generation(params: dict, inputs: dict) -> dict[str, Any]:
     return {"generated_image": base64_data}
 
 
-@executor("TextSummarization")
-async def _exec_text_summarization(params: dict, inputs: dict) -> dict[str, Any]:
-    """
-    Summarize text.
-    
-    Expected inputs (after shape conversion in resolve_node_inputs):
-    - text: str (single text string, automatically converted from TextBucket list if needed)
-    """
-    from app.agents.summarization.summarizer import summarize
-
-    text = inputs.get("text", "")
-    
-    # Validate input (shape conversion should have already happened)
-    if not isinstance(text, str):
-        raise ValueError(f"Expected text to be a string (shape conversion should have handled list→single), got {type(text).__name__}")
-    
-    result = summarize(text)
-    return {"summary": result.get("dense_summary", "")}
-
-
 @executor("Transcription")
 async def _exec_transcription(params: dict, inputs: dict) -> dict[str, Any]:
     """
     Transcribe audio/video to text.
-    
+
     Expected inputs (after shape conversion in resolve_node_inputs):
-    - audio: str (single AudioRef signed URL, automatically converted from AudioBucket list if needed)
+    - audio: str (optional, single AudioRef signed URL)
+    - video: str (optional, single VideoRef signed URL)
+
+    At least one of audio or video must be provided.
     """
     import tempfile
     import httpx
     import os
 
-    from app.agents.transcription.transcribe import transcribe_audio_or_video_file
+    from audio_transcription.audio_transcription import transcribe_audio_or_video_file
 
     audio = inputs.get("audio", "")
-    
-    # Validate input (shape conversion should have already happened)
-    if not isinstance(audio, str):
-        raise ValueError(f"Expected audio to be a string (shape conversion should have handled list→single), got {type(audio).__name__}")
+    video = inputs.get("video", "")
 
-    # If audio is a URL, download to a temp file
-    if audio.startswith("http://") or audio.startswith("https://"):
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(audio)
+    # Use audio if provided, otherwise use video
+    media_url = audio if audio else video
+
+    if not media_url:
+        raise ValueError("Transcription requires either audio or video input")
+
+    # Validate input type
+    if not isinstance(media_url, str):
+        raise ValueError(f"Expected media URL to be a string, got {type(media_url).__name__}")
+
+    # If media is a URL, download to a temp file
+    media_path = None
+    if media_url.startswith("http://") or media_url.startswith("https://"):
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.get(media_url)
             resp.raise_for_status()
-            suffix = os.path.splitext(audio.split("?")[0])[-1] or ".wav"
+            suffix = os.path.splitext(media_url.split("?")[0])[-1] or ".mp4"
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
                 f.write(resp.content)
-                audio_path = f.name
+                media_path = f.name
     else:
-        audio_path = audio
+        media_path = media_url
 
-    segments = transcribe_audio_or_video_file(audio_path)
+    try:
+        segments = transcribe_audio_or_video_file(media_path)
 
-    # Clean up temp file if we downloaded one
-    if audio_path != audio and os.path.exists(audio_path):
-        os.unlink(audio_path)
+        if segments is None:
+            raise RuntimeError("Transcription failed")
 
-    if segments is None:
-        raise RuntimeError("Transcription failed")
-
-    joined = " ".join(seg["text"] for seg in segments)
-    return {"transcription": joined}
+        joined = " ".join(seg["text"] for seg in segments)
+        return {"transcription": joined}
+    finally:
+        # Clean up temp file if we downloaded one
+        if media_path and media_path != media_url and os.path.exists(media_path):
+            os.unlink(media_path)
 
 
 @executor("ImageMatching")
@@ -624,14 +616,27 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
 
     for idx, image_url in enumerate(images):
         try:
-            logger.info("Processing image %d/%d: %s", idx + 1, len(images), image_url[:80])
+            logger.info("Processing image %d/%d: %s", idx + 1, len(images), image_url[:80] if len(image_url) > 80 else image_url)
 
-            # Download image from signed URL
-            resp = httpx.get(image_url, timeout=30)
-            resp.raise_for_status()
+            # Handle both HTTP URLs and base64 data URLs
+            if image_url.startswith("data:"):
+                # Already a base64 data URL - decode it
+                try:
+                    # Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
+                    header, encoded = image_url.split(",", 1)
+                    image_bytes = base64.b64decode(encoded)
+                    img = PILImage.open(io.BytesIO(image_bytes))
+                except Exception as e:
+                    logger.error("Failed to decode base64 image: %s", e)
+                    raise ValueError(f"Invalid base64 image data: {e}")
+            elif image_url.startswith("http://") or image_url.startswith("https://"):
+                # Download image from HTTP URL
+                resp = httpx.get(image_url, timeout=30)
+                resp.raise_for_status()
+                img = PILImage.open(io.BytesIO(resp.content))
+            else:
+                raise ValueError(f"Unsupported image source: {image_url[:50]}...")
 
-            # Convert to base64
-            img = PILImage.open(io.BytesIO(resp.content))
             if img.mode != 'RGB':
                 img = img.convert('RGB')
 
@@ -735,13 +740,137 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
 
     logger.info("ImageMatching completed: %d images processed", len(matches))
 
+    # Close the Fireworks client session if it has a close method
+    try:
+        if hasattr(client, 'close'):
+            client.close()
+        elif hasattr(client, '_client') and hasattr(client._client, 'close'):
+            client._client.close()
+    except Exception as e:
+        logger.warning("Failed to close Fireworks client: %s", e)
+
     return {"matches": matches}
 
 
 @executor("ImageExtraction")
 async def _exec_image_extraction(params: dict, inputs: dict) -> dict[str, Any]:
-    # Placeholder implementation
-    return {"images": []}
+    """
+    Extract keyframes from video.
+
+    Expected inputs (after shape conversion in resolve_node_inputs):
+    - source: str (single VideoRef signed URL, automatically converted from VideoBucket list if needed)
+
+    Returns:
+    - images: list of base64 data URLs for extracted keyframes
+    """
+    import tempfile
+    import httpx
+    import os
+    import asyncio
+    from pathlib import Path
+
+    source = inputs.get("source", "")
+
+    # Validate input (shape conversion should have already happened)
+    if not source:
+        raise ValueError("No video source provided to ImageExtraction node")
+    if not isinstance(source, str):
+        raise ValueError(f"Expected source to be a string (shape conversion should have handled list→single), got {type(source).__name__}")
+
+    logger.info("ImageExtraction processing video: %s...", source[:80])
+
+    # If source is a URL, download to a temp file
+    video_path = None
+    temp_dir = None
+    try:
+        if source.startswith("http://") or source.startswith("https://"):
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.get(source)
+                resp.raise_for_status()
+                # Determine file extension from URL or default to .mp4
+                suffix = os.path.splitext(source.split("?")[0])[-1] or ".mp4"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                    f.write(resp.content)
+                    video_path = f.name
+        else:
+            video_path = source
+
+        # Run the keyframe extraction pipeline
+        from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
+
+        # Create output directory for extracted frames
+        app_root = Path(__file__).resolve().parent.parent
+        output_dir = app_root / "agents" / "image_extraction" / "outputs" / "keyframes"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        config = {"output_dir": str(output_dir)}
+        result = await asyncio.to_thread(run_keyframe_pipeline, video_path, config)
+
+        # Convert extracted frames to base64 data URLs
+        import base64
+
+        selected_frames = result.get("selected_frames", [])
+        image_refs = []
+
+        for frame in selected_frames:
+            image_path = frame.get("selected_path") or frame.get("frame_path")
+            if not image_path or not os.path.exists(image_path):
+                continue
+
+            # Determine MIME type
+            suffix = Path(image_path).suffix.lower().lstrip(".")
+            if suffix in ("jpg", "jpeg"):
+                mime = "image/jpeg"
+            elif suffix in ("png", "webp"):
+                mime = f"image/{suffix}"
+            else:
+                mime = "image/jpeg"
+
+            # Read and encode to base64
+            with open(image_path, "rb") as img_file:
+                encoded = base64.b64encode(img_file.read()).decode("ascii")
+            data_url = f"data:{mime};base64,{encoded}"
+            image_refs.append(data_url)
+
+        logger.info("ImageExtraction completed: extracted %d keyframes", len(image_refs))
+        return {"images": image_refs}
+
+    finally:
+        # Clean up temp file if we downloaded one
+        if video_path and video_path != source and os.path.exists(video_path):
+            try:
+                os.unlink(video_path)
+            except Exception:
+                pass
+
+
+@executor("QuoteExtraction")
+async def _exec_quote_extraction(params: dict, inputs: dict) -> dict[str, Any]:
+    """
+    Extract curated quotes from input text.
+
+    Expected inputs (after shape conversion in resolve_node_inputs):
+    - text: str
+
+    Params:
+    - style: "punchy" | "insightful" | "contrarian" | "emotional" (default: punchy)
+    - count: int (default: 10)
+    """
+    from app.agents.quote_extraction.extractor import extract_quotes
+
+    text = inputs.get("text", "")
+    if not text or not isinstance(text, str):
+        raise ValueError("No text provided to QuoteExtraction node")
+
+    style = params.get("style") or "punchy"
+    count = params.get("count") or 10
+    try:
+        count = int(count)
+    except Exception:
+        count = 10
+
+    quotes = await extract_quotes(transcript=text, style=str(style), count=count)
+    return {"quotes": quotes}
 
 
 # ---------------------------------------------------------------------------
@@ -881,6 +1010,176 @@ async def execute_workflow(
         node_results=node_results,
         total_execution_time_ms=total_ms,
     )
+
+
+# ---------------------------------------------------------------------------
+# Streaming execution (SSE)
+# ---------------------------------------------------------------------------
+
+
+async def execute_workflow_streaming(
+    blueprint: Blueprint,
+):
+    """
+    Execute a compiled Blueprint and yield SSE events as each node completes.
+
+    Yields JSON events:
+    - {"event": "workflow_start", "execution_order": [...], "total_nodes": N}
+    - {"event": "node_start", "node_id": "...", "node_type": "..."}
+    - {"event": "node_complete", "node_id": "...", "status": "completed", "outputs": {...}, "execution_time_ms": ...}
+    - {"event": "node_error", "node_id": "...", "error": "...", "execution_time_ms": ...}
+    - {"event": "workflow_complete", "success": true, "workflow_outputs": {...}, "total_execution_time_ms": ...}
+    - {"event": "workflow_error", "error": "...", "total_execution_time_ms": ...}
+    """
+    import json
+
+    start_time = time.perf_counter()
+    node_outputs: dict[str, dict[str, Any]] = {}
+    node_results: list[NodeExecutionResult] = []
+
+    # Build a lookup for blueprint nodes
+    node_map = {n.node_id: n for n in blueprint.nodes}
+
+    # Emit workflow_start event with execution order (so frontend can mark nodes as "pending")
+    start_event = {
+        "event": "workflow_start",
+        "execution_order": blueprint.execution_order,
+        "total_nodes": len(blueprint.execution_order),
+    }
+    yield f"data: {json.dumps(start_event)}\n\n"
+
+    for node_id in blueprint.execution_order:
+        bp_node = node_map.get(node_id)
+
+        if bp_node is None:
+            error_event = {
+                "event": "node_error",
+                "node_id": node_id,
+                "error": f"Node {node_id} not found in blueprint",
+                "execution_time_ms": 0,
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+
+            workflow_error = {
+                "event": "workflow_error",
+                "error": f"Node {node_id} not found in blueprint",
+                "total_execution_time_ms": int((time.perf_counter() - start_time) * 1000),
+            }
+            yield f"data: {json.dumps(workflow_error)}\n\n"
+            return
+
+        exec_fn = _registry.get(bp_node.type)
+        if exec_fn is None:
+            error_event = {
+                "event": "node_error",
+                "node_id": node_id,
+                "error": f"No executor for node type '{bp_node.type}'",
+                "execution_time_ms": 0,
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+
+            workflow_error = {
+                "event": "workflow_error",
+                "error": f"No executor for node type '{bp_node.type}'",
+                "total_execution_time_ms": int((time.perf_counter() - start_time) * 1000),
+            }
+            yield f"data: {json.dumps(workflow_error)}\n\n"
+            return
+
+        # Emit node_start event
+        start_event = {
+            "event": "node_start",
+            "node_id": node_id,
+            "node_type": bp_node.type,
+        }
+        yield f"data: {json.dumps(start_event)}\n\n"
+
+        # Execute the node
+        node_start = time.perf_counter()
+        try:
+            resolved_inputs = resolve_node_inputs(
+                node_id=node_id,
+                node_type=bp_node.type,
+                connections=blueprint.connections,
+                node_outputs=node_outputs,
+                blueprint=blueprint,
+            )
+
+            outputs = await exec_fn(bp_node.params, resolved_inputs)
+            node_outputs[node_id] = outputs
+            elapsed_ms = int((time.perf_counter() - node_start) * 1000)
+
+            node_results.append(
+                NodeExecutionResult(
+                    node_id=node_id,
+                    status="completed",
+                    outputs=outputs,
+                    execution_time_ms=elapsed_ms,
+                )
+            )
+
+            # Emit node_complete event
+            complete_event = {
+                "event": "node_complete",
+                "node_id": node_id,
+                "status": "completed",
+                "outputs": outputs,
+                "execution_time_ms": elapsed_ms,
+            }
+            yield f"data: {json.dumps(complete_event)}\n\n"
+
+        except Exception as e:
+            elapsed_ms = int((time.perf_counter() - node_start) * 1000)
+            error_msg = f"{type(e).__name__}: {e}"
+            logger.exception("Node %s failed: %s", node_id, error_msg)
+
+            node_results.append(
+                NodeExecutionResult(
+                    node_id=node_id,
+                    status="error",
+                    error=error_msg,
+                    execution_time_ms=elapsed_ms,
+                )
+            )
+
+            # Emit node_error event
+            error_event = {
+                "event": "node_error",
+                "node_id": node_id,
+                "error": error_msg,
+                "execution_time_ms": elapsed_ms,
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+
+            # Emit workflow_error event
+            workflow_error = {
+                "event": "workflow_error",
+                "error": f"Execution stopped at node {node_id}: {error_msg}",
+                "total_execution_time_ms": int((time.perf_counter() - start_time) * 1000),
+                "node_results": [nr.model_dump() for nr in node_results],
+            }
+            yield f"data: {json.dumps(workflow_error)}\n\n"
+            return
+
+    # Extract workflow outputs
+    workflow_outputs: dict[str, Any] = {}
+    for wf_output in blueprint.workflow_outputs:
+        upstream = node_outputs.get(wf_output.from_node, {})
+        val = upstream.get(wf_output.from_output)
+        if val is not None:
+            workflow_outputs[wf_output.key] = val
+
+    total_ms = int((time.perf_counter() - start_time) * 1000)
+
+    # Emit workflow_complete event
+    complete_event = {
+        "event": "workflow_complete",
+        "success": True,
+        "workflow_outputs": workflow_outputs,
+        "total_execution_time_ms": total_ms,
+        "node_results": [nr.model_dump() for nr in node_results],
+    }
+    yield f"data: {json.dumps(complete_event)}\n\n"
 
 
 # ---------------------------------------------------------------------------
