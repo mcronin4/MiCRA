@@ -8,7 +8,9 @@ import os
 import asyncio
 import traceback
 
-from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
+# NOTE: image_extraction depends on optional heavy deps (opencv-python-headless, etc).
+# To avoid crashing server startup when those aren't installed, we import lazily
+# inside the execution path.
 
 router = APIRouter(prefix="/image-extraction")
 
@@ -59,6 +61,7 @@ def _get_output_dir() -> Path:
 async def _run_pipeline(video_path: str) -> Dict[str, Any]:
     output_dir = _get_output_dir()
     config = {"output_dir": str(output_dir)}
+    from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
     return await asyncio.to_thread(run_keyframe_pipeline, video_path, config)
 
 
