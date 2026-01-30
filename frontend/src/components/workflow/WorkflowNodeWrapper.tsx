@@ -11,7 +11,6 @@ import {
   Loader2,
   Film,
   Mic,
-  Play,
   TextQuote,
 } from "lucide-react";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
@@ -109,6 +108,8 @@ export const nodeThemes: Record<string, NodeTheme> = {
 interface Props {
   nodeId: string;
   config: NodeConfig;
+  // Execution is triggered via per-node "Test Node" buttons inside nodes
+  // (shown only when test mode is enabled).
   onExecute: () => Promise<void>;
   theme?: NodeTheme;
   children?: React.ReactNode;
@@ -220,7 +221,8 @@ export function WorkflowNodeWrapper({
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
 
   const statusConfig = {
-    idle: { icon: null, color: "text-slate-400 bg-slate-100", text: "Ready" },
+    idle: { icon: null, color: "text-slate-400 bg-slate-100", text: "Idle" },
+    pending: { icon: null, color: "text-amber-600 bg-amber-50", text: "Ready" },
     running: {
       icon: Loader2,
       color: "text-blue-500 bg-blue-50",
@@ -277,41 +279,21 @@ export function WorkflowNodeWrapper({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onExecute}
-              disabled={node?.status === "running"}
-              className={`
-                nodrag inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide
-                ${theme.accentColor} ${theme.accentHover} text-white
-                transition-colors duration-200
-                disabled:opacity-50 disabled:cursor-not-allowed
-              `}
-              title="Test this node"
-            >
-              {node?.status === "running" ? (
-                <Loader2 size={12} className="animate-spin" strokeWidth={2.5} />
-              ) : (
-                <Play size={12} strokeWidth={2.5} />
-              )}
-              Test
-            </button>
-            <div
-              className={`
+          <div
+            className={`
               flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase
               ${statusConfig.color}
               transition-colors duration-200
             `}
-            >
-              {StatusIcon && (
-                <StatusIcon
-                  size={12}
-                  className={node?.status === "running" ? "animate-spin" : ""}
-                  strokeWidth={2.5}
-                />
-              )}
-              <span>{statusConfig.text}</span>
-            </div>
+          >
+            {StatusIcon && (
+              <StatusIcon
+                size={12}
+                className={node?.status === "running" ? "animate-spin" : ""}
+                strokeWidth={2.5}
+              />
+            )}
+            <span>{statusConfig.text}</span>
           </div>
         </div>
       </div>
