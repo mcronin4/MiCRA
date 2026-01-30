@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Node, Edge } from '@xyflow/react'
 import type { SavedWorkflowData, SavedWorkflowNode, SavedWorkflowEdge } from '@/lib/fastapi/workflows'
 
-export type NodeStatus = 'idle' | 'running' | 'completed' | 'error'
+export type NodeStatus = 'idle' | 'pending' | 'running' | 'completed' | 'error'
 
 export interface WorkflowNodeState {
   id: string

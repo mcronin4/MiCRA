@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import type { Node, ReactFlowInstance } from '@xyflow/react';
+import type { Node, Edge, ReactFlowInstance } from '@xyflow/react';
 import type { NodeType, NodeContent, WorkflowNodeType, BucketNodeType } from '@/components/final-review/types';
 import { WORKFLOW_NODES, BUCKET_NODES } from '@/components/final-review/types';
 import { useWorkflowStore } from '@/lib/stores/workflowStore';
@@ -67,9 +67,18 @@ export const useCanvasOperations = () => {
     return newNodeId
   }, [reactFlowInstance]);
 
-  const handleDeletePart = (partId: string, setNodes: React.Dispatch<React.SetStateAction<Node[]>>) => {
+  const handleDeletePart = (
+    partId: string,
+    setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
+    setEdges: React.Dispatch<React.SetStateAction<Edge[]>>
+  ) => {
     // Remove from React Flow canvas
     setNodes((nds: Node[]) => nds.filter((node) => node.id !== partId));
+
+    // Remove all edges connected to this node
+    setEdges((eds: Edge[]) => eds.filter(
+      (edge) => edge.source !== partId && edge.target !== partId
+    ));
 
     // Also delete from Zustand store (safe to call even if node doesn't exist in store)
     useWorkflowStore.getState().removeNode(partId);
