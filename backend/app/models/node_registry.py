@@ -90,18 +90,11 @@ NODE_REGISTRY: dict[str, NodeTypeSpec] = {
     ),
     "Transcription": NodeTypeSpec(
         inputs=[
-            PortSchema(key="audio", runtime_type="AudioRef", shape="single"),
+            PortSchema(key="audio", runtime_type="AudioRef", shape="single", required=False),
+            PortSchema(key="video", runtime_type="VideoRef", shape="single", required=False),
         ],
         outputs=[
             PortSchema(key="transcription", runtime_type="Text", shape="single"),
-        ],
-    ),
-    "TextSummarization": NodeTypeSpec(
-        inputs=[
-            PortSchema(key="text", runtime_type="Text", shape="single"),
-        ],
-        outputs=[
-            PortSchema(key="summary", runtime_type="Text", shape="single"),
         ],
     ),
     "ImageExtraction": NodeTypeSpec(
@@ -111,6 +104,18 @@ NODE_REGISTRY: dict[str, NodeTypeSpec] = {
         outputs=[
             PortSchema(key="images", runtime_type="ImageRef", shape="list"),
         ],
+    ),
+    "QuoteExtraction": NodeTypeSpec(
+        inputs=[
+            PortSchema(key="text", runtime_type="Text", shape="single"),
+        ],
+        outputs=[
+            PortSchema(key="quotes", runtime_type="JSON", shape="single"),
+        ],
+        default_params={
+            "style": "punchy",
+            "count": 10,
+        },
     ),
 }
 
