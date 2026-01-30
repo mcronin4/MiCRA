@@ -12,6 +12,7 @@ Workflow data is stored in workflow_versions table. The workflows table stores m
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from uuid import UUID
@@ -816,6 +817,134 @@ async def execute_workflow_by_id(
         save_execution_log(execution_result, workflow_id, user.sub, blueprint=compilation.blueprint)
 
         return execution_result.model_dump()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to execute workflow: {str(e)}")
+
+
+@router.post("/execute/stream")
+async def execute_workflow_stream(
+    request: ExecuteRawRequest,
+    user: User = Depends(get_current_user),
+):
+    """
+    Compile and execute a workflow with Server-Sent Events (SSE) streaming.
+
+    Returns a stream of events as each node executes:
+    - node_start: Node is about to execute
+    - node_complete: Node finished successfully
+    - node_error: Node failed
+    - workflow_complete: All nodes finished successfully
+    - workflow_error: Execution stopped due to error
+    """
+    from app.services.blueprint_compiler import compile_workflow
+    from app.services.workflow_executor import execute_workflow_streaming
+
+    # Compile first (not streamed)
+    compilation = compile_workflow(
+        nodes=request.nodes,
+        edges=request.edges,
+        workflow_id=request.workflow_id,
+        name=request.workflow_name or "Untitled",
+        created_by=user.sub,
+    )
+
+    if not compilation.success:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Compilation failed",
+                "diagnostics": [d.model_dump() for d in compilation.diagnostics],
+            },
+        )
+
+    async def event_generator():
+        async for event in execute_workflow_streaming(compilation.blueprint):
+            yield event
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+@router.post("/{workflow_id}/execute/stream")
+async def execute_workflow_by_id_stream(
+    workflow_id: str,
+    request: ExecuteByIdRequest,
+    user: User = Depends(get_current_user),
+):
+    """
+    Fetch, compile, and execute a saved workflow with SSE streaming.
+    """
+    from app.services.blueprint_compiler import compile_workflow
+    from app.services.workflow_executor import execute_workflow_streaming
+
+    try:
+        supabase = get_supabase().client
+
+        wf_result = supabase.table("workflows")\
+            .select("*")\
+            .eq("id", workflow_id)\
+            .execute()
+
+        if not wf_result.data or len(wf_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        wf = wf_result.data[0]
+        wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
+        is_system = wf.get("is_system", False)
+
+        if not is_system and wf_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this workflow",
+            )
+
+        version = get_latest_version(supabase, workflow_id)
+        if not version:
+            raise HTTPException(status_code=404, detail="No versions found for workflow")
+
+        payload = version["payload"]
+        compilation = compile_workflow(
+            nodes=payload.get("nodes", []),
+            edges=payload.get("edges", []),
+            workflow_id=workflow_id,
+            version=version.get("version_number"),
+            name=wf.get("name", "Untitled"),
+            description=wf.get("description"),
+            created_by=user.sub,
+        )
+
+        if not compilation.success:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Compilation failed",
+                    "diagnostics": [d.model_dump() for d in compilation.diagnostics],
+                },
+            )
+
+        async def event_generator():
+            async for event in execute_workflow_streaming(compilation.blueprint):
+                yield event
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     except HTTPException:
         raise
