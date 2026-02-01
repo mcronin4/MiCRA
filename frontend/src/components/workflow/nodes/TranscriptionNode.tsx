@@ -13,10 +13,11 @@ const config: NodeConfig = {
   label: "Transcription",
   description: "Transcribe audio or video from file or YouTube URL",
   inputs: [
-    { id: "video", label: "Video File", type: "file" },
-    { id: "url", label: "YouTube URL", type: "string" },
+    // Workflow mode inputs (from AudioBucket or VideoBucket)
+    { id: "audio", label: "Audio", type: "file" },
+    { id: "video", label: "Video", type: "file" },
   ],
-  outputs: [{ id: "transcript", label: "Transcript", type: "json" }],
+  outputs: [{ id: "transcription", label: "Transcription", type: "string" }],
 };
 
 type SourceType = "file" | "url";
@@ -25,23 +26,24 @@ export function TranscriptionNode({ id }: NodeProps) {
   const node = useWorkflowStore((state) => state.nodes[id]);
   const updateNode = useWorkflowStore((state) => state.updateNode);
 
+  const showManualInputs = node?.manualInputEnabled ?? false;
+
   const initialSourceType: SourceType =
     node?.inputs?.source_type === "url" ? "url" : "file";
   const initialUrl =
     typeof node?.inputs?.url === "string" ? node.inputs.url : "";
   const initialFileName =
     typeof node?.inputs?.file_name === "string" ? node.inputs.file_name : "";
-  const initialSegments = Array.isArray(node?.outputs?.transcript)
-    ? (node?.outputs?.transcript as Array<{ start: number; end: number; text: string }>)
-    : [];
+  const initialTranscription =
+    typeof node?.outputs?.transcription === "string"
+      ? (node.outputs.transcription as string)
+      : "";
 
   const [sourceType, setSourceType] = useState<SourceType>(initialSourceType);
   const [videoUrl, setVideoUrl] = useState<string>(initialUrl);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>(initialFileName);
-  const [segments, setSegments] = useState<
-    Array<{ start: number; end: number; text: string }>
-  >(initialSegments);
+  const [transcription, setTranscription] = useState<string>(initialTranscription);
   const [isDragging, setIsDragging] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied">("idle");
@@ -66,6 +68,14 @@ export function TranscriptionNode({ id }: NodeProps) {
       });
     }
   }, [sourceType, videoUrl, fileName, id, updateNode, node]);
+
+  // Clear outputs when test mode is disabled
+  useEffect(() => {
+    if (!node?.manualInputEnabled) {
+      setTranscription("");
+      updateNode(id, { outputs: null, status: "idle" });
+    }
+  }, [node?.manualInputEnabled, id, updateNode]);
 
   const handleSelectFile = (file: File) => {
     setSelectedFile(file);
@@ -119,7 +129,7 @@ export function TranscriptionNode({ id }: NodeProps) {
     if (event) {
       event.stopPropagation();
     }
-    const fullText = segments.map((seg) => seg.text).join(" ").trim();
+    const fullText = transcription.trim();
     if (!fullText) return;
     try {
       await navigator.clipboard.writeText(fullText);
@@ -132,7 +142,7 @@ export function TranscriptionNode({ id }: NodeProps) {
 
   const handleExecute = async () => {
     updateNode(id, { status: "running", error: undefined });
-    setSegments([]);
+    setTranscription("");
 
     try {
       if (sourceType === "url") {
@@ -143,11 +153,11 @@ export function TranscriptionNode({ id }: NodeProps) {
         if (!response.success) {
           throw new Error(response.error || response.detail || "Transcription failed");
         }
-        const nextSegments = response.segments || [];
-        setSegments(nextSegments);
+        const nextText = (response.segments || []).map((seg) => seg.text).join(" ").trim();
+        setTranscription(nextText);
         updateNode(id, {
           status: "completed",
-          outputs: { transcript: nextSegments },
+          outputs: { transcription: nextText },
           inputs: {
             source_type: sourceType,
             url: videoUrl,
@@ -162,11 +172,11 @@ export function TranscriptionNode({ id }: NodeProps) {
         if (!response.success) {
           throw new Error(response.error || response.detail || "Transcription failed");
         }
-        const nextSegments = response.segments || [];
-        setSegments(nextSegments);
+        const nextText = (response.segments || []).map((seg) => seg.text).join(" ").trim();
+        setTranscription(nextText);
         updateNode(id, {
           status: "completed",
-          outputs: { transcript: nextSegments },
+          outputs: { transcription: nextText },
           inputs: {
             source_type: sourceType,
             url: "",
@@ -189,7 +199,8 @@ export function TranscriptionNode({ id }: NodeProps) {
       theme={nodeThemes.teal}
     >
       <div className="space-y-4">
-        <div className="flex gap-2">
+        {showManualInputs && (
+          <div className="flex gap-2">
           <button
             type="button"
             disabled={isRunning}
@@ -220,9 +231,10 @@ export function TranscriptionNode({ id }: NodeProps) {
           >
             YouTube URL
           </button>
-        </div>
+          </div>
+        )}
 
-        {sourceType === "url" && (
+        {showManualInputs && sourceType === "url" && (
           <div className="space-y-2">
             <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
               YouTube URL
@@ -244,7 +256,7 @@ export function TranscriptionNode({ id }: NodeProps) {
           </div>
         )}
 
-        {sourceType === "file" && (
+        {showManualInputs && sourceType === "file" && (
           <div className="space-y-2">
             <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
               Audio/Video File
@@ -307,7 +319,7 @@ export function TranscriptionNode({ id }: NodeProps) {
           </div>
         )}
 
-        {segments.length > 0 ? (
+        {transcription ? (
           <div
             className="nodrag border border-slate-200 rounded-xl bg-white p-3 cursor-pointer transition-shadow hover:shadow-md"
             onClick={() => setShowTranscript(true)}
@@ -322,10 +334,9 @@ export function TranscriptionNode({ id }: NodeProps) {
           >
             <div className="flex items-center justify-between text-[11px] text-slate-500 mb-2">
               <span className="font-semibold uppercase tracking-wide">
-                Transcript
+                Transcription
               </span>
               <div className="flex items-center gap-2">
-                <span>{segments.length} segments</span>
                 <button
                   type="button"
                   onClick={handleCopyTranscript}
@@ -337,26 +348,11 @@ export function TranscriptionNode({ id }: NodeProps) {
                 </button>
               </div>
             </div>
-            <div className="space-y-1 text-xs text-slate-600">
-              {segments.slice(0, 2).map((seg, index) => {
-                const minutes = Math.floor(seg.start / 60);
-                const seconds = Math.floor(seg.start % 60);
-                const timeStr = `[${minutes.toString().padStart(2, "0")}:${seconds
-                  .toString()
-                  .padStart(2, "0")}]`;
-                return (
-                  <p
-                    key={`${seg.start}-${index}`}
-                    className="truncate max-w-[260px]"
-                  >
-                    <span className="text-slate-400 mr-2">{timeStr}</span>
-                    {seg.text}
-                  </p>
-                );
-              })}
+            <div className="text-xs text-slate-600 truncate max-w-[260px]">
+              {transcription}
             </div>
             <div className="mt-2 text-[10px] text-slate-400">
-              Click to expand full transcript
+              Click to expand full transcription
             </div>
           </div>
         ) : (
@@ -365,12 +361,35 @@ export function TranscriptionNode({ id }: NodeProps) {
               <Mic size={18} className="text-slate-400" />
             </div>
             <p className="text-xs font-medium text-slate-600">
-              No transcript yet
+              No transcription yet
             </p>
             <p className="text-[10px] text-slate-400 mt-1">
-              Run transcription to generate segments
+              Run transcription to generate text
             </p>
           </div>
+        )}
+
+        {/* Test Node button - show when test mode is enabled */}
+        {node?.manualInputEnabled && (
+          <button
+            onClick={handleExecute}
+            disabled={
+              node?.status === "running" ||
+              (sourceType === "url" ? !videoUrl.trim() : !selectedFile)
+            }
+            className={`
+              nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
+              transition-all duration-200
+              ${
+                node?.status === "running" ||
+                (sourceType === "url" ? !videoUrl.trim() : !selectedFile)
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
+              }
+            `}
+          >
+            {node?.status === "running" ? "Running..." : "Test Node"}
+          </button>
         )}
       </div>
 
@@ -390,10 +409,10 @@ export function TranscriptionNode({ id }: NodeProps) {
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-white">
               <div>
                 <h4 className="text-sm font-semibold text-slate-900">
-                  Transcript
+                  Transcription
                 </h4>
                 <p className="text-xs text-slate-500">
-                  {segments.length} segments
+                  Output text
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -416,20 +435,8 @@ export function TranscriptionNode({ id }: NodeProps) {
                 </button>
               </div>
             </div>
-            <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)] space-y-2 text-xs text-slate-600 select-text">
-              {segments.map((seg, index) => {
-                const minutes = Math.floor(seg.start / 60);
-                const seconds = Math.floor(seg.start % 60);
-                const timeStr = `[${minutes.toString().padStart(2, "0")}:${seconds
-                  .toString()
-                  .padStart(2, "0")}]`;
-                return (
-                  <p key={`${seg.start}-${index}`}>
-                    <span className="text-slate-400 mr-2">{timeStr}</span>
-                    {seg.text}
-                  </p>
-                );
-              })}
+            <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)] space-y-2 text-xs text-slate-600 select-text whitespace-pre-wrap">
+              {transcription}
             </div>
           </div>
         </div>

@@ -12,12 +12,14 @@ import {
   Sparkles,
   Film,
   Mic,
-  Play,
   Flag,
   GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
   Layers,
+  FolderOpen,
+  Music,
+  Video,
   TextQuote,
 } from "lucide-react";
 import { FaTiktok } from "react-icons/fa";
@@ -30,10 +32,19 @@ interface NodeSidebarProps {
 
 const nodeCategories = [
   {
+    name: "Input Buckets",
+    icon: FolderOpen,
+    nodes: [
+      { type: "ImageBucket" as NodeType, label: "Image Bucket", icon: ImageIcon },
+      { type: "AudioBucket" as NodeType, label: "Audio Bucket", icon: Music },
+      { type: "VideoBucket" as NodeType, label: "Video Bucket", icon: Video },
+      { type: "TextBucket" as NodeType, label: "Text Bucket", icon: FileText },
+    ],
+  },
+  {
     name: "Flow Control",
     icon: GitBranch,
     nodes: [
-      { type: "Start" as NodeType, label: "Start Flow", icon: Play },
       { type: "End" as NodeType, label: "End Flow", icon: Flag },
     ],
   },

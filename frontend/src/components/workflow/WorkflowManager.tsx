@@ -9,7 +9,6 @@ import {
   listWorkflowVersions,
   getWorkflowVersion,
   type WorkflowVersionMetadata,
-  type WorkflowVersion,
 } from "@/lib/fastapi/workflows";
 import {
   Trash2,
@@ -59,7 +58,6 @@ export function WorkflowManager({
   const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
   const workflowName = useWorkflowStore((state) => state.workflowName);
   const workflowDescription = useWorkflowStore((state) => state.workflowDescription);
-  const setCurrentWorkflowId = useWorkflowStore((state) => state.setCurrentWorkflowId);
   const setWorkflowName = useWorkflowStore((state) => state.setWorkflowName);
   const setWorkflowDescription = useWorkflowStore((state) => state.setWorkflowDescription);
   const setWorkflowMetadata = useWorkflowStore((state) => state.setWorkflowMetadata);

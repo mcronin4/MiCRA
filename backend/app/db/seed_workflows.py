@@ -28,21 +28,34 @@ TEMPLATES = [
         "workflow_data": {
             "nodes": [
                 {
+                    "id": "img-bucket-1",
+                    "type": "ImageBucket",
+                    "position": {"x": 50, "y": 200},
+                    "data": {"label": "Image Bucket", "params": {"selected_file_ids": []}}
+                },
+                {
                     "id": "img-match-1",
                     "type": "ImageMatching",
-                    "position": {"x": 100, "y": 200},
+                    "position": {"x": 250, "y": 200},
                     "data": {"label": "Image Matching"}
                 },
                 {
                     "id": "text-gen-1",
                     "type": "TextGeneration",
-                    "position": {"x": 400, "y": 200},
+                    "position": {"x": 500, "y": 200},
                     "data": {"label": "Text Generation"}
                 }
             ],
             "edges": [
                 {
                     "id": "e1",
+                    "source": "img-bucket-1",
+                    "target": "img-match-1",
+                    "sourceHandle": "images",
+                    "targetHandle": "images"
+                },
+                {
+                    "id": "e2",
                     "source": "img-match-1",
                     "target": "text-gen-1",
                     "sourceHandle": "matches",
@@ -57,21 +70,34 @@ TEMPLATES = [
         "workflow_data": {
             "nodes": [
                 {
+                    "id": "audio-bucket-1",
+                    "type": "AudioBucket",
+                    "position": {"x": 50, "y": 200},
+                    "data": {"label": "Audio Bucket", "params": {"selected_file_ids": []}}
+                },
+                {
                     "id": "transcription-1",
                     "type": "Transcription",
-                    "position": {"x": 100, "y": 200},
+                    "position": {"x": 250, "y": 200},
                     "data": {"label": "Transcription"}
                 },
                 {
                     "id": "text-gen-1",
                     "type": "TextGeneration",
-                    "position": {"x": 400, "y": 200},
+                    "position": {"x": 500, "y": 200},
                     "data": {"label": "Text Generation"}
                 }
             ],
             "edges": [
                 {
                     "id": "e1",
+                    "source": "audio-bucket-1",
+                    "target": "transcription-1",
+                    "sourceHandle": "audio",
+                    "targetHandle": "audio"
+                },
+                {
+                    "id": "e2",
                     "source": "transcription-1",
                     "target": "text-gen-1",
                     "sourceHandle": "transcription",
@@ -82,17 +108,31 @@ TEMPLATES = [
     },
     {
         "name": "Content Generation Starter",
-        "description": "Simple template with text generation node ready to use",
+        "description": "Simple template with text bucket and text generation node ready to use",
         "workflow_data": {
             "nodes": [
                 {
+                    "id": "text-bucket-1",
+                    "type": "TextBucket",
+                    "position": {"x": 100, "y": 200},
+                    "data": {"label": "Text Bucket", "params": {"selected_file_ids": []}}
+                },
+                {
                     "id": "text-gen-1",
                     "type": "TextGeneration",
-                    "position": {"x": 250, "y": 200},
+                    "position": {"x": 350, "y": 200},
                     "data": {"label": "Text Generation"}
                 }
             ],
-            "edges": []
+            "edges": [
+                {
+                    "id": "e1",
+                    "source": "text-bucket-1",
+                    "target": "text-gen-1",
+                    "sourceHandle": "text",
+                    "targetHandle": "text"
+                }
+            ]
         }
     },
 ]

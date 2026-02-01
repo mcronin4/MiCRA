@@ -12,12 +12,30 @@ Workflow data is stored in workflow_versions table. The workflows table stores m
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from app.db.supabase import get_supabase
 from app.auth.dependencies import User, get_current_user
+
+
+class ExecutionLogSummary(BaseModel):
+    id: str
+    workflow_id: str
+    success: bool
+    error: str | None
+    total_execution_time_ms: int
+    node_count: int
+    nodes_completed: int
+    nodes_errored: int
+    created_at: datetime
+
+
+class ExecutionLogDetail(ExecutionLogSummary):
+    node_summaries: list[dict]
+    blueprint: dict | None = None  # The compiled blueprint that was executed
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -583,6 +601,357 @@ async def update_workflow(
         raise HTTPException(status_code=500, detail=f"Failed to update workflow: {str(e)}")
 
 
+class ExecuteRawRequest(BaseModel):
+    """Execute a raw (unsaved) workflow."""
+    nodes: List[Dict[str, Any]]
+    edges: List[Dict[str, Any]]
+    workflow_id: str | None = None
+    workflow_name: str | None = None
+
+
+class ExecuteByIdRequest(BaseModel):
+    """Execute a saved workflow by ID."""
+    pass
+
+
+@router.post("/execute")
+async def execute_workflow_raw(
+    request: ExecuteRawRequest,
+    user: User = Depends(get_current_user),
+):
+    """
+    Compile and execute a raw (unsaved) editor graph.
+    Accepts nodes and edges. Returns execution results.
+    """
+    from app.services.blueprint_compiler import compile_workflow
+    from app.services.workflow_executor import execute_workflow
+
+    # Use provided workflow_id and name if available, otherwise use defaults
+    workflow_id = request.workflow_id
+    workflow_name = request.workflow_name or "Unsaved Workflow"
+    
+    result = compile_workflow(
+        nodes=request.nodes,
+        edges=request.edges,
+        name=workflow_name,
+        workflow_id=workflow_id,
+        created_by=user.sub,
+    )
+
+    if not result.success:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Compilation failed",
+                "diagnostics": [d.model_dump() for d in result.diagnostics],
+            },
+        )
+
+    execution_result = await execute_workflow(
+        blueprint=result.blueprint,
+    )
+    
+    # Save execution log with workflow_id if provided
+    from app.services.workflow_executor import save_execution_log
+    save_execution_log(execution_result, workflow_id, user.sub, blueprint=result.blueprint)
+    
+    return execution_result.model_dump()
+
+
+@router.post("/compile")
+async def compile_workflow_raw(
+    workflow_data: WorkflowData,
+    user: User = Depends(get_current_user),
+):
+    """
+    Compile a raw (unsaved) editor graph into a Blueprint.
+    Accepts WorkflowData in the body, returns Blueprint JSON or diagnostics.
+    """
+    from app.services.blueprint_compiler import compile_workflow
+
+    result = compile_workflow(
+        nodes=workflow_data.nodes,
+        edges=workflow_data.edges,
+        name="Unsaved Workflow",
+        created_by=user.sub,
+    )
+
+    if not result.success:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Compilation failed",
+                "diagnostics": [d.model_dump() for d in result.diagnostics],
+            },
+        )
+
+    return result.model_dump()
+
+
+@router.post("/{workflow_id}/compile")
+async def compile_workflow_by_id(
+    workflow_id: str,
+    user: User = Depends(get_current_user),
+):
+    """
+    Fetch the latest version of a saved workflow and compile it into a Blueprint.
+    """
+    from app.services.blueprint_compiler import compile_workflow
+
+    try:
+        supabase = get_supabase().client
+
+        # Fetch workflow metadata
+        wf_result = supabase.table("workflows")\
+            .select("*")\
+            .eq("id", workflow_id)\
+            .execute()
+
+        if not wf_result.data or len(wf_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        wf = wf_result.data[0]
+        wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
+        is_system = wf.get("is_system", False)
+
+        if not is_system and wf_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this workflow",
+            )
+
+        version = get_latest_version(supabase, workflow_id)
+        if not version:
+            raise HTTPException(status_code=404, detail="No versions found for workflow")
+
+        payload = version["payload"]
+        result = compile_workflow(
+            nodes=payload.get("nodes", []),
+            edges=payload.get("edges", []),
+            workflow_id=workflow_id,
+            version=version.get("version_number"),
+            name=wf.get("name", "Untitled"),
+            description=wf.get("description"),
+            created_by=user.sub,
+        )
+
+        if not result.success:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Compilation failed",
+                    "diagnostics": [d.model_dump() for d in result.diagnostics],
+                },
+            )
+
+        return result.model_dump()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to compile workflow: {str(e)}")
+
+
+@router.post("/{workflow_id}/execute")
+async def execute_workflow_by_id(
+    workflow_id: str,
+    request: ExecuteByIdRequest,
+    user: User = Depends(get_current_user),
+):
+    """
+    Fetch the latest version of a saved workflow, compile it, and execute.
+    """
+    from app.services.blueprint_compiler import compile_workflow
+    from app.services.workflow_executor import execute_workflow
+
+    try:
+        supabase = get_supabase().client
+
+        wf_result = supabase.table("workflows")\
+            .select("*")\
+            .eq("id", workflow_id)\
+            .execute()
+
+        if not wf_result.data or len(wf_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        wf = wf_result.data[0]
+        wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
+        is_system = wf.get("is_system", False)
+
+        if not is_system and wf_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this workflow",
+            )
+
+        version = get_latest_version(supabase, workflow_id)
+        if not version:
+            raise HTTPException(status_code=404, detail="No versions found for workflow")
+
+        payload = version["payload"]
+        compilation = compile_workflow(
+            nodes=payload.get("nodes", []),
+            edges=payload.get("edges", []),
+            workflow_id=workflow_id,
+            version=version.get("version_number"),
+            name=wf.get("name", "Untitled"),
+            description=wf.get("description"),
+            created_by=user.sub,
+        )
+
+        if not compilation.success:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Compilation failed",
+                    "diagnostics": [d.model_dump() for d in compilation.diagnostics],
+                },
+            )
+
+        execution_result = await execute_workflow(
+            blueprint=compilation.blueprint,
+        )
+
+        from app.services.workflow_executor import save_execution_log
+        save_execution_log(execution_result, workflow_id, user.sub, blueprint=compilation.blueprint)
+
+        return execution_result.model_dump()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to execute workflow: {str(e)}")
+
+
+@router.post("/execute/stream")
+async def execute_workflow_stream(
+    request: ExecuteRawRequest,
+    user: User = Depends(get_current_user),
+):
+    """
+    Compile and execute a workflow with Server-Sent Events (SSE) streaming.
+
+    Returns a stream of events as each node executes:
+    - node_start: Node is about to execute
+    - node_complete: Node finished successfully
+    - node_error: Node failed
+    - workflow_complete: All nodes finished successfully
+    - workflow_error: Execution stopped due to error
+    """
+    from app.services.blueprint_compiler import compile_workflow
+    from app.services.workflow_executor import execute_workflow_streaming
+
+    # Compile first (not streamed)
+    compilation = compile_workflow(
+        nodes=request.nodes,
+        edges=request.edges,
+        workflow_id=request.workflow_id,
+        name=request.workflow_name or "Untitled",
+        created_by=user.sub,
+    )
+
+    if not compilation.success:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Compilation failed",
+                "diagnostics": [d.model_dump() for d in compilation.diagnostics],
+            },
+        )
+
+    async def event_generator():
+        async for event in execute_workflow_streaming(compilation.blueprint):
+            yield event
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+@router.post("/{workflow_id}/execute/stream")
+async def execute_workflow_by_id_stream(
+    workflow_id: str,
+    request: ExecuteByIdRequest,
+    user: User = Depends(get_current_user),
+):
+    """
+    Fetch, compile, and execute a saved workflow with SSE streaming.
+    """
+    from app.services.blueprint_compiler import compile_workflow
+    from app.services.workflow_executor import execute_workflow_streaming
+
+    try:
+        supabase = get_supabase().client
+
+        wf_result = supabase.table("workflows")\
+            .select("*")\
+            .eq("id", workflow_id)\
+            .execute()
+
+        if not wf_result.data or len(wf_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        wf = wf_result.data[0]
+        wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
+        is_system = wf.get("is_system", False)
+
+        if not is_system and wf_user_id != user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this workflow",
+            )
+
+        version = get_latest_version(supabase, workflow_id)
+        if not version:
+            raise HTTPException(status_code=404, detail="No versions found for workflow")
+
+        payload = version["payload"]
+        compilation = compile_workflow(
+            nodes=payload.get("nodes", []),
+            edges=payload.get("edges", []),
+            workflow_id=workflow_id,
+            version=version.get("version_number"),
+            name=wf.get("name", "Untitled"),
+            description=wf.get("description"),
+            created_by=user.sub,
+        )
+
+        if not compilation.success:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Compilation failed",
+                    "diagnostics": [d.model_dump() for d in compilation.diagnostics],
+                },
+            )
+
+        async def event_generator():
+            async for event in execute_workflow_streaming(compilation.blueprint):
+                yield event
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to execute workflow: {str(e)}")
+
+
 @router.delete("/{workflow_id}", status_code=204)
 async def delete_workflow(workflow_id: str, user: User = Depends(get_current_user)):
     """
@@ -625,9 +994,111 @@ async def delete_workflow(workflow_id: str, user: User = Depends(get_current_use
             .delete()\
             .eq("id", workflow_id)\
             .execute()
-        
+
         return None
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete workflow: {str(e)}")
+
+
+@router.get("/{workflow_id}/executions", response_model=List[ExecutionLogSummary])
+async def list_execution_logs(
+    workflow_id: str,
+    user: User = Depends(get_current_user),
+):
+    """List execution logs for a workflow (summary only, no node_summaries)."""
+    try:
+        supabase = get_supabase().client
+
+        # Verify workflow exists and user has access
+        wf_result = supabase.table("workflows")\
+            .select("user_id, is_system")\
+            .eq("id", workflow_id)\
+            .execute()
+
+        if not wf_result.data:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        wf = wf_result.data[0]
+        wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
+        if not wf.get("is_system", False) and wf_user_id != user.sub:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+        result = supabase.table("executions")\
+            .select("id, workflow_id, success, error, total_execution_time_ms, node_count, nodes_completed, nodes_errored, created_at")\
+            .eq("workflow_id", workflow_id)\
+            .order("created_at", desc=True)\
+            .execute()
+
+        return [
+            ExecutionLogSummary(
+                id=str(row["id"]),
+                workflow_id=str(row["workflow_id"]),
+                success=row["success"],
+                error=row.get("error"),
+                total_execution_time_ms=row["total_execution_time_ms"],
+                node_count=row["node_count"],
+                nodes_completed=row["nodes_completed"],
+                nodes_errored=row["nodes_errored"],
+                created_at=row["created_at"],
+            )
+            for row in (result.data or [])
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list execution logs: {str(e)}")
+
+
+@router.get("/{workflow_id}/executions/{execution_id}", response_model=ExecutionLogDetail)
+async def get_execution_log(
+    workflow_id: str,
+    execution_id: str,
+    user: User = Depends(get_current_user),
+):
+    """Get a single execution log with node_summaries."""
+    try:
+        supabase = get_supabase().client
+
+        # Verify workflow exists and user has access
+        wf_result = supabase.table("workflows")\
+            .select("user_id, is_system")\
+            .eq("id", workflow_id)\
+            .execute()
+
+        if not wf_result.data:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        wf = wf_result.data[0]
+        wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
+        if not wf.get("is_system", False) and wf_user_id != user.sub:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+        result = supabase.table("executions")\
+            .select("*")\
+            .eq("id", execution_id)\
+            .eq("workflow_id", workflow_id)\
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Execution log not found")
+
+        row = result.data[0]
+        return ExecutionLogDetail(
+            id=str(row["id"]),
+            workflow_id=str(row["workflow_id"]),
+            success=row["success"],
+            error=row.get("error"),
+            total_execution_time_ms=row["total_execution_time_ms"],
+            node_count=row["node_count"],
+            nodes_completed=row["nodes_completed"],
+            nodes_errored=row["nodes_errored"],
+            node_summaries=row.get("node_summaries", []),
+            blueprint=row.get("blueprint"),
+            created_at=row["created_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get execution log: {str(e)}")

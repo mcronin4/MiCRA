@@ -15,7 +15,7 @@ const config: NodeConfig = {
   type: "quote-extraction",
   label: "Quote Extraction",
   description: "Extract curated quotes from a transcript",
-  inputs: [{ id: "transcript", label: "Transcript", type: "string" }],
+  inputs: [{ id: "text", label: "Text", type: "string" }],
   outputs: [{ id: "quotes", label: "Quotes", type: "json" }],
 };
 
@@ -37,8 +37,10 @@ export function QuoteExtractionNode({ id }: NodeProps) {
   const node = useWorkflowStore((state) => state.nodes[id]);
   const updateNode = useWorkflowStore((state) => state.updateNode);
 
-  const initialTranscript =
-    typeof node?.inputs?.transcript === "string" ? node.inputs.transcript : "";
+  const showManualInputs = node?.manualInputEnabled ?? false;
+
+  const initialText =
+    typeof node?.inputs?.text === "string" ? node.inputs.text : "";
   const initialStyle =
     typeof node?.inputs?.style === "string"
       ? (node.inputs.style as QuoteStyle)
@@ -49,7 +51,7 @@ export function QuoteExtractionNode({ id }: NodeProps) {
     ? (node?.outputs?.quotes as QuoteItem[])
     : [];
 
-  const [transcript, setTranscript] = useState<string>(initialTranscript);
+  const [text, setText] = useState<string>(initialText);
   const [quoteStyle, setQuoteStyle] = useState<QuoteStyle>(initialStyle);
   const [quoteCount, setQuoteCount] = useState<number>(
     clampQuoteCount(initialCount),
@@ -60,32 +62,40 @@ export function QuoteExtractionNode({ id }: NodeProps) {
   useEffect(() => {
     if (!node) return;
     if (
-      node.inputs.transcript !== transcript ||
+      node.inputs.text !== text ||
       node.inputs.style !== quoteStyle ||
       node.inputs.count !== quoteCount
     ) {
       updateNode(id, {
         inputs: {
           ...node.inputs,
-          transcript,
+          text,
           style: quoteStyle,
           count: quoteCount,
         },
       });
     }
-  }, [transcript, quoteStyle, quoteCount, id, updateNode, node]);
+  }, [text, quoteStyle, quoteCount, id, updateNode, node]);
+
+  // Clear outputs when test mode is disabled
+  useEffect(() => {
+    if (!node?.manualInputEnabled) {
+      setQuotes([]);
+      updateNode(id, { outputs: null, status: "idle" });
+    }
+  }, [node?.manualInputEnabled, id, updateNode]);
 
   const handleExecute = async () => {
     updateNode(id, { status: "running", error: undefined });
     setQuotes([]);
 
     try {
-      if (!transcript.trim()) {
-        throw new Error("Please paste a transcript");
+      if (!text.trim()) {
+        throw new Error("Please paste text");
       }
 
       const response = await extractQuotes({
-        transcript: transcript.trim(),
+        transcript: text.trim(),
         style: quoteStyle,
         count: clampQuoteCount(quoteCount),
       });
@@ -100,7 +110,7 @@ export function QuoteExtractionNode({ id }: NodeProps) {
         status: "completed",
         outputs: { quotes: nextQuotes },
         inputs: {
-          transcript,
+          text,
           style: quoteStyle,
           count: quoteCount,
         },
@@ -122,18 +132,20 @@ export function QuoteExtractionNode({ id }: NodeProps) {
       theme={nodeThemes.rose}
     >
       <div className="space-y-4">
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-            Transcript
-          </label>
-          <textarea
-            value={transcript}
-            onChange={(event) => setTranscript(event.target.value)}
-            placeholder="Paste transcript here..."
-            rows={2}
-            className="nodrag w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 transition-all placeholder:text-slate-400 max-h-24 overflow-y-auto"
-          />
-        </div>
+        {showManualInputs && (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Text
+            </label>
+            <textarea
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder="Paste text here..."
+              rows={2}
+              className="nodrag w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 transition-all placeholder:text-slate-400 max-h-24 overflow-y-auto"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
@@ -205,6 +217,25 @@ export function QuoteExtractionNode({ id }: NodeProps) {
               Run extraction to populate quotes
             </p>
           </div>
+        )}
+
+        {/* Test Node button - show when test mode is enabled */}
+        {node?.manualInputEnabled && (
+          <button
+            onClick={handleExecute}
+            disabled={node?.status === "running" || !text.trim()}
+            className={`
+              nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
+              transition-all duration-200
+              ${
+                node?.status === "running" || !text.trim()
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
+              }
+            `}
+          >
+            {node?.status === "running" ? "Running..." : "Test Node"}
+          </button>
         )}
       </div>
 

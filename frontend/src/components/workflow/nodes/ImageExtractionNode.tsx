@@ -20,8 +20,8 @@ const config: NodeConfig = {
   label: "Image Extraction",
   description: "Extract keyframes from video or YouTube URL",
   inputs: [
-    { id: "video", label: "Video File", type: "file" },
-    { id: "url", label: "YouTube URL", type: "string" },
+    // Workflow mode input (from VideoBucket / upstream)
+    { id: "source", label: "Video", type: "file" },
   ],
   outputs: [
     { id: "images", label: "Selected Images", type: "image[]" },
@@ -33,6 +33,8 @@ export function ImageExtractionNode({ id }: NodeProps) {
   const node = useWorkflowStore((state) => state.nodes[id]);
   const updateNode = useWorkflowStore((state) => state.updateNode);
   const addImagesToBucket = useWorkflowStore((state) => state.addImagesToBucket);
+
+  const showManualInputs = node?.manualInputEnabled ?? false;
 
   const nodeOutputs =
     node?.outputs && typeof node.outputs === "object"
@@ -130,6 +132,16 @@ export function ImageExtractionNode({ id }: NodeProps) {
       });
     }
   }, [sourceType, videoUrl, fileName, id, updateNode, node]);
+
+  // Clear outputs when test mode is disabled
+  useEffect(() => {
+    if (!node?.manualInputEnabled) {
+      setSelectedImages([]);
+      setMetadata([]);
+      setStats(null);
+      updateNode(id, { outputs: null, status: "idle" });
+    }
+  }, [node?.manualInputEnabled, id, updateNode]);
 
   const handleSelectFile = (file: File) => {
     setSelectedFile(file);
@@ -274,6 +286,7 @@ export function ImageExtractionNode({ id }: NodeProps) {
       theme={nodeThemes.sky}
     >
       <div className="space-y-4">
+        {showManualInputs && (
         <div className="flex gap-2">
           <button
             type="button"
@@ -306,8 +319,9 @@ export function ImageExtractionNode({ id }: NodeProps) {
             YouTube URL
           </button>
         </div>
+        )}
 
-        {sourceType === "url" && (
+        {showManualInputs && sourceType === "url" && (
           <div className="space-y-2">
             <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
               YouTube URL
@@ -329,7 +343,7 @@ export function ImageExtractionNode({ id }: NodeProps) {
           </div>
         )}
 
-        {sourceType === "file" && (
+        {showManualInputs && sourceType === "file" && (
           <div className="space-y-2">
             <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
               Video File
@@ -469,6 +483,29 @@ export function ImageExtractionNode({ id }: NodeProps) {
               Run extraction to populate selected frames
             </p>
           </div>
+        )}
+
+        {/* Test Node button - show when test mode is enabled */}
+        {node?.manualInputEnabled && (
+          <button
+            onClick={handleExecute}
+            disabled={
+              node?.status === "running" ||
+              (sourceType === "url" ? !videoUrl.trim() : !selectedFile)
+            }
+            className={`
+              nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
+              transition-all duration-200
+              ${
+                node?.status === "running" ||
+                (sourceType === "url" ? !videoUrl.trim() : !selectedFile)
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
+              }
+            `}
+          >
+            {node?.status === "running" ? "Running..." : "Test Node"}
+          </button>
         )}
       </div>
 

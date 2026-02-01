@@ -40,6 +40,13 @@ Pillow
 # VLM dependencies for V2 image_text_matching (vlm_anslysis.py) (VLM V2)
 fireworks-ai
 
+# Image extraction (OpenCV) - use headless for servers/containers
+opencv-python-headless
+imagehash
+
+# Cloudflare R2 (S3-compatible) storage
+boto3
+
 # Supabase Storage integration
 supabase
 asyncpg

@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback, useState } from "react";
-import type { Node, Edge, OnConnect, ReactFlowInstance } from "@xyflow/react";
+import React, { useEffect, useCallback, useMemo } from "react";
+import type { Node, Edge, OnConnect, ReactFlowInstance, NodeChange } from "@xyflow/react";
 import AddPartMenu from "../AddPartMenu";
 import PartContextMenu from "../PartContextMenu";
 import { LinkedInComponent } from "../canvas/LinkedInComponent";
@@ -11,11 +11,25 @@ import { ImageGenerationNode } from "../workflow/nodes/ImageGenerationNode";
 import { ImageExtractionNode } from "../workflow/nodes/ImageExtractionNode";
 import { TranscriptionNode } from "../workflow/nodes/TranscriptionNode";
 import { QuoteExtractionNode } from "../workflow/nodes/QuoteExtractionNode";
-import { StartNode } from "../workflow/nodes/StartNode";
+import { ImageBucketNode } from "../workflow/nodes/ImageBucketNode";
+import { AudioBucketNode } from "../workflow/nodes/AudioBucketNode";
+import { VideoBucketNode } from "../workflow/nodes/VideoBucketNode";
+import { TextBucketNode } from "../workflow/nodes/TextBucketNode";
 import { EndNode } from "../workflow/nodes/EndNode";
+import { UnknownNode } from "../workflow/nodes/UnknownNode";
 import { WorkflowManager } from "../workflow/WorkflowManager";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
+import { getNodeSpec } from "@/lib/nodeRegistry";
 import type { NodeType } from "./types";
+import type { RuntimeType } from "@/types/blueprint";
+
+const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
+  Text: "#10b981", // emerald-500
+  ImageRef: "#3b82f6", // blue-500
+  AudioRef: "#8b5cf6", // violet-500
+  VideoRef: "#ec4899", // pink-500
+  JSON: "#f59e0b", // amber-500
+};
 
 const nodeTypes = {
   LinkedIn: LinkedInComponent,
@@ -24,11 +38,15 @@ const nodeTypes = {
   ImageMatching: ImageMatchingNode,
   TextGeneration: TextGenerationNode,
   ImageGeneration: ImageGenerationNode,
-  ImageExtraction: ImageExtractionNode,
   Transcription: TranscriptionNode,
+  ImageExtraction: ImageExtractionNode,
   QuoteExtraction: QuoteExtractionNode,
-  Start: StartNode,
+  ImageBucket: ImageBucketNode,
+  AudioBucket: AudioBucketNode,
+  VideoBucket: VideoBucketNode,
+  TextBucket: TextBucketNode,
   End: EndNode,
+  __unknown__: UnknownNode,
 };
 
 interface CanvasPanelProps {
@@ -68,6 +86,7 @@ interface CanvasPanelProps {
   handleDeletePart: (
     partId: string,
     setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
+    setEdges: React.Dispatch<React.SetStateAction<Edge[]>>,
   ) => void;
   handleDuplicatePart: (
     partId: string,
@@ -121,10 +140,54 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   onDialogClose,
   interactionMode = "select",
 }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
-  const setCurrentWorkflowId = useWorkflowStore((state) => state.setCurrentWorkflowId);
+  const removeNodeFromStore = useWorkflowStore((state) => state.removeNode);
+  const workflowNodes = useWorkflowStore((state) => state.nodes);
+
+  // Map nodes to ensure unknown types are handled gracefully
+  const safeNodes = useMemo(() => {
+    return nodes.map((node) => {
+      // If node type doesn't exist in nodeTypes, mark it for UnknownNode
+      if (node.type && !nodeTypes[node.type as keyof typeof nodeTypes]) {
+        console.warn(`Unknown node type "${node.type}" for node ${node.id}. Using fallback component.`);
+        return {
+          ...node,
+          type: '__unknown__', // Special marker for unknown types
+          data: {
+            ...node.data,
+            originalType: node.type, // Preserve original type for display
+          },
+        };
+      }
+      return node;
+    });
+  }, [nodes]);
+
+  // Create nodeTypes with fallback for unknown types
+  const nodeTypesWithFallback = useMemo(() => ({
+    ...nodeTypes,
+    __unknown__: UnknownNode,
+  }), []);
+
+  // Wrap onNodesChange to sync deletions with Zustand store and clean up edges
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      // Intercept remove changes and sync with Zustand store
+      for (const change of changes) {
+        if (change.type === 'remove') {
+          removeNodeFromStore(change.id);
+          // Remove all edges connected to this node
+          setEdges((eds) => eds.filter(
+            (edge) => edge.source !== change.id && edge.target !== change.id
+          ));
+        }
+      }
+      // Apply all changes to ReactFlow state
+      onNodesChangeBase(changes);
+    },
+    [onNodesChangeBase, removeNodeFromStore, setEdges]
+  );
 
   // Store setNodes in the parent's ref
   useEffect(() => {
@@ -137,6 +200,55 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
     (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),
     [setEdges, addEdge],
   );
+
+  const TEST_MODE_COLOR = '#94a3b8'; // slate-400 (gray)
+
+  // Style edges based on data type and test mode
+  const styledEdges = useMemo(() => {
+    return edges.map((edge) => {
+      const sourceNode = nodes.find(n => n.id === edge.source);
+      if (!sourceNode) return edge;
+
+      // Get data type from source node's output port
+      // Handle missing node types gracefully
+      let dataType: RuntimeType | null = null;
+      try {
+        const nodeSpec = getNodeSpec(sourceNode.type || '');
+        dataType = nodeSpec?.outputs.find(port => port.key === edge.sourceHandle)?.runtime_type || null;
+      } catch {
+        // Node type not found in registry - use default color
+        console.warn(`Node type "${sourceNode.type}" not found in registry for edge ${edge.id}`);
+      }
+      
+      // Check if either node is in test mode
+      const sourceNodeState = workflowNodes[edge.source];
+      const targetNodeState = workflowNodes[edge.target];
+      const inTestMode = (sourceNodeState?.manualInputEnabled ?? false) || (targetNodeState?.manualInputEnabled ?? false);
+
+      // Determine edge color
+      let strokeColor: string;
+      if (inTestMode) {
+        strokeColor = TEST_MODE_COLOR;
+      } else if (dataType && DATA_TYPE_COLORS[dataType]) {
+        strokeColor = DATA_TYPE_COLORS[dataType];
+      } else {
+        strokeColor = '#94a3b8'; // default gray
+      }
+
+      return {
+        ...edge,
+        style: {
+          ...edge.style,
+          stroke: strokeColor,
+          strokeWidth: 2,
+        },
+        markerEnd: {
+          type: 'arrowclosed' as const,
+          color: strokeColor,
+        },
+      };
+    });
+  }, [edges, nodes, workflowNodes]);
 
   return (
     <div
@@ -161,13 +273,13 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         `}</style>
       )}
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={safeNodes}
+        edges={styledEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onInit={setReactFlowInstance}
-        nodeTypes={nodeTypes}
+        nodeTypes={nodeTypesWithFallback}
         onPaneContextMenu={handleCanvasContextMenu}
         onNodeContextMenu={(
           event: React.MouseEvent<HTMLDivElement>,
@@ -196,7 +308,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       {partContextMenu && (
         <PartContextMenu
           position={{ x: partContextMenu.x, y: partContextMenu.y }}
-          onDelete={() => handleDeletePart(partContextMenu.partId, setNodes)}
+          onDelete={() => handleDeletePart(partContextMenu.partId, setNodes, setEdges)}
           onDuplicate={() =>
             handleDuplicatePart(partContextMenu.partId, setNodes, nodes)
           }

@@ -17,7 +17,6 @@ from .matching_types import TextSummary, ImageCandidate, ImageMatch
 from .config_vlm_v2 import VLMConfig
 from .utils_vlm_v2 import (
     image_to_base64,
-    create_async_fireworks_client,
     parse_numeric_response,
     format_image_content
 )
@@ -32,14 +31,18 @@ class ImageTextMatcherVLM:
     - 3 separate API calls per image-text pair
     - Each call optimized for specific task
     - Results combined with weighted scoring
+    
+    This class is a context manager. Use it with 'async with' to ensure proper cleanup:
+    
+        async with ImageTextMatcherVLM() as matcher:
+            result = await matcher.match_single_pair(candidate, summary)
     """
     
     def __init__(
         self,
         api_key: Optional[str] = None,
         max_image_dimension: Optional[int] = None,
-        weights: Optional[Dict[str, float]] = None,
-        client: Optional[AsyncFireworks] = None
+        weights: Optional[Dict[str, float]] = None
     ):
         """
         Initialize multi-stage VLM matcher.
@@ -48,13 +51,12 @@ class ImageTextMatcherVLM:
             api_key: Fireworks API key (uses VLMConfig.get_api_key() if None)
             max_image_dimension: Optional max dimension for image downsampling
             weights: Dict with 'semantic_weight' and 'detail_weight' (must sum to 1.0)
-            client: Optional AsyncFireworks client (creates new one if None)
         """
         # Get API key
         self.api_key = api_key or VLMConfig.get_api_key()
         
-        # Initialize Fireworks client (use provided or create new)
-        self.client = client or create_async_fireworks_client(self.api_key)
+        # Client will be created in __aenter__
+        self._client: Optional[AsyncFireworks] = None
         
         # Image processing settings
         self.max_image_dimension = max_image_dimension or VLMConfig.MAX_IMAGE_DIMENSION
@@ -79,6 +81,30 @@ class ImageTextMatcherVLM:
         print(f"  Weights: semantic={self.semantic_weight:.2f}, detail={self.detail_weight:.2f}")
         if self.max_image_dimension:
             print(f"  Max image dimension: {self.max_image_dimension}px")
+    
+    async def __aenter__(self):
+        """Async context manager entry - create and enter client context."""
+        self._client = AsyncFireworks(api_key=self.api_key)
+        # Enter the client's context manager if it supports it
+        if hasattr(self._client, '__aenter__'):
+            await self._client.__aenter__()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - clean up client."""
+        if self._client:
+            if hasattr(self._client, '__aexit__'):
+                await self._client.__aexit__(exc_type, exc_val, exc_tb)
+            elif hasattr(self._client, 'close'):
+                self._client.close()
+        return False
+    
+    @property
+    def client(self) -> AsyncFireworks:
+        """Get the Fireworks client."""
+        if self._client is None:
+            raise RuntimeError("Client not initialized. Use 'async with ImageTextMatcherVLM() as matcher:'")
+        return self._client
     
     async def _extract_text(self, image_base64: str, image_id: str) -> str:
         """

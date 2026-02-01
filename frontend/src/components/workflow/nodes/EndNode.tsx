@@ -18,6 +18,14 @@ export function EndNode({ id }: NodeProps) {
       iconClass: "text-rose-600",
       label: "Waiting",
     },
+    pending: {
+      icon: Flag,
+      bgClass: "from-amber-50 to-amber-100",
+      borderClass: "border-amber-300",
+      iconBgClass: "bg-amber-100",
+      iconClass: "text-amber-600",
+      label: "Ready",
+    },
     running: {
       icon: Loader2,
       bgClass: "from-blue-50 to-blue-100",

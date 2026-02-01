@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Node, Edge } from '@xyflow/react'
 import type { SavedWorkflowData, SavedWorkflowNode, SavedWorkflowEdge } from '@/lib/fastapi/workflows'
 
-export type NodeStatus = 'idle' | 'running' | 'completed' | 'error'
+export type NodeStatus = 'idle' | 'pending' | 'running' | 'completed' | 'error'
 
 export interface WorkflowNodeState {
   id: string
@@ -11,6 +11,7 @@ export interface WorkflowNodeState {
   inputs: Record<string, unknown>
   outputs: Record<string, unknown> | null
   error?: string
+  manualInputEnabled?: boolean
 }
 
 // Image bucket item for centralized image storage
@@ -56,6 +57,8 @@ interface WorkflowStore {
     reactFlowNodes: Node[]
     reactFlowEdges: Edge[]
   }
+  // Export workflow data for execution (includes runtime inputs like selected_file_ids)
+  exportWorkflowForExecution: (reactFlowNodes: Node[], reactFlowEdges: Edge[]) => SavedWorkflowData
   reset: () => void
 }
 
@@ -203,6 +206,62 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     return {
       reactFlowNodes,
       reactFlowEdges,
+    }
+  },
+
+  /**
+   * Export workflow data for execution.
+   * Unlike exportWorkflowStructure (for persistence), this includes runtime inputs
+   * such as selected_file_ids for bucket nodes, which are needed during execution.
+   */
+  exportWorkflowForExecution: (reactFlowNodes, reactFlowEdges) => {
+    const store = get()
+
+    // Bucket node types that need their inputs included
+    const bucketNodeTypes = ['ImageBucket', 'AudioBucket', 'VideoBucket', 'TextBucket']
+
+    // Extract nodes with runtime inputs for bucket nodes
+    const savedNodes: SavedWorkflowNode[] = reactFlowNodes.map((node) => {
+      const nodeState = store.nodes[node.id]
+      const isBucketNode = bucketNodeTypes.includes(node.type || '')
+
+      // For bucket nodes, include selected_file_ids from the workflow store
+      // These are needed by the backend executor
+      if (isBucketNode && nodeState?.inputs?.selected_file_ids) {
+        return {
+          id: node.id,
+          type: node.type || 'default',
+          position: node.position,
+          data: {
+            ...(node.data?.label && typeof node.data.label === 'string' ? { label: node.data.label } : {}),
+            selected_file_ids: nodeState.inputs.selected_file_ids,
+          },
+        }
+      }
+
+      // For non-bucket nodes, use the same format as exportWorkflowStructure
+      return {
+        id: node.id,
+        type: node.type || 'default',
+        position: node.position,
+        data: (node.data?.label && typeof node.data.label === 'string')
+          ? { label: node.data.label }
+          : undefined,
+      }
+    })
+
+    // Extract edges (same as exportWorkflowStructure)
+    const savedEdges: SavedWorkflowEdge[] = reactFlowEdges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle ?? undefined,
+      targetHandle: edge.targetHandle ?? undefined,
+    }))
+
+    return {
+      nodes: savedNodes,
+      edges: savedEdges,
     }
   },
 

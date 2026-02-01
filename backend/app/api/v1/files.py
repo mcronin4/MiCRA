@@ -81,6 +81,10 @@ class InitUploadRequest(BaseModel):
         bucket = info.data.get("bucket")
         file_type = info.data.get("type")
         
+        # "other" type accepts any content type
+        if file_type == "other":
+            return v
+        
         if bucket == "media":
             allowed_prefixes = []
             if file_type == "image":
@@ -90,7 +94,7 @@ class InitUploadRequest(BaseModel):
             elif file_type == "audio":
                 allowed_prefixes = MEDIA_CONTENT_TYPES["audio"]
             
-            if not any(v.startswith(prefix) for prefix in allowed_prefixes):
+            if allowed_prefixes and not any(v.startswith(prefix) for prefix in allowed_prefixes):
                 raise ValueError(
                     f"For bucket 'media' and type '{file_type}', "
                     f"contentType must start with one of: {', '.join(allowed_prefixes)}"
@@ -102,7 +106,7 @@ class InitUploadRequest(BaseModel):
             elif file_type == "pdf":
                 allowed_prefixes = DOCS_CONTENT_TYPES["pdf"]
             
-            if not any(v.startswith(prefix) for prefix in allowed_prefixes):
+            if allowed_prefixes and not any(v.startswith(prefix) for prefix in allowed_prefixes):
                 raise ValueError(
                     f"For bucket 'docs' and type '{file_type}', "
                     f"contentType must start with one of: {', '.join(allowed_prefixes)}"
@@ -277,6 +281,7 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
     Initialize a file upload.
     Creates a database record and returns a presigned upload URL for R2.
     Files are stored at {type}/{content_hash}.{extension}.
+    Each user gets their own file record, but R2 storage is shared (content-addressed).
     """
     supabase = get_supabase()
     r2 = get_r2()
@@ -297,19 +302,18 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
     type_prefix = get_type_prefix(request.type)
     path = f"{type_prefix}/{request.contentHash}.{extension}"
 
-    # Check if a file with this path already exists (regardless of user)
-    # This handles the case where another user has already uploaded the same file
+    # Check if THIS USER already has a file with this content hash (user-level deduplication)
     try:
         existing_file_result = supabase.client.table("files").select("*").eq(
-            "path", path
-        ).execute()
-        
+            "user_id", user_id
+        ).eq("content_hash", request.contentHash).neq("status", "deleted").execute()
+
         if existing_file_result.data and len(existing_file_result.data) > 0:
-            # File already exists - reuse it (could be uploaded or pending)
+            # User already has this file - return existing record
             file_record = existing_file_result.data[0]
-            logger.info(f"File with path {path} already exists, reusing existing record")
-            
-            # Create presigned upload URL (allows re-upload if needed, or skip if already uploaded)
+            logger.info(f"User {user_id} already has file with hash {request.contentHash}, returning existing record")
+
+            # Create presigned upload URL (allows re-upload if status is pending)
             try:
                 signed_url = r2.client.generate_presigned_url(
                     'put_object',
@@ -320,7 +324,7 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
                     },
                     ExpiresIn=DEFAULT_UPLOAD_EXPIRATION
                 )
-                
+
                 return InitUploadResponse(
                     file=FileResponse(**file_record),
                     upload={
@@ -337,7 +341,6 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
         raise
     except Exception as e:
         # If checking for existing file fails, continue with normal flow
-        # (don't fail the request, just log and continue)
         logger.warning(f"Error checking for existing file: {str(e)}")
 
     # Insert file record (file doesn't exist yet)
@@ -366,23 +369,23 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
         file_record = result.data[0]
         
     except Exception as insert_error:
-        # Handle duplicate key constraint violation (path already exists)
+        # Handle duplicate key constraint violation (user_id + path already exists)
         # This can happen due to race conditions or if the check above missed it
         error_str = str(insert_error)
         if "duplicate key value violates unique constraint" in error_str.lower() or "23505" in error_str:
-            logger.info(f"Duplicate path detected for {path} during insert, fetching existing file")
+            logger.info(f"Duplicate path detected for user {user_id} and path {path}, fetching existing file")
             try:
-                # Fetch the existing file record
+                # Fetch the existing file record for THIS USER
                 existing_file_result = supabase.client.table("files").select("*").eq(
-                    "path", path
-                ).execute()
-                
+                    "user_id", user_id
+                ).eq("path", path).execute()
+
                 if existing_file_result.data and len(existing_file_result.data) > 0:
                     file_record = existing_file_result.data[0]
-                    logger.info(f"Successfully retrieved existing file record for {path}")
+                    logger.info(f"Successfully retrieved existing file record for user {user_id} at {path}")
                 else:
                     # Unexpected: duplicate key but file not found
-                    logger.error(f"Duplicate key error but file not found for path {path}")
+                    logger.error(f"Duplicate key error but file not found for user {user_id} at path {path}")
                     raise HTTPException(
                         status_code=409,
                         detail="File with this content already exists but could not be retrieved. Please try again."
@@ -441,43 +444,26 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
     """
     Complete a file upload.
     Verifies the file exists in R2 and updates the database record.
+    User must own the file record.
     """
     supabase = get_supabase()
     r2 = get_r2()
 
-    # Fetch file record
-    result = supabase.client.table("files").select("*").eq("id", str(request.fileId)).execute()
+    # Fetch file record - must belong to current user
+    result = supabase.client.table("files").select("*").eq(
+        "id", str(request.fileId)
+    ).eq("user_id", user.sub).execute()
 
     if not result.data or len(result.data) == 0:
         raise HTTPException(status_code=404, detail="File not found")
 
     file_record = result.data[0]
     path = file_record["path"]
-    file_status = file_record.get("status")
-    
-    # If file already belongs to another user but is uploaded, allow completion
-    # This handles the case where a duplicate file was detected during init_upload
-    file_owner = file_record.get("user_id")
-    is_owner = file_owner == user.sub
-    
-    # If file is already uploaded and belongs to another user, we can still return it
-    # (the file was already uploaded, so no need to update)
-    if file_status == "uploaded" and not is_owner:
-        # File already exists and is uploaded by another user
-        # Just return it without updating (since we can't update another user's file)
-        return CompleteUploadResponse(
-            ok=True,
-            file=FileResponse(**file_record)
-        )
-    
-    # For files owned by the current user, or pending files, proceed normally
-    if not is_owner and file_status != "pending":
-        raise HTTPException(status_code=403, detail="Not authorized to complete this upload")
-    
+
     # Verify file exists in R2
     try:
         r2.client.head_object(Bucket=R2_BUCKET, Key=path)
-        
+
         # Validate size if provided
         size_bytes = request.sizeBytes
         if size_bytes is not None:
@@ -488,31 +474,25 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
                     status_code=400,
                     detail=f"File size exceeds maximum of {MAX_FILE_SIZE_BYTES} bytes"
                 )
-        
-        # Update file record (only if we own it or it's pending)
-        if is_owner or file_status == "pending":
-            update_data = {
-                "status": "uploaded",
-                "uploaded_at": datetime.utcnow().isoformat(),
-            }
-            if size_bytes is not None:
-                update_data["size_bytes"] = size_bytes
-            
-            update_result = supabase.client.table("files").update(update_data).eq(
-                "id", str(request.fileId)
-            ).execute()
-            
-            if not update_result.data:
-                raise HTTPException(status_code=500, detail="Failed to update file record")
-            
-            updated_file = update_result.data[0]
-        else:
-            # Use existing file record
-            updated_file = file_record
-        
+
+        # Update file record
+        update_data = {
+            "status": "uploaded",
+            "uploaded_at": datetime.utcnow().isoformat(),
+        }
+        if size_bytes is not None:
+            update_data["size_bytes"] = size_bytes
+
+        update_result = supabase.client.table("files").update(update_data).eq(
+            "id", str(request.fileId)
+        ).execute()
+
+        if not update_result.data:
+            raise HTTPException(status_code=500, detail="Failed to update file record")
+
         return CompleteUploadResponse(
             ok=True,
-            file=FileResponse(**updated_file)
+            file=FileResponse(**update_result.data[0])
         )
         
     except ClientError as e:
@@ -578,43 +558,38 @@ async def sign_download(request: SignDownloadRequest, user: User = Depends(get_c
 async def delete_file(request: DeleteFileRequest, user: User = Depends(get_current_user)):
     """
     Delete a file.
-    Deletes the database record. Only deletes from R2 if no other users have files with the same content_hash.
+    Marks the database record as deleted. Only deletes from R2 if no other records reference the same path.
     """
     supabase = get_supabase()
     r2 = get_r2()
 
-    # Fetch file record
-    result = supabase.client.table("files").select("*").eq("id", str(request.fileId)).execute()
+    # Fetch file record - must belong to current user
+    result = supabase.client.table("files").select("*").eq(
+        "id", str(request.fileId)
+    ).eq("user_id", user.sub).execute()
 
     if not result.data or len(result.data) == 0:
         raise HTTPException(status_code=404, detail="File not found")
 
     file_record = result.data[0]
-    if file_record.get("user_id") != user.sub:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this file")
-
     path = file_record["path"]
-    content_hash = file_record.get("content_hash")
-    
+
     try:
-        # Check if other users have files with the same content_hash
-        should_delete_from_r2 = False
-        if content_hash:
-            other_files_result = supabase.client.table("files").select("id").eq(
-                "content_hash", content_hash
-            ).neq("id", str(request.fileId)).eq("status", "uploaded").execute()
-            
-            # If no other files with this hash exist, we can delete from R2
-            if not other_files_result.data or len(other_files_result.data) == 0:
-                should_delete_from_r2 = True
+        # Check if other records reference the same R2 path (shared storage)
+        other_files_result = supabase.client.table("files").select("id").eq(
+            "path", path
+        ).neq("id", str(request.fileId)).neq("status", "deleted").execute()
+
+        # Only delete from R2 if no other records reference this path
+        should_delete_from_r2 = not other_files_result.data or len(other_files_result.data) == 0
         
         # Delete from R2 if no other users reference it
         if should_delete_from_r2:
             try:
                 r2.client.delete_object(Bucket=R2_BUCKET, Key=path)
             except Exception as e:
-                # Log but don't fail - the DB record will still be deleted
-                print(f"Warning: Failed to delete file from R2: {e}")
+                # Log but don't fail - the DB record will still be marked as deleted
+                logger.warning(f"Failed to delete file from R2 at {path}: {e}")
         
         # Update file record to deleted status
         update_result = supabase.client.table("files").update({

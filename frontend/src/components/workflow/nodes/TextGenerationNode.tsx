@@ -13,6 +13,7 @@ import {
 } from "@/lib/fastapi/text-generation";
 import { Plus, Settings } from "lucide-react";
 import { PresetManager } from "./PresetManager";
+import { useNodeConnections } from "@/hooks/useNodeConnections";
 
 // Config for this node type
 const config: NodeConfig = {
@@ -27,6 +28,11 @@ export function TextGenerationNode({ id }: NodeProps) {
   // Get the node from the Zustand state manager
   const node = useWorkflowStore((state) => state.nodes[id]);
   const updateNode = useWorkflowStore((state) => state.updateNode);
+  const { hasConnections } = useNodeConnections(id);
+
+  // Determine if manual inputs should be shown
+  // Only show manual inputs when test mode is enabled
+  const showManualInputs = node?.manualInputEnabled ?? false;
 
   // Initial state from node inputs
   const initialText =
@@ -46,6 +52,14 @@ export function TextGenerationNode({ id }: NodeProps) {
     string,
     unknown
   > | null>(null);
+
+  // Clear outputs when test mode is disabled
+  useEffect(() => {
+    if (!node?.manualInputEnabled && hasConnections) {
+      setGeneratedOutput(null);
+      updateNode(id, { outputs: null, status: "idle" });
+    }
+  }, [node?.manualInputEnabled, hasConnections, id, updateNode]);
 
   const loadPresets = useCallback(async () => {
     try {
@@ -158,21 +172,23 @@ export function TextGenerationNode({ id }: NodeProps) {
         theme={nodeThemes.emerald}
       >
         <div className="space-y-4">
-          {/* Text input */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-              Input Text
-            </label>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Enter text to generate from..."
-              className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all placeholder:text-slate-400"
-              rows={4}
-            />
-          </div>
+          {/* Text input - only show in test mode */}
+          {showManualInputs && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+                Input Text
+              </label>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Enter text to generate from..."
+                className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all placeholder:text-slate-400"
+                rows={4}
+              />
+            </div>
+          )}
 
-          {/* Preset selector */}
+          {/* Preset selector - always show (it's a parameter) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
@@ -227,6 +243,25 @@ export function TextGenerationNode({ id }: NodeProps) {
                 <div>Tone: {selectedPreset.tone_guidance}</div>
               )}
             </div>
+          )}
+
+          {/* Test Node button - show when test mode is enabled */}
+          {node?.manualInputEnabled && (
+            <button
+              onClick={handleExecute}
+              disabled={node?.status === "running" || !selectedPresetId || !text.trim()}
+              className={`
+                nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
+                transition-all duration-200
+                ${
+                  node?.status === "running" || !selectedPresetId || !text.trim()
+                    ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                    : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
+                }
+              `}
+            >
+              {node?.status === "running" ? "Running..." : "Test Node"}
+            </button>
           )}
 
           {/* Generated output display */}

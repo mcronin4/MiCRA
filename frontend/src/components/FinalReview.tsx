@@ -1,30 +1,36 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ReactFlowWrapper } from "./canvas/ReactFlowWrapper";
 import { ChatPanel } from "./final-review/ChatPanel";
 import { CanvasPanel } from "./final-review/CanvasPanel";
 import { NodeSidebar } from "./workflow/NodeSidebar";
 import { TopNavBar } from "./workflow/TopNavBar";
 import { ExecutionBar } from "./workflow/ExecutionBar";
+import { ExecutionResultsModal } from "./workflow/ExecutionResultsModal";
+import { CompilationDiagnosticsModal } from "./workflow/CompilationDiagnosticsModal";
+import Toast from "./ui/Toast";
 import { useSourceTexts } from "@/hooks/useSourceTexts";
 import { useTranscription } from "@/hooks/useTranscription";
 import { useChatConversation } from "@/hooks/useChatConversation";
 import { useCanvasOperations } from "@/hooks/useCanvasOperations";
 import { useContextMenus } from "@/hooks/useContextMenus";
+import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
+import { useBlueprintCompile } from "@/hooks/useBlueprintCompile";
+import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import type {
   OutputNodeType,
   WorkflowNodeType,
+  BucketNodeType,
   FlowNodeType,
   NodeType,
 } from "./final-review/types";
-import { WORKFLOW_NODES, FLOW_NODES } from "./final-review/types";
+import { WORKFLOW_NODES, FLOW_NODES, BUCKET_NODES } from "./final-review/types";
 
 const FinalReview = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<"select" | "pan">(
     "select",
   );
-  const [isExecuting, setIsExecuting] = useState(false);
   // Dialog control for WorkflowManager
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
@@ -33,12 +39,18 @@ const FinalReview = () => {
   const [undoStack, setUndoStack] = useState<unknown[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [redoStack, setRedoStack] = useState<unknown[]>([]);
+  // Modals and notifications
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [showCompilationModal, setShowCompilationModal] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
 
   // Custom hooks for state management
   const sourceTextsHook = useSourceTexts();
   useTranscription(sourceTextsHook.addSourceFromTranscription);
   const canvasOps = useCanvasOperations();
   const contextMenus = useContextMenus();
+  const { execute, isExecuting, executionResult, error: executionError } = useWorkflowExecution();
+  const { compileRaw, diagnostics, errors: compilationErrors } = useBlueprintCompile();
   const chatHook = useChatConversation({
     sourceTexts: sourceTextsHook.sourceTexts,
     onAddNodeToCanvas: (
@@ -53,12 +65,13 @@ const FinalReview = () => {
   });
 
   const handleAddPart = (partType: NodeType) => {
-    // Check if it's a workflow node or flow node - if so, just add it directly to canvas
+    // Check if it's a workflow node, bucket node, or flow node - if so, just add it directly to canvas
     if (
       WORKFLOW_NODES.includes(partType as WorkflowNodeType) ||
+      BUCKET_NODES.includes(partType as BucketNodeType) ||
       FLOW_NODES.includes(partType as FlowNodeType)
     ) {
-      canvasOps.addNodeToCanvas(partType as WorkflowNodeType);
+      canvasOps.addNodeToCanvas(partType as WorkflowNodeType | BucketNodeType);
       contextMenus.setMenuPosition(null);
       return;
     }
@@ -137,16 +150,158 @@ const FinalReview = () => {
     handleAddPart(nodeType);
   };
 
-  const handleExecuteWorkflow = async () => {
-    setIsExecuting(true);
-    console.log("Executing workflow...");
-    // TODO: Implement actual workflow execution
-    // Simulate execution time
-    setTimeout(() => {
-      setIsExecuting(false);
-      console.log("Workflow execution complete");
-    }, 2000);
+  /**
+   * Prepares workflow data for execution by syncing runtime params from the Zustand store.
+   * This ensures params like selected_file_ids, preset_id, and aspect_ratio are available to the backend.
+   */
+  const prepareWorkflowForExecution = () => {
+    if (!canvasOps.reactFlowInstance) return null;
+
+    const nodes = canvasOps.reactFlowInstance.getNodes();
+    const edges = canvasOps.reactFlowInstance.getEdges();
+
+    if (nodes.length === 0) return null;
+
+    // Use the store's exportWorkflowForExecution which handles bucket nodes
+    const { exportWorkflowForExecution, nodes: storeNodes } = useWorkflowStore.getState();
+    const workflowData = exportWorkflowForExecution(nodes, edges);
+
+    // Also sync params for other node types (TextGeneration, ImageGeneration)
+    workflowData.nodes = workflowData.nodes.map((node) => {
+      const storeNode = storeNodes[node.id];
+      if (!storeNode) return node;
+
+      const params: Record<string, unknown> = {};
+
+      if (storeNode.type === 'TextGeneration' && storeNode.inputs.preset_id) {
+        params.preset_id = storeNode.inputs.preset_id;
+      } else if (storeNode.type === 'ImageGeneration' && storeNode.inputs.aspect_ratio) {
+        params.aspect_ratio = storeNode.inputs.aspect_ratio;
+      }
+
+      // Merge additional params if any
+      if (Object.keys(params).length > 0) {
+        return {
+          ...node,
+          data: { ...node.data, ...params },
+        };
+      }
+      return node;
+    });
+
+    return workflowData;
   };
+
+  const handleExecuteWorkflow = async () => {
+    // Check if workflow is saved first
+    const { currentWorkflowId } = useWorkflowStore.getState();
+    if (!currentWorkflowId) {
+      setToast({ message: "Please save the workflow before executing", type: "warning" });
+      setShowSaveDialog(true);
+      return;
+    }
+
+    const workflowData = prepareWorkflowForExecution();
+
+    if (!workflowData) {
+      if (!canvasOps.reactFlowInstance) {
+        setToast({ message: "ReactFlow instance not available", type: "error" });
+      } else {
+        setToast({ message: "No nodes to execute", type: "warning" });
+      }
+      return;
+    }
+
+    // First, compile to check for errors
+    const compilationResult = await compileRaw(workflowData);
+
+    if (!compilationResult || !compilationResult.success) {
+      setShowCompilationModal(true);
+      return;
+    }
+
+    // If there are warnings but no errors, show diagnostics but allow proceeding
+    if (diagnostics.length > 0 && compilationErrors.length === 0) {
+      setShowCompilationModal(true);
+      return;
+    }
+
+    // Proceed with execution
+    try {
+      const { currentWorkflowId, workflowName } = useWorkflowStore.getState();
+      const result = await execute(workflowData, currentWorkflowId || undefined, workflowName || undefined);
+      if (result) {
+        setShowResultsModal(true);
+        setToast({
+          message: result.success
+            ? "Workflow executed successfully"
+            : "Workflow execution completed with errors",
+          type: result.success ? "success" : "warning"
+        });
+      } else {
+        setShowResultsModal(true);
+        setToast({
+          message: "Workflow execution completed but no result returned",
+          type: "warning"
+        });
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Workflow execution failed";
+      setToast({ message: errorMessage, type: "error" });
+      if (executionResult) {
+        setShowResultsModal(true);
+      }
+    }
+  };
+
+  const handleProceedWithExecution = async () => {
+    // Double-check workflow is saved (should already be checked in handleExecuteWorkflow)
+    const { currentWorkflowId } = useWorkflowStore.getState();
+    if (!currentWorkflowId) {
+      setToast({ message: "Please save the workflow before executing", type: "warning" });
+      setShowCompilationModal(false);
+      setShowSaveDialog(true);
+      return;
+    }
+
+    const workflowData = prepareWorkflowForExecution();
+
+    if (!workflowData) return;
+
+    setShowCompilationModal(false);
+
+    try {
+      const result = await execute(workflowData);
+      if (result) {
+        setShowResultsModal(true);
+        setToast({
+          message: result.success
+            ? "Workflow executed successfully"
+            : "Workflow execution completed with errors",
+          type: result.success ? "success" : "warning"
+        });
+      } else {
+        setShowResultsModal(true);
+        setToast({
+          message: "Workflow execution completed but no result returned",
+          type: "warning"
+        });
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Workflow execution failed";
+      setToast({ message: errorMessage, type: "error" });
+      if (executionResult) {
+        setShowResultsModal(true);
+      }
+    }
+  };
+
+  // Show toast for execution errors
+  useEffect(() => {
+    if (executionError) {
+      setToast({ message: executionError, type: "error" });
+    }
+  }, [executionError]);
 
   const handleUndo = () => {
     console.log("Undo action");
@@ -234,6 +389,30 @@ const FinalReview = () => {
           textareaRef={chatHook.textareaRef}
           handleSendMessage={chatHook.handleSendMessage}
           handleToneSelect={chatHook.handleToneSelect}
+        />
+      )}
+
+      {/* Execution Results Modal */}
+      <ExecutionResultsModal
+        isOpen={showResultsModal}
+        onClose={() => setShowResultsModal(false)}
+        result={executionResult}
+      />
+
+      {/* Compilation Diagnostics Modal */}
+      <CompilationDiagnosticsModal
+        isOpen={showCompilationModal}
+        onClose={() => setShowCompilationModal(false)}
+        diagnostics={diagnostics}
+        onProceed={handleProceedWithExecution}
+      />
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
         />
       )}
     </div>

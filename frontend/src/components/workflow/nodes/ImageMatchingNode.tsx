@@ -17,6 +17,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import Image from "next/image";
+import { useNodeConnections } from "@/hooks/useNodeConnections";
 
 // Config for this node type
 const config: NodeConfig = {
@@ -31,12 +32,19 @@ const config: NodeConfig = {
 };
 
 export function ImageMatchingNode({ id }: NodeProps) {
-  // Get the node and image bucket from the Zustand state manager
+  // Get the node from Zustand store
   const node = useWorkflowStore((state) => state.nodes[id]);
   const updateNode = useWorkflowStore((state) => state.updateNode);
-  const imageBucket = useWorkflowStore((state) => state.imageBucket);
+  const { hasConnections, connections } = useNodeConnections(id);
 
-  // If there are already inputs associated with the node, use them as initial state
+  // Check which specific inputs are connected
+  const hasImageInput = connections.some((c) => c.inputKey === "images");
+
+  // Determine if manual inputs should be shown
+  // Only show manual inputs when test mode is enabled
+  const showManualInputs = node?.manualInputEnabled ?? false;
+
+  // Initial state from node inputs
   const initialText =
     typeof node?.inputs?.text === "string" ? node.inputs.text : "";
   const initialSelectedIds = Array.isArray(node?.inputs?.selectedImageIds)
@@ -51,10 +59,18 @@ export function ImageMatchingNode({ id }: NodeProps) {
     Map<string, ImageMatchResult>
   >(new Map());
 
-  // Get images that are selected from the bucket
-  const selectedImages: ImageBucketItem[] = imageBucket.filter((img) =>
-    selectedImageIds.has(img.id),
-  );
+  // Clear outputs when test mode is disabled
+  useEffect(() => {
+    if (!node?.manualInputEnabled && hasConnections) {
+      setImageResults(new Map());
+      updateNode(id, { outputs: null, status: "idle" });
+    }
+  }, [node?.manualInputEnabled, hasConnections, id, updateNode]);
+
+  const imageBucket = useWorkflowStore((state) => state.imageBucket);
+  const selectedImages: ImageBucketItem[] = showManualInputs
+    ? imageBucket.filter((img) => selectedImageIds.has(img.id))
+    : [];
 
   // Syncing to Zustand store
   useEffect(() => {
@@ -147,52 +163,58 @@ export function ImageMatchingNode({ id }: NodeProps) {
       theme={nodeThemes.amber}
     >
       <div className="space-y-4">
-        {/* Text input */}
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-            Text Description
-          </label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Enter text to match..."
-            className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all placeholder:text-slate-400"
-            rows={3}
-          />
-        </div>
+        {/* Text input - only show in test mode */}
+        {showManualInputs && (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Text Description
+            </label>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Enter text to match..."
+              className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all placeholder:text-slate-400"
+              rows={3}
+            />
+          </div>
+        )}
 
         {/* Image Selection from Bucket */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-                Select Images
-              </label>
-              {selectedImageIds.size > 0 && (
-                <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                  {selectedImageIds.size} selected
-                </span>
+        {showManualInputs && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+                  Select Images
+                  {hasImageInput && (
+                    <span className="ml-2 text-xs text-amber-600 font-normal normal-case">(from ImageBucket)</span>
+                  )}
+                </label>
+                {selectedImageIds.size > 0 && (
+                  <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                    {selectedImageIds.size} selected
+                  </span>
+                )}
+              </div>
+              {imageBucket.length > 0 && (
+                <div className="flex gap-1">
+                  <button
+                    onClick={selectAll}
+                    className="text-[10px] text-slate-500 hover:text-amber-600 transition-colors px-2 py-0.5"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    onClick={deselectAll}
+                    className="text-[10px] text-slate-500 hover:text-amber-600 transition-colors px-2 py-0.5"
+                  >
+                    Clear
+                  </button>
+                </div>
               )}
             </div>
-            {imageBucket.length > 0 && (
-              <div className="flex gap-1">
-                <button
-                  onClick={selectAll}
-                  className="text-[10px] text-slate-500 hover:text-amber-600 transition-colors px-2 py-0.5"
-                >
-                  Select all
-                </button>
-                <button
-                  onClick={deselectAll}
-                  className="text-[10px] text-slate-500 hover:text-amber-600 transition-colors px-2 py-0.5"
-                >
-                  Clear
-                </button>
-              </div>
-            )}
-          </div>
 
-          {imageBucket.length === 0 ? (
+            {imageBucket.length === 0 ? (
             // Empty bucket state
             <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
               <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
@@ -202,7 +224,7 @@ export function ImageMatchingNode({ id }: NodeProps) {
                 No images in bucket
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                Upload images using the Image Bucket in the sidebar
+                Connect ImageBucket node or upload images using the Image Bucket in the sidebar
               </p>
             </div>
           ) : (
@@ -279,9 +301,28 @@ export function ImageMatchingNode({ id }: NodeProps) {
                   </button>
                 );
               })}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
+        )}
+        {/* Test Node button - show when test mode is enabled */}
+        {node?.manualInputEnabled && (
+          <button
+            onClick={handleExecute}
+            disabled={node?.status === "running" || selectedImages.length === 0 || !text.trim()}
+            className={`
+              nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
+              transition-all duration-200
+              ${
+                node?.status === "running" || selectedImages.length === 0 || !text.trim()
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
+              }
+            `}
+          >
+            {node?.status === "running" ? "Running..." : "Test Node"}
+          </button>
+        )}
       </div>
     </WorkflowNodeWrapper>
   );

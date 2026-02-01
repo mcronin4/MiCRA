@@ -2,7 +2,7 @@
 Utility functions for VLM-based image-text matching.
 
 Provides common functions for base64 encoding, image processing,
-Fireworks client creation, and response parsing.
+and response parsing.
 """
 
 import base64
@@ -10,7 +10,6 @@ import re
 from typing import Optional
 from PIL import Image
 import io
-from fireworks.client import AsyncFireworks
 
 
 def image_to_base64(filepath: str, max_dimension: Optional[int] = None) -> str:
@@ -50,22 +49,6 @@ def image_to_base64(filepath: str, max_dimension: Optional[int] = None) -> str:
     
     # Return as data URL
     return f"data:image/jpeg;base64,{base64_str}"
-
-
-def create_async_fireworks_client(api_key: str) -> AsyncFireworks:
-    """
-    Create and return a configured AsyncFireworks client.
-    
-    Args:
-        api_key: Fireworks API key
-    
-    Returns:
-        Configured AsyncFireworks client instance
-    
-    Example:
-        >>> client = create_async_fireworks_client(os.getenv("FIREWORK_API_KEY"))
-    """
-    return AsyncFireworks(api_key=api_key)
 
 
 def parse_numeric_response(response: str) -> float:
