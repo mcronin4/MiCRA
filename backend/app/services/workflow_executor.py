@@ -9,12 +9,13 @@ Key concepts:
 - Bucket nodes (ImageBucket, AudioBucket, VideoBucket, TextBucket) are source nodes
   that pull files from R2 storage using selected_file_ids from their params.
 - Shape conversion (list <-> single) happens automatically based on port specs.
-- Execution is sequential in toposort order; first error stops execution.
+- Parallel execution: nodes with no unsatisfied dependencies execute concurrently.
 - Results are logged to the executions table for debugging and history.
 
-V1: Sequential execution, error stops execution, in-memory only.
+V2: Parallel execution with dynamic ready-queue, error stops execution.
 """
 
+import asyncio
 import time
 import logging
 from typing import Any, Callable, Literal
@@ -148,6 +149,36 @@ def _convert_shape(
     raise ValueError(
         f"Unsupported shape conversion: {source_shape} → {target_shape}"
     )
+
+
+def _build_dependency_graph(
+    blueprint: Blueprint,
+) -> tuple[dict[str, int], dict[str, list[str]], dict[str, set[str]]]:
+    """
+    Build dependency tracking structures from blueprint connections.
+
+    Returns:
+        in_degree: count of unsatisfied dependencies for each node
+        adjacency: node -> list of downstream nodes to unblock
+        reverse_adj: node -> set of upstream dependencies (for deduplication)
+    """
+    # Initialize all nodes with zero in-degree
+    in_degree: dict[str, int] = {n.node_id: 0 for n in blueprint.nodes}
+    adjacency: dict[str, list[str]] = {n.node_id: [] for n in blueprint.nodes}
+    reverse_adj: dict[str, set[str]] = {n.node_id: set() for n in blueprint.nodes}
+
+    # Process connections - multiple connections between same nodes count as one dependency
+    for conn in blueprint.connections:
+        from_node = conn.from_node
+        to_node = conn.to_node
+
+        # Only count each upstream dependency once (handles multiple ports between same nodes)
+        if from_node not in reverse_adj[to_node]:
+            reverse_adj[to_node].add(from_node)
+            in_degree[to_node] += 1
+            adjacency[from_node].append(to_node)
+
+    return in_degree, adjacency, reverse_adj
 
 
 def resolve_node_inputs(
@@ -874,7 +905,7 @@ async def _exec_quote_extraction(params: dict, inputs: dict) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Main execution function
+# Main execution function (parallel)
 # ---------------------------------------------------------------------------
 
 
@@ -882,57 +913,41 @@ async def execute_workflow(
     blueprint: Blueprint,
 ) -> WorkflowExecutionResult:
     """
-    Execute a compiled Blueprint sequentially in toposort order.
+    Execute a compiled Blueprint with parallel execution of independent nodes.
 
-    On error in any node, stops execution and returns partial results.
+    Nodes execute as soon as all their dependencies complete. On error in any
+    node, cancels running tasks and returns partial results.
     """
     start_time = time.perf_counter()
     node_outputs: dict[str, dict[str, Any]] = {}
     node_results: list[NodeExecutionResult] = []
-
-    # Build a lookup for blueprint nodes
     node_map = {n.node_id: n for n in blueprint.nodes}
 
-    for node_id in blueprint.execution_order:
+    # Build dependency graph
+    in_degree, adjacency, _ = _build_dependency_graph(blueprint)
+
+    # Track error state
+    error_occurred: asyncio.Event = asyncio.Event()
+    first_error: dict[str, Any] = {}
+
+    async def execute_single_node(node_id: str) -> NodeExecutionResult:
+        """Execute a single node and return its result."""
         bp_node = node_map.get(node_id)
         if bp_node is None:
-            node_results.append(
-                NodeExecutionResult(
-                    node_id=node_id,
-                    status="error",
-                    error=f"Node {node_id} not found in blueprint",
-                )
-            )
-            return WorkflowExecutionResult(
-                success=False,
-                workflow_outputs={},
-                node_results=node_results,
-                total_execution_time_ms=int(
-                    (time.perf_counter() - start_time) * 1000
-                ),
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="error",
                 error=f"Node {node_id} not found in blueprint",
             )
 
         exec_fn = _registry.get(bp_node.type)
         if exec_fn is None:
-            node_results.append(
-                NodeExecutionResult(
-                    node_id=node_id,
-                    status="error",
-                    error=f"No executor for node type '{bp_node.type}'",
-                )
-            )
-            return WorkflowExecutionResult(
-                success=False,
-                workflow_outputs={},
-                node_results=node_results,
-                total_execution_time_ms=int(
-                    (time.perf_counter() - start_time) * 1000
-                ),
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="error",
                 error=f"No executor for node type '{bp_node.type}'",
             )
 
-        # Resolve inputs
         node_start = time.perf_counter()
         try:
             resolved_inputs = resolve_node_inputs(
@@ -942,60 +957,137 @@ async def execute_workflow(
                 node_outputs=node_outputs,
                 blueprint=blueprint,
             )
-            
+
             # Log resolved inputs for debugging (especially for ImageMatching)
             if bp_node.type == "ImageMatching":
-                logger.info("ImageMatching node %s resolved inputs: images=%s, text=%s", 
-                           node_id,
-                           type(resolved_inputs.get("images")),
-                           type(resolved_inputs.get("text")))
+                logger.info(
+                    "ImageMatching node %s resolved inputs: images=%s, text=%s",
+                    node_id,
+                    type(resolved_inputs.get("images")),
+                    type(resolved_inputs.get("text")),
+                )
                 if isinstance(resolved_inputs.get("images"), list):
-                    logger.info("ImageMatching received %d images", len(resolved_inputs.get("images", [])))
+                    logger.info(
+                        "ImageMatching received %d images",
+                        len(resolved_inputs.get("images", [])),
+                    )
                 if resolved_inputs.get("text"):
                     text_val = resolved_inputs.get("text")
                     if isinstance(text_val, str):
                         logger.info("ImageMatching text preview: %s", text_val[:100])
                     elif isinstance(text_val, list):
-                        logger.info("ImageMatching text is a list with %d items", len(text_val))
+                        logger.info(
+                            "ImageMatching text is a list with %d items", len(text_val)
+                        )
 
             outputs = await exec_fn(bp_node.params, resolved_inputs)
-            node_outputs[node_id] = outputs
             elapsed_ms = int((time.perf_counter() - node_start) * 1000)
 
-            node_results.append(
-                NodeExecutionResult(
-                    node_id=node_id,
-                    status="completed",
-                    outputs=outputs,
-                    execution_time_ms=elapsed_ms,
-                )
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="completed",
+                outputs=outputs,
+                execution_time_ms=elapsed_ms,
+            )
+
+        except asyncio.CancelledError:
+            elapsed_ms = int((time.perf_counter() - node_start) * 1000)
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="error",
+                error="Execution cancelled",
+                execution_time_ms=elapsed_ms,
             )
 
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - node_start) * 1000)
             error_msg = f"{type(e).__name__}: {e}"
             logger.exception("Node %s failed: %s", node_id, error_msg)
-
-            node_results.append(
-                NodeExecutionResult(
-                    node_id=node_id,
-                    status="error",
-                    error=error_msg,
-                    execution_time_ms=elapsed_ms,
-                )
-            )
-            return WorkflowExecutionResult(
-                success=False,
-                workflow_outputs={},
-                node_results=node_results,
-                total_execution_time_ms=int(
-                    (time.perf_counter() - start_time) * 1000
-                ),
-                error=f"Execution stopped at node {node_id}: {error_msg}",
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="error",
+                error=error_msg,
+                execution_time_ms=elapsed_ms,
             )
 
-    # Extract workflow outputs using the compiled blueprint.workflow_outputs
-    # This ensures we only extract outputs that were defined during compilation
+    # Initialize ready queue with nodes that have no dependencies
+    ready_queue: list[str] = [nid for nid, deg in in_degree.items() if deg == 0]
+    pending_tasks: dict[asyncio.Task, str] = {}  # task -> node_id
+    completed_count = 0
+    total_nodes = len(blueprint.nodes)
+
+    while completed_count < total_nodes and not error_occurred.is_set():
+        # Launch tasks for all ready nodes
+        while ready_queue and not error_occurred.is_set():
+            node_id = ready_queue.pop(0)
+            task = asyncio.create_task(execute_single_node(node_id))
+            pending_tasks[task] = node_id
+            logger.debug("Started execution of node %s", node_id)
+
+        if not pending_tasks:
+            # No tasks running and nothing ready - should not happen with valid DAG
+            break
+
+        # Wait for at least one task to complete
+        done, _ = await asyncio.wait(
+            pending_tasks.keys(), return_when=asyncio.FIRST_COMPLETED
+        )
+
+        for task in done:
+            node_id = pending_tasks.pop(task)
+            result = task.result()
+            node_results.append(result)
+            completed_count += 1
+
+            if result.status == "error":
+                # Signal error to stop further execution
+                error_occurred.set()
+                first_error["node_id"] = node_id
+                first_error["error"] = result.error
+                break
+
+            # Store outputs and unblock downstream nodes
+            if result.outputs:
+                node_outputs[node_id] = result.outputs
+
+            for downstream in adjacency[node_id]:
+                in_degree[downstream] -= 1
+                if in_degree[downstream] == 0:
+                    ready_queue.append(downstream)
+                    logger.debug("Node %s now ready (unblocked by %s)", downstream, node_id)
+
+    # Cancel any remaining tasks on error
+    if error_occurred.is_set() and pending_tasks:
+        for task in pending_tasks:
+            task.cancel()
+        # Wait for cancellation to complete
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks.keys(), return_exceptions=True)
+            # Record cancelled tasks
+            for task, node_id in pending_tasks.items():
+                try:
+                    result = task.result()
+                    node_results.append(result)
+                except asyncio.CancelledError:
+                    node_results.append(
+                        NodeExecutionResult(
+                            node_id=node_id,
+                            status="error",
+                            error="Execution cancelled due to upstream error",
+                        )
+                    )
+
+    # Check for error
+    if error_occurred.is_set():
+        return WorkflowExecutionResult(
+            success=False,
+            workflow_outputs={},
+            node_results=node_results,
+            total_execution_time_ms=int((time.perf_counter() - start_time) * 1000),
+            error=f"Execution stopped at node {first_error.get('node_id')}: {first_error.get('error')}",
+        )
+
+    # Extract workflow outputs
     workflow_outputs: dict[str, Any] = {}
     for wf_output in blueprint.workflow_outputs:
         upstream = node_outputs.get(wf_output.from_node, {})
@@ -1013,7 +1105,7 @@ async def execute_workflow(
 
 
 # ---------------------------------------------------------------------------
-# Streaming execution (SSE)
+# Streaming execution (SSE) with parallel execution
 # ---------------------------------------------------------------------------
 
 
@@ -1021,7 +1113,10 @@ async def execute_workflow_streaming(
     blueprint: Blueprint,
 ):
     """
-    Execute a compiled Blueprint and yield SSE events as each node completes.
+    Execute a compiled Blueprint with parallel execution and yield SSE events.
+
+    Nodes execute concurrently when their dependencies are satisfied. Events are
+    yielded as nodes start and complete, in the order they occur.
 
     Yields JSON events:
     - {"event": "workflow_start", "execution_order": [...], "total_nodes": N}
@@ -1036,65 +1131,36 @@ async def execute_workflow_streaming(
     start_time = time.perf_counter()
     node_outputs: dict[str, dict[str, Any]] = {}
     node_results: list[NodeExecutionResult] = []
-
-    # Build a lookup for blueprint nodes
     node_map = {n.node_id: n for n in blueprint.nodes}
 
-    # Emit workflow_start event with execution order (so frontend can mark nodes as "pending")
-    start_event = {
-        "event": "workflow_start",
-        "execution_order": blueprint.execution_order,
-        "total_nodes": len(blueprint.execution_order),
-    }
-    yield f"data: {json.dumps(start_event)}\n\n"
+    # Build dependency graph
+    in_degree, adjacency, _ = _build_dependency_graph(blueprint)
 
-    for node_id in blueprint.execution_order:
+    # Event queue for SSE - decouples execution from streaming
+    event_queue: asyncio.Queue = asyncio.Queue()
+
+    # Track error state
+    error_occurred = asyncio.Event()
+    first_error: dict[str, Any] = {}
+
+    async def execute_single_node(node_id: str) -> NodeExecutionResult:
+        """Execute a single node and return its result."""
         bp_node = node_map.get(node_id)
-
         if bp_node is None:
-            error_event = {
-                "event": "node_error",
-                "node_id": node_id,
-                "error": f"Node {node_id} not found in blueprint",
-                "execution_time_ms": 0,
-            }
-            yield f"data: {json.dumps(error_event)}\n\n"
-
-            workflow_error = {
-                "event": "workflow_error",
-                "error": f"Node {node_id} not found in blueprint",
-                "total_execution_time_ms": int((time.perf_counter() - start_time) * 1000),
-            }
-            yield f"data: {json.dumps(workflow_error)}\n\n"
-            return
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="error",
+                error=f"Node {node_id} not found in blueprint",
+            )
 
         exec_fn = _registry.get(bp_node.type)
         if exec_fn is None:
-            error_event = {
-                "event": "node_error",
-                "node_id": node_id,
-                "error": f"No executor for node type '{bp_node.type}'",
-                "execution_time_ms": 0,
-            }
-            yield f"data: {json.dumps(error_event)}\n\n"
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="error",
+                error=f"No executor for node type '{bp_node.type}'",
+            )
 
-            workflow_error = {
-                "event": "workflow_error",
-                "error": f"No executor for node type '{bp_node.type}'",
-                "total_execution_time_ms": int((time.perf_counter() - start_time) * 1000),
-            }
-            yield f"data: {json.dumps(workflow_error)}\n\n"
-            return
-
-        # Emit node_start event
-        start_event = {
-            "event": "node_start",
-            "node_id": node_id,
-            "node_type": bp_node.type,
-        }
-        yield f"data: {json.dumps(start_event)}\n\n"
-
-        # Execute the node
         node_start = time.perf_counter()
         try:
             resolved_inputs = resolve_node_inputs(
@@ -1106,80 +1172,202 @@ async def execute_workflow_streaming(
             )
 
             outputs = await exec_fn(bp_node.params, resolved_inputs)
-            node_outputs[node_id] = outputs
             elapsed_ms = int((time.perf_counter() - node_start) * 1000)
 
-            node_results.append(
-                NodeExecutionResult(
-                    node_id=node_id,
-                    status="completed",
-                    outputs=outputs,
-                    execution_time_ms=elapsed_ms,
-                )
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="completed",
+                outputs=outputs,
+                execution_time_ms=elapsed_ms,
             )
 
-            # Emit node_complete event
-            complete_event = {
-                "event": "node_complete",
-                "node_id": node_id,
-                "status": "completed",
-                "outputs": outputs,
-                "execution_time_ms": elapsed_ms,
-            }
-            yield f"data: {json.dumps(complete_event)}\n\n"
+        except asyncio.CancelledError:
+            elapsed_ms = int((time.perf_counter() - node_start) * 1000)
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="error",
+                error="Execution cancelled",
+                execution_time_ms=elapsed_ms,
+            )
 
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - node_start) * 1000)
             error_msg = f"{type(e).__name__}: {e}"
             logger.exception("Node %s failed: %s", node_id, error_msg)
-
-            node_results.append(
-                NodeExecutionResult(
-                    node_id=node_id,
-                    status="error",
-                    error=error_msg,
-                    execution_time_ms=elapsed_ms,
-                )
+            return NodeExecutionResult(
+                node_id=node_id,
+                status="error",
+                error=error_msg,
+                execution_time_ms=elapsed_ms,
             )
 
-            # Emit node_error event
-            error_event = {
-                "event": "node_error",
-                "node_id": node_id,
-                "error": error_msg,
-                "execution_time_ms": elapsed_ms,
-            }
-            yield f"data: {json.dumps(error_event)}\n\n"
+    async def coordinator():
+        """Coordinate parallel execution and push events to queue."""
+        nonlocal node_outputs
 
-            # Emit workflow_error event
-            workflow_error = {
+        # Initialize ready queue with nodes that have no dependencies
+        ready_queue: list[str] = [nid for nid, deg in in_degree.items() if deg == 0]
+        pending_tasks: dict[asyncio.Task, str] = {}  # task -> node_id
+        completed_count = 0
+        total_nodes = len(blueprint.nodes)
+
+        try:
+            while completed_count < total_nodes and not error_occurred.is_set():
+                # Launch tasks for all ready nodes
+                while ready_queue and not error_occurred.is_set():
+                    node_id = ready_queue.pop(0)
+                    bp_node = node_map.get(node_id)
+
+                    # Emit node_start event
+                    await event_queue.put({
+                        "event": "node_start",
+                        "node_id": node_id,
+                        "node_type": bp_node.type if bp_node else "unknown",
+                    })
+
+                    task = asyncio.create_task(execute_single_node(node_id))
+                    pending_tasks[task] = node_id
+                    logger.debug("Started execution of node %s", node_id)
+
+                if not pending_tasks:
+                    break
+
+                # Wait for at least one task to complete
+                done, _ = await asyncio.wait(
+                    pending_tasks.keys(), return_when=asyncio.FIRST_COMPLETED
+                )
+
+                for task in done:
+                    node_id = pending_tasks.pop(task)
+                    result = task.result()
+                    node_results.append(result)
+                    completed_count += 1
+
+                    if result.status == "error":
+                        # Emit node_error event
+                        await event_queue.put({
+                            "event": "node_error",
+                            "node_id": node_id,
+                            "error": result.error,
+                            "execution_time_ms": result.execution_time_ms,
+                        })
+
+                        # Signal error to stop further execution
+                        error_occurred.set()
+                        first_error["node_id"] = node_id
+                        first_error["error"] = result.error
+                        break
+
+                    # Store outputs and emit node_complete event
+                    if result.outputs:
+                        node_outputs[node_id] = result.outputs
+
+                    await event_queue.put({
+                        "event": "node_complete",
+                        "node_id": node_id,
+                        "status": "completed",
+                        "outputs": result.outputs,
+                        "execution_time_ms": result.execution_time_ms,
+                    })
+
+                    # Unblock downstream nodes
+                    for downstream in adjacency[node_id]:
+                        in_degree[downstream] -= 1
+                        if in_degree[downstream] == 0:
+                            ready_queue.append(downstream)
+                            logger.debug(
+                                "Node %s now ready (unblocked by %s)", downstream, node_id
+                            )
+
+            # Cancel any remaining tasks on error
+            if error_occurred.is_set() and pending_tasks:
+                for task in pending_tasks:
+                    task.cancel()
+                if pending_tasks:
+                    await asyncio.gather(*pending_tasks.keys(), return_exceptions=True)
+                    for task, node_id in pending_tasks.items():
+                        try:
+                            result = task.result()
+                            node_results.append(result)
+                        except asyncio.CancelledError:
+                            node_results.append(
+                                NodeExecutionResult(
+                                    node_id=node_id,
+                                    status="error",
+                                    error="Execution cancelled due to upstream error",
+                                )
+                            )
+
+            # Emit final event
+            if error_occurred.is_set():
+                await event_queue.put({
+                    "event": "workflow_error",
+                    "error": f"Execution stopped at node {first_error.get('node_id')}: {first_error.get('error')}",
+                    "total_execution_time_ms": int(
+                        (time.perf_counter() - start_time) * 1000
+                    ),
+                    "node_results": [nr.model_dump() for nr in node_results],
+                })
+            else:
+                # Extract workflow outputs
+                workflow_outputs: dict[str, Any] = {}
+                for wf_output in blueprint.workflow_outputs:
+                    upstream = node_outputs.get(wf_output.from_node, {})
+                    val = upstream.get(wf_output.from_output)
+                    if val is not None:
+                        workflow_outputs[wf_output.key] = val
+
+                await event_queue.put({
+                    "event": "workflow_complete",
+                    "success": True,
+                    "workflow_outputs": workflow_outputs,
+                    "total_execution_time_ms": int(
+                        (time.perf_counter() - start_time) * 1000
+                    ),
+                    "node_results": [nr.model_dump() for nr in node_results],
+                })
+
+        except Exception as e:
+            logger.exception("Coordinator error: %s", e)
+            await event_queue.put({
                 "event": "workflow_error",
-                "error": f"Execution stopped at node {node_id}: {error_msg}",
-                "total_execution_time_ms": int((time.perf_counter() - start_time) * 1000),
+                "error": f"Internal error: {type(e).__name__}: {e}",
+                "total_execution_time_ms": int(
+                    (time.perf_counter() - start_time) * 1000
+                ),
                 "node_results": [nr.model_dump() for nr in node_results],
-            }
-            yield f"data: {json.dumps(workflow_error)}\n\n"
-            return
+            })
 
-    # Extract workflow outputs
-    workflow_outputs: dict[str, Any] = {}
-    for wf_output in blueprint.workflow_outputs:
-        upstream = node_outputs.get(wf_output.from_node, {})
-        val = upstream.get(wf_output.from_output)
-        if val is not None:
-            workflow_outputs[wf_output.key] = val
+        finally:
+            # Signal end of events
+            await event_queue.put(None)
 
-    total_ms = int((time.perf_counter() - start_time) * 1000)
-
-    # Emit workflow_complete event
-    complete_event = {
-        "event": "workflow_complete",
-        "success": True,
-        "workflow_outputs": workflow_outputs,
-        "total_execution_time_ms": total_ms,
-        "node_results": [nr.model_dump() for nr in node_results],
+    # Emit workflow_start event
+    start_event = {
+        "event": "workflow_start",
+        "execution_order": blueprint.execution_order,
+        "total_nodes": len(blueprint.execution_order),
     }
-    yield f"data: {json.dumps(complete_event)}\n\n"
+    yield f"data: {json.dumps(start_event)}\n\n"
+
+    # Start coordinator as background task
+    coordinator_task = asyncio.create_task(coordinator())
+
+    # Yield events from queue as they arrive
+    try:
+        while True:
+            event = await event_queue.get()
+            if event is None:  # Sentinel for completion
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+    finally:
+        # Ensure coordinator completes
+        if not coordinator_task.done():
+            coordinator_task.cancel()
+            try:
+                await coordinator_task
+            except asyncio.CancelledError:
+                pass
 
 
 # ---------------------------------------------------------------------------
