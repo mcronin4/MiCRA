@@ -5,7 +5,6 @@ import base64
 import tempfile
 import os
 import asyncio
-from fireworks.client import AsyncFireworks
 
 router = APIRouter(prefix="/image-matching")
 
@@ -92,14 +91,10 @@ async def match_images_to_text(request: ImageMatchRequest):
         # Create text summary
         text_summary = TextSummary(summary_id="input", text_content=request.text)
         
-        # Use AsyncFireworks client as context manager for automatic cleanup
-        async with AsyncFireworks(api_key=VLMConfig.get_api_key()) as client:
-            # Create matcher with the context-managed client
-            matcher = ImageTextMatcherVLM(
-                max_image_dimension=request.max_dimension,
-                client=client
-            )
-            
+        # Use matcher as context manager for automatic cleanup
+        async with ImageTextMatcherVLM(
+            max_image_dimension=request.max_dimension
+        ) as matcher:
             # Process all images in parallel using asyncio.gather
             tasks = [
                 process_single_image(img, matcher, text_summary)

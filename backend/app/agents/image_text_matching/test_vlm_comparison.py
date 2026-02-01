@@ -218,13 +218,12 @@ async def run_staged_vlm_matcher(
     print("="*80)
     
     try:
-        matcher = ImageTextMatcherVLM(
+        async with ImageTextMatcherVLM(
             api_key=api_key,
             max_image_dimension=max_dimension
-        )
-        
-        results = await matcher.match_summaries_to_images(summaries, candidates, top_k=3)
-        return results
+        ) as matcher:
+            results = await matcher.match_summaries_to_images(summaries, candidates, top_k=3)
+            return results
     except Exception as e:
         print(f"❌ Error running staged VLM matcher: {e}")
         import traceback

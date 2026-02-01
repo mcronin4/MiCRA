@@ -76,44 +76,44 @@ async def run_vlm_test():
     for s in summaries:
         print(f"  - {s.summary_id}")
     
-    # Initialize matcher
+    # Initialize matcher and run matching
     print("\n" + "=" * 60)
     print("INITIALIZING VLM MATCHER")
     print("=" * 60)
     
     try:
-        matcher = ImageTextMatcherVLM()
-        print("✅ Matcher initialized successfully")
+        async with ImageTextMatcherVLM() as matcher:
+            print("✅ Matcher initialized successfully")
+            
+            # Run matching
+            print("\n" + "=" * 60)
+            print("RUNNING VLM MATCHING")
+            print("=" * 60)
+            
+            for summary in summaries:
+                print(f"\n--- Matching: {summary.summary_id} ---")
+                print(f"Text: {summary.text_content[:80]}...")
+                
+                matches = []
+                for candidate in candidates:
+                    try:
+                        # Call async method properly
+                        match = await matcher.match_single_pair(candidate, summary)
+                        matches.append(match)
+                        print(f"  {candidate.image_id}: "
+                              f"semantic={match.semantic_score:.3f}, "
+                              f"detail={match.detail_score:.3f}, "
+                              f"combined={match.combined_score:.3f}")
+                    except Exception as e:
+                        print(f"  ❌ Error matching {candidate.image_id}: {e}")
+                
+                # Sort and show top matches
+                if matches:
+                    matches.sort(key=lambda x: x.combined_score, reverse=True)
+                    print(f"\n  🏆 Top match: {matches[0].image_id} (score: {matches[0].combined_score:.3f})")
     except Exception as e:
-        print(f"❌ Failed to initialize matcher: {e}")
+        print(f"❌ Failed to initialize or run matcher: {e}")
         return
-    
-    # Run matching
-    print("\n" + "=" * 60)
-    print("RUNNING VLM MATCHING")
-    print("=" * 60)
-    
-    for summary in summaries:
-        print(f"\n--- Matching: {summary.summary_id} ---")
-        print(f"Text: {summary.text_content[:80]}...")
-        
-        matches = []
-        for candidate in candidates:
-            try:
-                # Call async method properly
-                match = await matcher.match_single_pair(candidate, summary)
-                matches.append(match)
-                print(f"  {candidate.image_id}: "
-                      f"semantic={match.semantic_score:.3f}, "
-                      f"detail={match.detail_score:.3f}, "
-                      f"combined={match.combined_score:.3f}")
-            except Exception as e:
-                print(f"  ❌ Error matching {candidate.image_id}: {e}")
-        
-        # Sort and show top matches
-        if matches:
-            matches.sort(key=lambda x: x.combined_score, reverse=True)
-            print(f"\n  🏆 Top match: {matches[0].image_id} (score: {matches[0].combined_score:.3f})")
     
     print("\n" + "=" * 60)
     print("✅ TEST COMPLETE")

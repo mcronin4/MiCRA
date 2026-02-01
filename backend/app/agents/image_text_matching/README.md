@@ -83,21 +83,26 @@ Use `--detailed` flag to see per-summary results with ✓/✗ indicators.
 ### Using VLM Staged Matcher
 
 ```python
+import asyncio
 from app.agents.image_text_matching.vlm_analysis import ImageTextMatcherVLM
 from app.agents.image_text_matching.embeddings import TextSummary, ImageCandidate
 
-# Initialize
-matcher = ImageTextMatcherVLM(
-    max_image_dimension=1024,  # Optional downsampling
-    weights={'semantic': 0.6, 'detail': 0.4}
-)
+# Use as context manager for proper resource cleanup
+async def match_images():
+    async with ImageTextMatcherVLM(
+        max_image_dimension=1024,  # Optional downsampling
+        weights={'semantic_weight': 0.6, 'detail_weight': 0.4}
+    ) as matcher:
+        # Match images to summaries
+        results = await matcher.match_summaries_to_images(
+            summaries=summaries,
+            candidates=candidates,
+            top_k=3
+        )
+        return results
 
-# Match images to summaries
-results = matcher.match_summaries_to_images(
-    text_summaries=summaries,
-    image_candidates=candidates,
-    top_k=3
-)
+# Run async function
+results = asyncio.run(match_images())
 ```
 
 
@@ -124,9 +129,10 @@ Key settings:
 To reduce token costs, you can downsample images before sending to the VLM:
 
 ```python
-matcher = ImageTextMatcherVLM(
+async with ImageTextMatcherVLM(
     max_image_dimension=1024  # Downsample to 1024px max
-)
+) as matcher:
+    results = await matcher.match_summaries_to_images(summaries, candidates)
 ```
 
 This maintains aspect ratio and can significantly reduce costs with minimal accuracy impact.

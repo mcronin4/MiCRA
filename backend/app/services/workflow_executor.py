@@ -627,158 +627,144 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
     try:
         from app.agents.image_text_matching.config_vlm_v2 import VLMConfig
         from app.agents.image_text_matching.utils_vlm_v2 import (
-            create_async_fireworks_client,
             parse_numeric_response,
             format_image_content
         )
+        from fireworks.client import AsyncFireworks
     except ImportError as e:
         logger.error("Failed to import VLM components: %s", e)
         raise RuntimeError(f"VLM components not available: {e}")
 
-    # Initialize Fireworks client
-    try:
-        api_key = VLMConfig.get_api_key()
-        client = create_async_fireworks_client(api_key)
-    except Exception as e:
-        logger.error("Failed to initialize Fireworks client: %s", e)
-        raise RuntimeError(f"Failed to initialize VLM client: {e}")
-
+    # Use AsyncFireworks as context manager to ensure proper cleanup
+    api_key = VLMConfig.get_api_key()
     matches = []
 
-    for idx, image_url in enumerate(images):
-        try:
-            logger.info("Processing image %d/%d: %s", idx + 1, len(images), image_url[:80] if len(image_url) > 80 else image_url)
-
-            # Handle both HTTP URLs and base64 data URLs
-            if image_url.startswith("data:"):
-                # Already a base64 data URL - decode it
-                try:
-                    # Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
-                    header, encoded = image_url.split(",", 1)
-                    image_bytes = base64.b64decode(encoded)
-                    img = PILImage.open(io.BytesIO(image_bytes))
-                except Exception as e:
-                    logger.error("Failed to decode base64 image: %s", e)
-                    raise ValueError(f"Invalid base64 image data: {e}")
-            elif image_url.startswith("http://") or image_url.startswith("https://"):
-                # Download image from HTTP URL
-                resp = httpx.get(image_url, timeout=30)
-                resp.raise_for_status()
-                img = PILImage.open(io.BytesIO(resp.content))
-            else:
-                raise ValueError(f"Unsupported image source: {image_url[:50]}...")
-
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-
-            # Optionally resize large images
-            max_dim = 1024
-            if img.width > max_dim or img.height > max_dim:
-                ratio = max_dim / max(img.width, img.height)
-                new_size = (int(img.width * ratio), int(img.height * ratio))
-                img = img.resize(new_size, PILImage.Resampling.LANCZOS)
-
-            buffer = io.BytesIO()
-            img.save(buffer, format='JPEG', quality=85)
-            image_bytes = buffer.getvalue()
-            base64_str = base64.b64encode(image_bytes).decode('utf-8')
-            image_base64 = f"data:image/jpeg;base64,{base64_str}"
-
-            # Generate caption
-            caption_prompt = (
-                "Describe this image in 1-2 sentences. "
-                "Focus on: main subjects, activities, visible objects, text/graphics, and setting. "
-                "Be concise and factual."
-            )
-            caption_response = client.chat.completions.create(
-                model=VLMConfig.FIREWORKS_MODEL,
-                messages=[{
-                    "role": "user",
-                    "content": format_image_content(image_base64, caption_prompt)
-                }],
-                max_tokens=150,
-                temperature=0.3
-            )
-            caption = caption_response.choices[0].message.content.strip()
-
-            # Extract OCR text
-            ocr_prompt = (
-                "Extract all visible text from this image. "
-                "Return only the text you see, with no additional commentary. "
-                "If no text is visible, respond with 'NONE'."
-            )
-            ocr_response = client.chat.completions.create(
-                model=VLMConfig.FIREWORKS_MODEL,
-                messages=[{
-                    "role": "user",
-                    "content": format_image_content(image_base64, ocr_prompt)
-                }],
-                max_tokens=500,
-                temperature=0.1
-            )
-            ocr_text = ocr_response.choices[0].message.content.strip()
-            if ocr_text.upper() == "NONE":
-                ocr_text = ""
-
-            # Compute similarity score
-            similarity_prompt = (
-                f"Rate how well this image matches the following text on a scale from 0 to 100, where:\n"
-                f"- 0 = completely unrelated\n"
-                f"- 50 = somewhat related (shares general topic)\n"
-                f"- 100 = perfect match (image directly illustrates the text)\n\n"
-                f"Text to match:\n\"\"\"{text}\"\"\"\n\n"
-                f"Respond with ONLY a number from 0-100, no explanation."
-            )
-            similarity_response = client.chat.completions.create(
-                model=VLMConfig.FIREWORKS_MODEL,
-                messages=[{
-                    "role": "user",
-                    "content": format_image_content(image_base64, similarity_prompt)
-                }],
-                max_tokens=10,
-                temperature=0.1
-            )
-            similarity_text = similarity_response.choices[0].message.content.strip()
-
+    async with AsyncFireworks(api_key=api_key) as client:
+        for idx, image_url in enumerate(images):
             try:
-                similarity_score = parse_numeric_response(similarity_text) / 100.0
-                similarity_score = max(0.0, min(1.0, similarity_score))
-            except ValueError:
-                logger.warning("Could not parse similarity score: %s", similarity_text)
-                similarity_score = 0.5
+                logger.info("Processing image %d/%d: %s", idx + 1, len(images), image_url[:80] if len(image_url) > 80 else image_url)
 
-            matches.append({
-                "image_url": image_url,
-                "similarity_score": similarity_score,
-                "caption": caption,
-                "ocr_text": ocr_text,
-            })
+                # Handle both HTTP URLs and base64 data URLs
+                if image_url.startswith("data:"):
+                    # Already a base64 data URL - decode it
+                    try:
+                        # Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
+                        header, encoded = image_url.split(",", 1)
+                        image_bytes = base64.b64decode(encoded)
+                        img = PILImage.open(io.BytesIO(image_bytes))
+                    except Exception as e:
+                        logger.error("Failed to decode base64 image: %s", e)
+                        raise ValueError(f"Invalid base64 image data: {e}")
+                elif image_url.startswith("http://") or image_url.startswith("https://"):
+                    # Download image from HTTP URL
+                    resp = httpx.get(image_url, timeout=30)
+                    resp.raise_for_status()
+                    img = PILImage.open(io.BytesIO(resp.content))
+                else:
+                    raise ValueError(f"Unsupported image source: {image_url[:50]}...")
 
-            logger.info("Image %d matched with score %.2f", idx + 1, similarity_score)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
 
-        except Exception as e:
-            logger.error("Error processing image %d: %s", idx + 1, e)
-            matches.append({
-                "image_url": image_url,
-                "similarity_score": 0.0,
-                "caption": "",
-                "ocr_text": "",
-                "error": str(e),
-            })
+                # Optionally resize large images
+                max_dim = 1024
+                if img.width > max_dim or img.height > max_dim:
+                    ratio = max_dim / max(img.width, img.height)
+                    new_size = (int(img.width * ratio), int(img.height * ratio))
+                    img = img.resize(new_size, PILImage.Resampling.LANCZOS)
+
+                buffer = io.BytesIO()
+                img.save(buffer, format='JPEG', quality=85)
+                image_bytes = buffer.getvalue()
+                base64_str = base64.b64encode(image_bytes).decode('utf-8')
+                image_base64 = f"data:image/jpeg;base64,{base64_str}"
+
+                # Generate caption
+                caption_prompt = (
+                    "Describe this image in 1-2 sentences. "
+                    "Focus on: main subjects, activities, visible objects, text/graphics, and setting. "
+                    "Be concise and factual."
+                )
+                caption_response = client.chat.completions.create(
+                    model=VLMConfig.FIREWORKS_MODEL,
+                    messages=[{
+                        "role": "user",
+                        "content": format_image_content(image_base64, caption_prompt)
+                    }],
+                    max_tokens=150,
+                    temperature=0.3
+                )
+                caption = caption_response.choices[0].message.content.strip()
+
+                # Extract OCR text
+                ocr_prompt = (
+                    "Extract all visible text from this image. "
+                    "Return only the text you see, with no additional commentary. "
+                    "If no text is visible, respond with 'NONE'."
+                )
+                ocr_response = client.chat.completions.create(
+                    model=VLMConfig.FIREWORKS_MODEL,
+                    messages=[{
+                        "role": "user",
+                        "content": format_image_content(image_base64, ocr_prompt)
+                    }],
+                    max_tokens=500,
+                    temperature=0.1
+                )
+                ocr_text = ocr_response.choices[0].message.content.strip()
+                if ocr_text.upper() == "NONE":
+                    ocr_text = ""
+
+                # Compute similarity score
+                similarity_prompt = (
+                    f"Rate how well this image matches the following text on a scale from 0 to 100, where:\n"
+                    f"- 0 = completely unrelated\n"
+                    f"- 50 = somewhat related (shares general topic)\n"
+                    f"- 100 = perfect match (image directly illustrates the text)\n\n"
+                    f"Text to match:\n\"\"\"{text}\"\"\"\n\n"
+                    f"Respond with ONLY a number from 0-100, no explanation."
+                )
+                similarity_response = client.chat.completions.create(
+                    model=VLMConfig.FIREWORKS_MODEL,
+                    messages=[{
+                        "role": "user",
+                        "content": format_image_content(image_base64, similarity_prompt)
+                    }],
+                    max_tokens=10,
+                    temperature=0.1
+                )
+                similarity_text = similarity_response.choices[0].message.content.strip()
+
+                try:
+                    similarity_score = parse_numeric_response(similarity_text) / 100.0
+                    similarity_score = max(0.0, min(1.0, similarity_score))
+                except ValueError:
+                    logger.warning("Could not parse similarity score: %s", similarity_text)
+                    similarity_score = 0.5
+
+                matches.append({
+                    "image_url": image_url,
+                    "similarity_score": similarity_score,
+                    "caption": caption,
+                    "ocr_text": ocr_text,
+                })
+
+                logger.info("Image %d matched with score %.2f", idx + 1, similarity_score)
+
+            except Exception as e:
+                logger.error("Error processing image %d: %s", idx + 1, e)
+                matches.append({
+                    "image_url": image_url,
+                    "similarity_score": 0.0,
+                    "caption": "",
+                    "ocr_text": "",
+                    "error": str(e),
+                })
 
     # Sort by similarity score descending
     matches.sort(key=lambda x: x.get("similarity_score", 0), reverse=True)
 
     logger.info("ImageMatching completed: %d images processed", len(matches))
-
-    # Close the Fireworks client session if it has a close method
-    try:
-        if hasattr(client, 'close'):
-            client.close()
-        elif hasattr(client, '_client') and hasattr(client._client, 'close'):
-            client._client.close()
-    except Exception as e:
-        logger.warning("Failed to close Fireworks client: %s", e)
 
     return {"matches": matches}
 
