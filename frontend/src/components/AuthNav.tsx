@@ -8,46 +8,51 @@ import LogoutButton from './LogoutButton';
 import AuthModal from './auth/AuthModal';
 
 /**
- * Auth navigation component - shows login/signup links or user info with logout.
- * Visible at the top of pages to show auth state.
+ * Compact Auth navigation component.
+ * Renders a small inline auth control suitable for sidebars or compact headers.
+ * Clicking Login/Sign Up opens the existing AuthModal.
  */
 export default function AuthNav() {
   const { user, loading } = useAuth();
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const [initialView, setInitialView] = useState<'login' | 'signup'>('login');
 
-  if (loading) {
-    return (
-      <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
-        <div className="max-w-7xl mx-auto flex justify-end">
-          <span className="text-sm text-gray-500">Loading...</span>
-        </div>
-      </div>
-    );
-  }
+  // While loading, render nothing - keeps UI compact and avoids full-width bars
+  if (loading) return null;
 
+  // When user is signed in show small avatar + logout button (inline)
   if (user) {
+    const displayChar = (
+      user.user_metadata?.username?.[0] ||
+      user.user_metadata?.full_name?.[0] ||
+      user.email?.[0] ||
+      '?'
+    ).toUpperCase();
+
     return (
-      <div className="bg-white border-b border-gray-200 px-4 py-2">
-        <div className="max-w-7xl mx-auto flex items-center justify-end gap-3">
-          <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold shadow-sm ring-2 ring-indigo-200" title={user.email || ''}>
-            {(user.user_metadata?.username?.[0] || user.user_metadata?.full_name?.[0] || user.email?.[0] || '?').toUpperCase()}
-          </div>
-          <LogoutButton />
+      <div className="flex items-center gap-2 px-2 py-1">
+        <div
+          className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold shadow-sm"
+          title={user.email || ''}
+        >
+          {displayChar}
         </div>
+        <div className="hidden sm:block text-sm text-slate-700">{user.user_metadata?.full_name || user.email}</div>
+        <LogoutButton />
       </div>
     );
   }
 
+  // Signed-out state (compact)
   return (
-    <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
-      <div className="max-w-7xl mx-auto flex items-center justify-end gap-4">
+    <>
+      <div className="flex items-center gap-2 px-2 py-1">
         <button
           onClick={() => {
             setInitialView('login');
             setAuthModalOpen(true);
           }}
-          className="text-sm text-blue-700 hover:text-blue-900 font-medium bg-transparent border-none cursor-pointer"
+          className="text-sm text-slate-700 hover:text-slate-900 font-medium bg-transparent border-none cursor-pointer"
         >
           Login
         </button>
@@ -56,7 +61,7 @@ export default function AuthNav() {
             setInitialView('signup');
             setAuthModalOpen(true);
           }}
-          className="text-sm bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700 font-medium border-none cursor-pointer"
+          className="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 font-medium border-none cursor-pointer"
         >
           Sign Up
         </button>
@@ -67,6 +72,6 @@ export default function AuthNav() {
         onClose={() => setAuthModalOpen(false)}
         initialView={initialView}
       />
-    </div>
+    </>
   );
 }

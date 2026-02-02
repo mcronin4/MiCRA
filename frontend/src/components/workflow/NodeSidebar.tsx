@@ -25,6 +25,7 @@ import {
 import { FaTiktok } from "react-icons/fa";
 import type { NodeType } from "../final-review/types";
 import { ImageBucketPanel } from "./ImageBucketPanel";
+import AuthNav from '@/components/AuthNav';
 
 interface NodeSidebarProps {
   onAddNode: (nodeType: NodeType) => void;
@@ -219,13 +220,17 @@ export const NodeSidebar: React.FC<NodeSidebarProps> = ({ onAddNode }) => {
           ))}
         </div>
       </div>
-
       {/* Media / Image Bucket Footer */}
       {isExpanded && (
         <div className="border-t border-slate-200 bg-white">
           <ImageBucketPanel />
         </div>
       )}
+
+      {/* Auth controls placed at the bottom of the sidebar (Login / Sign Up / Logout) */}
+      <div className="px-3 py-3">
+        <AuthNav />
+      </div>
     </div>
   );
 };
