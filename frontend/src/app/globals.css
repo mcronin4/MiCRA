@@ -69,6 +69,63 @@ body {
   display: none;
 }
 
+/* Node completion celebration animation */
+@keyframes node-complete-jiggle {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  15% {
+    transform: translateY(-3px) scale(1.02);
+  }
+  30% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-2px) scale(1.01);
+  }
+  60% {
+    transform: translateY(0) scale(1);
+  }
+  75% {
+    transform: translateY(-1px) scale(1.005);
+  }
+}
+
+.animate-node-complete {
+  animation: node-complete-jiggle 0.5s ease-out;
+}
+
+/* Ripple effect for status badge on completion */
+@keyframes status-ripple {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.animate-status-ripple {
+  animation: status-ripple 0.6s ease-out;
+}
+
+/* Running state glow animation */
+@keyframes running-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+  }
+}
+
+.animate-running-glow {
+  animation: running-glow 1.5s ease-in-out infinite;
+}
+
 .chat-input-container {
   border: 1px solid #E6E6E6;
 }
