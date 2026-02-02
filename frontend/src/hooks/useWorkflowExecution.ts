@@ -109,7 +109,7 @@ export function useWorkflowExecution() {
       workflowData: SavedWorkflowData,
       workflowId?: string | null,
       workflowName?: string | null
-    ) => {
+    ): Promise<WorkflowExecutionResult | null> => {
       setIsExecuting(true)
       setError(null)
       setExecutionResult(null)
@@ -151,7 +151,7 @@ export function useWorkflowExecution() {
   )
 
   const executeById = useCallback(
-    async (workflowId: string) => {
+    async (workflowId: string): Promise<WorkflowExecutionResult | null> => {
       setIsExecuting(true)
       setError(null)
       setExecutionResult(null)
