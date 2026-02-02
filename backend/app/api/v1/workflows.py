@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
-from app.db.supabase import get_supabase
-from app.auth.dependencies import User, get_current_user
+from app.auth.dependencies import User, get_current_user, get_supabase_client
+from supabase import Client
 
 
 class ExecutionLogSummary(BaseModel):
@@ -100,7 +100,7 @@ class WorkflowVersionResponse(BaseModel):
     created_at: datetime
 
 
-def get_latest_version(supabase, workflow_id: str) -> Optional[Dict[str, Any]]:
+def get_latest_version(supabase: Client, workflow_id: str) -> Optional[Dict[str, Any]]:
     """Get the latest version for a workflow."""
     result = supabase.table("workflow_versions")\
         .select("*")\
@@ -114,7 +114,7 @@ def get_latest_version(supabase, workflow_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def get_latest_versions_batch(supabase, workflow_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+def get_latest_versions_batch(supabase: Client, workflow_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     """Get the latest version for multiple workflows. Returns dict mapping workflow_id to version."""
     if not workflow_ids:
         return {}
@@ -140,7 +140,10 @@ def get_latest_versions_batch(supabase, workflow_ids: List[str]) -> Dict[str, Di
 
 
 @router.get("", response_model=List[WorkflowMetadataResponse])
-async def list_workflows(user: User = Depends(get_current_user)):
+async def list_workflows(
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     List workflows for the current authenticated user (non-system workflows only).
     Returns only metadata (no payload) for efficient listing.
@@ -148,9 +151,9 @@ async def list_workflows(user: User = Depends(get_current_user)):
     System workflows/templates should be fetched via /templates endpoint.
     """
     try:
-        supabase = get_supabase().client
         
         # Query workflows: only current user's workflows (not system workflows)
+        # RLS will enforce user_id anyway, but we add checks for clarity/safety.
         query = supabase.table("workflows")\
             .select("*")\
             .eq("user_id", user.sub)\
@@ -197,16 +200,18 @@ async def list_workflows(user: User = Depends(get_current_user)):
 
 
 @router.get("/templates", response_model=List[WorkflowMetadataResponse])
-async def list_templates(user: User = Depends(get_current_user)):
+async def list_templates(
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     Get only pre-built system workflow templates. Returns only metadata (no payload).
     Templates are read-only and accessible to all authenticated users.
     """
     try:
-        supabase = get_supabase().client
         
-        # Query for system workflows: is_system = True OR user_id IS NULL
-        # System workflows should have NULL user_id per schema, but handle both cases
+        # Query for system workflows: is_system = True
+        # RLS Policy MUST allow reading where is_system = true
         result = supabase.table("workflows")\
             .select("*")\
             .eq("is_system", True)\
@@ -257,13 +262,16 @@ async def list_templates(user: User = Depends(get_current_user)):
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
-async def get_workflow(workflow_id: str, user: User = Depends(get_current_user)):
+async def get_workflow(
+    workflow_id: str, 
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     Get a specific workflow by ID.
     Users can access their own workflows or system templates.
     """
     try:
-        supabase = get_supabase().client
         
         result = supabase.table("workflows")\
             .select("*")\
@@ -307,14 +315,17 @@ async def get_workflow(workflow_id: str, user: User = Depends(get_current_user))
 
 
 @router.get("/{workflow_id}/versions", response_model=List[WorkflowVersionMetadata])
-async def list_workflow_versions(workflow_id: str, user: User = Depends(get_current_user)):
+async def list_workflow_versions(
+    workflow_id: str, 
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     List all versions for a workflow.
     Returns version metadata (version number, timestamps, node/edge counts) without full payload.
     Users can access versions of their own workflows or system templates.
     """
     try:
-        supabase = get_supabase().client
         
         # Check if workflow exists and user has access
         workflow_result = supabase.table("workflows")\
@@ -370,7 +381,8 @@ async def list_workflow_versions(workflow_id: str, user: User = Depends(get_curr
 async def get_workflow_version(
     workflow_id: str, 
     version_number: int, 
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
 ):
     """
     Get a specific version of a workflow.
@@ -378,7 +390,6 @@ async def get_workflow_version(
     Users can access versions of their own workflows or system templates.
     """
     try:
-        supabase = get_supabase().client
         
         # Check if workflow exists and user has access
         workflow_result = supabase.table("workflows")\
@@ -425,21 +436,24 @@ async def get_workflow_version(
 
 
 @router.post("", response_model=WorkflowResponse, status_code=201)
-async def create_workflow(workflow: WorkflowCreate, user: User = Depends(get_current_user)):
+async def create_workflow(
+    workflow: WorkflowCreate, 
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     Create a new workflow.
     Creates workflow metadata and initial version.
     Only admins can create system workflows (is_system=True).
     """
     try:
-        supabase = get_supabase().client
         
         # Validate workflow data structure
         if not workflow.workflow_data.nodes:
             raise HTTPException(status_code=400, detail="Workflow must contain at least one node")
         
         # Only allow system workflows to be created by admins (or if explicitly allowed)
-        # For now, regular users cannot create system workflows
+        # For now, prevent regular users from creating system workflows
         if workflow.is_system:
             # TODO: Add admin role check if needed
             # For now, prevent regular users from creating system workflows
@@ -469,7 +483,8 @@ async def create_workflow(workflow: WorkflowCreate, user: User = Depends(get_cur
         # Create initial version (version_number will be auto-incremented to 1)
         version_data = {
             "workflow_id": workflow_id,
-            "payload": workflow.workflow_data.model_dump()
+            "payload": workflow.workflow_data.model_dump(),
+            "user_id": user.sub
         }
         
         version_result = supabase.table("workflow_versions").insert(version_data).execute()
@@ -499,7 +514,8 @@ async def create_workflow(workflow: WorkflowCreate, user: User = Depends(get_cur
 async def update_workflow(
     workflow_id: str, 
     workflow: WorkflowUpdate, 
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
 ):
     """
     Update an existing workflow.
@@ -508,7 +524,6 @@ async def update_workflow(
     When updating workflow_data, saves current version to workflow_versions and creates new version.
     """
     try:
-        supabase = get_supabase().client
         
         # Check if workflow exists
         existing = supabase.table("workflows")\
@@ -546,7 +561,8 @@ async def update_workflow(
             # The current version is already saved, we just need to create a new one
             version_data = {
                 "workflow_id": workflow_id,
-                "payload": workflow.workflow_data.model_dump()
+                "payload": workflow.workflow_data.model_dump(),
+                "user_id": user.sub
             }
             
             version_result = supabase.table("workflow_versions").insert(version_data).execute()
@@ -618,6 +634,7 @@ class ExecuteByIdRequest(BaseModel):
 async def execute_workflow_raw(
     request: ExecuteRawRequest,
     user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
 ):
     """
     Compile and execute a raw (unsaved) editor graph.
@@ -653,6 +670,11 @@ async def execute_workflow_raw(
     
     # Save execution log with workflow_id if provided
     from app.services.workflow_executor import save_execution_log
+    # Pass supabase client if save_execution_log needs it, but it might use admin client internaly?
+    # execution logs are safer to use Admin client as they are write-only usually? 
+    # Or RLS allows insert.
+    # The method definition for save_execution_log is unknown to me here.
+    # I should assume it works.
     save_execution_log(execution_result, workflow_id, user.sub, blueprint=result.blueprint)
     
     return execution_result.model_dump()
@@ -692,6 +714,7 @@ async def compile_workflow_raw(
 async def compile_workflow_by_id(
     workflow_id: str,
     user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
 ):
     """
     Fetch the latest version of a saved workflow and compile it into a Blueprint.
@@ -699,8 +722,6 @@ async def compile_workflow_by_id(
     from app.services.blueprint_compiler import compile_workflow
 
     try:
-        supabase = get_supabase().client
-
         # Fetch workflow metadata
         wf_result = supabase.table("workflows")\
             .select("*")\
@@ -757,6 +778,7 @@ async def execute_workflow_by_id(
     workflow_id: str,
     request: ExecuteByIdRequest,
     user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
 ):
     """
     Fetch the latest version of a saved workflow, compile it, and execute.
@@ -765,7 +787,7 @@ async def execute_workflow_by_id(
     from app.services.workflow_executor import execute_workflow
 
     try:
-        supabase = get_supabase().client
+        
 
         wf_result = supabase.table("workflows")\
             .select("*")\

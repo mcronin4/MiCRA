@@ -166,3 +166,36 @@ async def get_current_user(authorization: str = Header(..., description="Bearer 
         )
     
     return verify_jwt(token)
+
+
+from ..db.supabase import get_authenticated_supabase
+from supabase import Client
+
+async def get_supabase_client(authorization: str = Header(..., description="Bearer token")) -> Client:
+    """
+    FastAPI dependency to get an authenticated Supabase client.
+    Extracts token from Authorization header and creates a client constrained to that user.
+    Usage:
+        @router.get("/protected")
+        async def protected(supabase: Client = Depends(get_supabase_client)):
+            result = supabase.table("foo").select("*").execute()
+    """
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header must start with 'Bearer '"
+        )
+    
+    token = authorization[7:].strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token is required"
+        )
+    
+    # We could optionally verify the token here effectively doing double work with get_current_user
+    # but since Supabase will reject invalid tokens on the DB side, we can skip it for performance 
+    # if this dependency is used alongside get_current_user. 
+    # However, if used alone, we are relying on Supabase to fail.
+    
+    return get_authenticated_supabase(token)

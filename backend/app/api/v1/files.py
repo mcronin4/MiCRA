@@ -10,8 +10,8 @@ from uuid import UUID, uuid4
 import os
 import re
 import logging
-from ...auth.dependencies import User, get_current_user
-from ...db.supabase import get_supabase
+from ...auth.dependencies import User, get_current_user, get_supabase_client
+from supabase import Client
 from ...storage.r2 import get_r2, R2_BUCKET
 from botocore.exceptions import ClientError
 
@@ -248,17 +248,16 @@ def get_type_prefix(file_type: str) -> str:
 
 # Endpoints
 @router.post("/check-hash", response_model=CheckHashResponse)
-async def check_hash(request: CheckHashRequest, user: User = Depends(get_current_user)):
+async def check_hash(request: CheckHashRequest, user: User = Depends(get_current_user), supabase: Client = Depends(get_supabase_client)):
     """
     Check if a file with the given content hash already exists for the current user.
     Used for deduplication before upload.
     """
-    supabase = get_supabase()
     user_id = user.sub
     
     try:
         # Check if a file with this hash exists for this user
-        result = supabase.client.table("files").select("*").eq(
+        result = supabase.table("files").select("*").eq(
             "user_id", user_id
         ).eq("content_hash", request.contentHash).eq("status", "uploaded").execute()
         
@@ -276,14 +275,16 @@ async def check_hash(request: CheckHashRequest, user: User = Depends(get_current
 
 
 @router.post("/init-upload", response_model=InitUploadResponse)
-async def init_upload(request: InitUploadRequest, user: User = Depends(get_current_user)):
+async def init_upload(
+    request: InitUploadRequest, 
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     Initialize a file upload.
     Creates a database record and returns a presigned upload URL for R2.
-    Files are stored at {type}/{content_hash}.{extension}.
-    Each user gets their own file record, but R2 storage is shared (content-addressed).
+    Files are stored at users/{user_id}/{type}/{content_hash}.{extension}.
     """
-    supabase = get_supabase()
     r2 = get_r2()
     user_id = user.sub
 
@@ -298,13 +299,15 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
     if not extension:
         extension = "bin"
 
-    # Get type prefix and build path: {type}/{content_hash}.{extension}
+    # Get type prefix
     type_prefix = get_type_prefix(request.type)
-    path = f"{type_prefix}/{request.contentHash}.{extension}"
+    
+    # NEW: Isolated storage path: users/{user_id}/{type}/{hash}.{ext}
+    path = f"users/{user_id}/{type_prefix}/{request.contentHash}.{extension}"
 
     # Check if THIS USER already has a file with this content hash (user-level deduplication)
     try:
-        existing_file_result = supabase.client.table("files").select("*").eq(
+        existing_file_result = supabase.table("files").select("*").eq(
             "user_id", user_id
         ).eq("content_hash", request.contentHash).neq("status", "deleted").execute()
 
@@ -361,7 +364,7 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
         if request.parentId:
             file_data["parent_id"] = str(request.parentId)
         
-        result = supabase.client.table("files").insert(file_data).execute()
+        result = supabase.table("files").insert(file_data).execute()
         
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create file record")
@@ -370,21 +373,19 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
         
     except Exception as insert_error:
         # Handle duplicate key constraint violation (user_id + path already exists)
-        # This can happen due to race conditions or if the check above missed it
         error_str = str(insert_error)
         if "duplicate key value violates unique constraint" in error_str.lower() or "23505" in error_str:
             logger.info(f"Duplicate path detected for user {user_id} and path {path}, fetching existing file")
             try:
                 # Fetch the existing file record for THIS USER
-                existing_file_result = supabase.client.table("files").select("*").eq(
-                    "user_id", user_id
-                ).eq("path", path).execute()
+                existing_file_result = supabase.table("files").select("*").eq(
+                    "path", path
+                ).execute()
 
                 if existing_file_result.data and len(existing_file_result.data) > 0:
                     file_record = existing_file_result.data[0]
                     logger.info(f"Successfully retrieved existing file record for user {user_id} at {path}")
                 else:
-                    # Unexpected: duplicate key but file not found
                     logger.error(f"Duplicate key error but file not found for user {user_id} at path {path}")
                     raise HTTPException(
                         status_code=409,
@@ -399,7 +400,6 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
                     detail="File with this content already exists. Please try again."
                 )
         else:
-            # Re-raise if it's not a duplicate key error
             raise HTTPException(status_code=500, detail=f"Error initializing upload: {error_str}")
     
     # Ensure we have a file_record at this point
@@ -430,7 +430,7 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
         # Clean up file record if signing fails (only if we created a new one)
         if 'file_id' in locals():
             try:
-                supabase.client.table("files").delete().eq("id", str(file_id)).execute()
+                supabase.table("files").delete().eq("id", str(file_id)).execute()
             except:
                 pass
         raise HTTPException(
@@ -440,17 +440,20 @@ async def init_upload(request: InitUploadRequest, user: User = Depends(get_curre
 
 
 @router.post("/complete-upload", response_model=CompleteUploadResponse)
-async def complete_upload(request: CompleteUploadRequest, user: User = Depends(get_current_user)):
+async def complete_upload(
+    request: CompleteUploadRequest, 
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     Complete a file upload.
     Verifies the file exists in R2 and updates the database record.
     User must own the file record.
     """
-    supabase = get_supabase()
     r2 = get_r2()
 
     # Fetch file record - must belong to current user
-    result = supabase.client.table("files").select("*").eq(
+    result = supabase.table("files").select("*").eq(
         "id", str(request.fileId)
     ).eq("user_id", user.sub).execute()
 
@@ -460,7 +463,7 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
     file_record = result.data[0]
     path = file_record["path"]
 
-    # Verify file exists in R2
+    # Verify file exists in R2 (Admin R2 client is fine here)
     try:
         r2.client.head_object(Bucket=R2_BUCKET, Key=path)
 
@@ -483,7 +486,7 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
         if size_bytes is not None:
             update_data["size_bytes"] = size_bytes
 
-        update_result = supabase.client.table("files").update(update_data).eq(
+        update_result = supabase.table("files").update(update_data).eq(
             "id", str(request.fileId)
         ).execute()
 
@@ -510,19 +513,23 @@ async def complete_upload(request: CompleteUploadRequest, user: User = Depends(g
 
 
 @router.post("/sign-download", response_model=SignDownloadResponse)
-async def sign_download(request: SignDownloadRequest, user: User = Depends(get_current_user)):
+async def sign_download(
+    request: SignDownloadRequest, 
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     Generate a presigned download URL for a file in R2.
     """
-    supabase = get_supabase()
     r2 = get_r2()
 
-    result = supabase.client.table("files").select("*").eq("id", str(request.fileId)).execute()
+    result = supabase.table("files").select("*").eq("id", str(request.fileId)).execute()
 
     if not result.data or len(result.data) == 0:
         raise HTTPException(status_code=404, detail="File not found")
 
     file_record = result.data[0]
+    # Redundant check because RLS would filter it out, but safe to keep
     if file_record.get("user_id") != user.sub:
         raise HTTPException(status_code=403, detail="Not authorized to access this file")
 
@@ -555,16 +562,19 @@ async def sign_download(request: SignDownloadRequest, user: User = Depends(get_c
 
 
 @router.post("/delete", response_model=DeleteFileResponse)
-async def delete_file(request: DeleteFileRequest, user: User = Depends(get_current_user)):
+async def delete_file(
+    request: DeleteFileRequest, 
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
     """
     Delete a file.
-    Marks the database record as deleted. Only deletes from R2 if no other records reference the same path.
+    Marks the database record as deleted and removes from R2.
     """
-    supabase = get_supabase()
     r2 = get_r2()
 
     # Fetch file record - must belong to current user
-    result = supabase.client.table("files").select("*").eq(
+    result = supabase.table("files").select("*").eq(
         "id", str(request.fileId)
     ).eq("user_id", user.sub).execute()
 
@@ -575,24 +585,15 @@ async def delete_file(request: DeleteFileRequest, user: User = Depends(get_curre
     path = file_record["path"]
 
     try:
-        # Check if other records reference the same R2 path (shared storage)
-        other_files_result = supabase.client.table("files").select("id").eq(
-            "path", path
-        ).neq("id", str(request.fileId)).neq("status", "deleted").execute()
-
-        # Only delete from R2 if no other records reference this path
-        should_delete_from_r2 = not other_files_result.data or len(other_files_result.data) == 0
-        
-        # Delete from R2 if no other users reference it
-        if should_delete_from_r2:
-            try:
-                r2.client.delete_object(Bucket=R2_BUCKET, Key=path)
-            except Exception as e:
-                # Log but don't fail - the DB record will still be marked as deleted
-                logger.warning(f"Failed to delete file from R2 at {path}: {e}")
+        # With isolated paths, we can always delete from R2 as long as we own the file record
+        try:
+            r2.client.delete_object(Bucket=R2_BUCKET, Key=path)
+        except Exception as e:
+            # Log but don't fail - the DB record will still be marked as deleted
+            logger.warning(f"Failed to delete file from R2 at {path}: {e}")
         
         # Update file record to deleted status
-        update_result = supabase.client.table("files").update({
+        update_result = supabase.table("files").update({
             "status": "deleted",
             "deleted_at": datetime.utcnow().isoformat(),
         }).eq("id", str(request.fileId)).execute()
@@ -602,7 +603,7 @@ async def delete_file(request: DeleteFileRequest, user: User = Depends(get_curre
         
         return DeleteFileResponse(
             ok=True,
-            deleted=should_delete_from_r2
+            deleted=True
         )
         
     except HTTPException:
@@ -622,12 +623,12 @@ async def list_files(
     offset: int = Query(0, ge=0, description="Pagination offset"),
     include_urls: bool = Query(False, description="Include signed URLs in response"),
     expires_in: int = Query(60, ge=1, le=3600, description="URL expiration in seconds"),
+    supabase: Client = Depends(get_supabase_client)
 ):
     """
     List files for the current user with optional filtering and pagination.
     Can optionally include presigned download URLs.
     """
-    supabase = get_supabase()
     r2 = get_r2()
 
     # Validate filters
@@ -647,8 +648,9 @@ async def list_files(
             detail=f"Type must be one of: {', '.join(ALLOWED_TYPES)}"
         )
     
-    # Build query (scope to current user)
-    query = supabase.client.table("files").select("*").eq("user_id", user.sub)
+    # Build query (scope to current user automatically via RLS)
+    # But explicitly adding user_id eq check is good defense in depth
+    query = supabase.table("files").select("*").eq("user_id", user.sub)
 
     if bucket:
         query = query.eq("bucket", bucket)
