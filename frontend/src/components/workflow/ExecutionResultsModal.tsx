@@ -31,11 +31,16 @@ const NODE_TYPE_INFO: Record<string, { icon: React.ElementType; label: string; c
   Transcription: { icon: Mic, label: 'Transcription', color: 'text-violet-600' },
   ImageMatching: { icon: Layers, label: 'Image Matching', color: 'text-orange-600' },
   ImageExtraction: { icon: Image, label: 'Image Extraction', color: 'text-indigo-600' },
+  QuoteExtraction: { icon: FileText, label: 'Quote Extraction', color: 'text-teal-600' },
   End: { icon: Flag, label: 'End', color: 'text-slate-600' },
 };
 
-function getNodeTypeInfo(nodeId: string) {
-  // Try to extract type from node ID format (e.g., "ImageBucket-1" or "node-ImageBucket-abc123")
+function getNodeTypeInfo(nodeType: string | null | undefined, nodeId: string) {
+  // First try to use the node_type directly
+  if (nodeType && NODE_TYPE_INFO[nodeType]) {
+    return NODE_TYPE_INFO[nodeType];
+  }
+  // Fallback: try to extract type from node ID format (e.g., "ImageBucket-1")
   for (const [type, info] of Object.entries(NODE_TYPE_INFO)) {
     if (nodeId.includes(type)) {
       return info;
@@ -61,12 +66,84 @@ function formatOutputValue(value: unknown): string {
     return value.length > 200 ? value.substring(0, 197) + '...' : value;
   }
   if (Array.isArray(value)) {
+    // For small arrays of simple values, show them inline
+    if (value.length <= 3 && value.every(v => typeof v === 'string' && v.length < 50)) {
+      return value.map(v => `"${v}"`).join(', ');
+    }
     return `[${value.length} items]`;
   }
   if (typeof value === 'object') {
     return JSON.stringify(value, null, 2);
   }
   return String(value);
+}
+
+// Check if a value is a list of text items (strings)
+function isTextList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(item => typeof item === 'string');
+}
+
+// Check if a value is a list of quote objects (with text field)
+function isQuoteList(value: unknown): value is Array<{ text: string }> {
+  return Array.isArray(value) && value.length > 0 && value.every(
+    item => typeof item === 'object' && item !== null && 'text' in item && typeof (item as { text: unknown }).text === 'string'
+  );
+}
+
+// Render a list of text items (like quotes) in a nice format
+function TextListDisplay({ items, label }: { items: string[]; label: string }) {
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-medium text-gray-600 mb-2">
+        {label} ({items.length} items):
+      </div>
+      <div className="space-y-2 max-h-80 overflow-y-auto">
+        {items.map((item, idx) => (
+          <div
+            key={idx}
+            className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm"
+          >
+            <div className="flex items-start gap-2">
+              <span className="flex-shrink-0 w-6 h-6 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-xs font-semibold">
+                {idx + 1}
+              </span>
+              <p className="text-sm text-gray-700 leading-relaxed flex-1">
+                {item}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Render a list of quote objects in a nice format
+function QuoteListDisplay({ quotes, label }: { quotes: Array<{ text: string }>; label: string }) {
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-medium text-gray-600 mb-2">
+        {label} ({quotes.length} items):
+      </div>
+      <div className="space-y-2 max-h-80 overflow-y-auto">
+        {quotes.map((quote, idx) => (
+          <div
+            key={idx}
+            className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm"
+          >
+            <div className="flex items-start gap-2">
+              <span className="flex-shrink-0 w-6 h-6 bg-teal-100 text-teal-700 rounded-full flex items-center justify-center text-xs font-semibold">
+                {idx + 1}
+              </span>
+              <p className="text-sm text-gray-700 leading-relaxed flex-1 italic">
+                &ldquo;{quote.text}&rdquo;
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function ExecutionResultsModal({
@@ -175,13 +252,21 @@ export function ExecutionResultsModal({
               <Flag className="w-4 h-4 text-emerald-600" />
               Workflow Outputs
             </div>
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 max-h-40 overflow-auto">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 max-h-96 overflow-auto">
               {Object.entries(result.workflow_outputs).map(([key, value]) => (
-                <div key={key} className="mb-2 last:mb-0">
-                  <div className="text-xs font-medium text-emerald-700 mb-0.5">{key}:</div>
-                  <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono bg-white/50 p-2 rounded">
-                    {formatOutputValue(value)}
-                  </pre>
+                <div key={key} className="mb-3 last:mb-0">
+                  {isQuoteList(value) ? (
+                    <QuoteListDisplay quotes={value} label={key} />
+                  ) : isTextList(value) ? (
+                    <TextListDisplay items={value} label={key} />
+                  ) : (
+                    <>
+                      <div className="text-xs font-medium text-emerald-700 mb-1">{key}:</div>
+                      <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono bg-white/50 p-2 rounded">
+                        {formatOutputValue(value)}
+                      </pre>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -195,7 +280,7 @@ export function ExecutionResultsModal({
           </div>
           <div className="space-y-2 max-h-64 overflow-auto">
             {result.node_results.map((nr) => {
-              const typeInfo = getNodeTypeInfo(nr.node_id);
+              const typeInfo = getNodeTypeInfo(nr.node_type, nr.node_id);
               const IconComponent = typeInfo.icon;
 
               return (
@@ -291,8 +376,16 @@ export function ExecutionResultsModal({
                         /* Default output display for other node types */
                         Object.entries(nr.outputs).map(([key, value]) => (
                           <div key={key} className="text-xs">
-                            <span className="text-gray-500">{key}:</span>{' '}
-                            <span className="text-gray-700 font-mono">{formatOutputValue(value)}</span>
+                            {isQuoteList(value) ? (
+                              <QuoteListDisplay quotes={value} label={key} />
+                            ) : isTextList(value) ? (
+                              <TextListDisplay items={value} label={key} />
+                            ) : (
+                              <>
+                                <span className="text-gray-500">{key}:</span>{' '}
+                                <span className="text-gray-700 font-mono">{formatOutputValue(value)}</span>
+                              </>
+                            )}
                           </div>
                         ))
                       )}

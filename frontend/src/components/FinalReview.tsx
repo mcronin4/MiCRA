@@ -192,6 +192,34 @@ const FinalReview = () => {
     return workflowData;
   };
 
+  /**
+   * Validates that all bucket nodes have at least one file selected.
+   * Returns an error message if validation fails, or null if valid.
+   */
+  const validateBucketNodes = (workflowData: ReturnType<typeof prepareWorkflowForExecution>): string | null => {
+    if (!workflowData) return null;
+
+    const bucketNodeTypes = ['ImageBucket', 'AudioBucket', 'VideoBucket', 'TextBucket'];
+    const bucketTypeNames: Record<string, string> = {
+      'ImageBucket': 'Image',
+      'AudioBucket': 'Audio',
+      'VideoBucket': 'Video',
+      'TextBucket': 'Text',
+    };
+
+    for (const node of workflowData.nodes) {
+      if (bucketNodeTypes.includes(node.type)) {
+        const selectedFileIds = node.data?.selected_file_ids;
+        if (!selectedFileIds || !Array.isArray(selectedFileIds) || selectedFileIds.length === 0) {
+          const bucketName = bucketTypeNames[node.type] || 'Media';
+          return `${bucketName} Bucket is empty. Please select at least one file.`;
+        }
+      }
+    }
+
+    return null;
+  };
+
   const handleExecuteWorkflow = async () => {
     // Check if workflow is saved first
     const { currentWorkflowId } = useWorkflowStore.getState();
@@ -209,6 +237,13 @@ const FinalReview = () => {
       } else {
         setToast({ message: "No nodes to execute", type: "warning" });
       }
+      return;
+    }
+
+    // Validate bucket nodes have files selected (user-friendly check before compilation)
+    const bucketValidationError = validateBucketNodes(workflowData);
+    if (bucketValidationError) {
+      setToast({ message: bucketValidationError, type: "error" });
       return;
     }
 
@@ -267,6 +302,14 @@ const FinalReview = () => {
     const workflowData = prepareWorkflowForExecution();
 
     if (!workflowData) return;
+
+    // Validate bucket nodes have files selected
+    const bucketValidationError = validateBucketNodes(workflowData);
+    if (bucketValidationError) {
+      setToast({ message: bucketValidationError, type: "error" });
+      setShowCompilationModal(false);
+      return;
+    }
 
     setShowCompilationModal(false);
 
