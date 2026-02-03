@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Save, FolderOpen } from "lucide-react";
+import Link from "next/link";
+import { Save, FolderOpen, Eye } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import type { User } from "@supabase/supabase-js";
@@ -34,6 +35,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 }) => {
   const workflowName = useWorkflowStore((state) => state.workflowName);
   const setWorkflowName = useWorkflowStore((state) => state.setWorkflowName);
+  const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(workflowName);
 
@@ -80,8 +82,17 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         )}
       </div>
 
-      {/* Right - Save/Load Actions */}
+      {/* Right - Preview + Save/Load Actions */}
       <div className="flex items-center gap-2">
+        {currentWorkflowId && (
+          <Link
+            href={`/preview/${currentWorkflowId}`}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
+          >
+            <Eye size={14} />
+            Preview
+          </Link>
+        )}
         <button
           onClick={onSave}
           disabled={!canSave}
