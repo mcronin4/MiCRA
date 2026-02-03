@@ -2,11 +2,8 @@
 
 import React, { useState } from "react";
 import {
-  Send,
   Wand2,
   ChevronRight,
-  Linkedin,
-  Mail,
   FileText,
   Image as ImageIcon,
   Sparkles,
@@ -22,7 +19,6 @@ import {
   Video,
   TextQuote,
 } from "lucide-react";
-import { FaTiktok } from "react-icons/fa";
 import type { NodeType } from "../final-review/types";
 import { ImageBucketPanel } from "./ImageBucketPanel";
 import AuthNav from '@/components/AuthNav';
@@ -49,15 +45,16 @@ const nodeCategories = [
       { type: "End" as NodeType, label: "End Flow", icon: Flag },
     ],
   },
-  {
-    name: "Outputs",
-    icon: Send,
-    nodes: [
-      { type: "LinkedIn" as NodeType, label: "LinkedIn Post", icon: Linkedin },
-      { type: "TikTok" as NodeType, label: "TikTok Video", icon: FaTiktok },
-      { type: "Email" as NodeType, label: "Send Email", icon: Mail },
-    ],
-  },
+  // "Outputs" category hidden — output composition moved to Preview page
+  // {
+  //   name: "Outputs",
+  //   icon: Send,
+  //   nodes: [
+  //     { type: "LinkedIn" as NodeType, label: "LinkedIn Post", icon: Linkedin },
+  //     { type: "TikTok" as NodeType, label: "TikTok Video", icon: FaTiktok },
+  //     { type: "Email" as NodeType, label: "Send Email", icon: Mail },
+  //   ],
+  // },
   {
     name: "AI Actions",
     icon: Wand2,
