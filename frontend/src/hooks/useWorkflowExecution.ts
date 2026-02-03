@@ -13,17 +13,20 @@ export function useWorkflowExecution() {
     useState<WorkflowExecutionResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [currentNode, setCurrentNode] = useState<string | null>(null)
+  // TODO: Wire up AbortController to support cancelling a running workflow.
+  // Currently unused — execute/executeById don't assign it or pass a signal.
   const abortControllerRef = useRef<AbortController | null>(null)
   // Track nodes that just completed for animation purposes
   const justCompletedRef = useRef<Set<string>>(new Set())
 
-  const { nodes: storeNodes, updateNode } = useWorkflowStore()
+  const updateNode = useWorkflowStore((s) => s.updateNode)
 
   const resetNodes = useCallback(() => {
-    for (const nodeId of Object.keys(storeNodes)) {
+    const currentNodes = useWorkflowStore.getState().nodes
+    for (const nodeId of Object.keys(currentNodes)) {
       updateNode(nodeId, { status: 'idle', outputs: null, error: undefined })
     }
-  }, [storeNodes, updateNode])
+  }, [updateNode])
 
   // Ref to store the final result (updated by event handler)
   const finalResultRef = useRef<WorkflowExecutionResult | null>(null)
@@ -55,7 +58,7 @@ export function useWorkflowExecution() {
           setTimeout(() => {
             justCompletedRef.current.delete(event.node_id)
           }, 600) // Match animation duration
-          
+
           updateNode(event.node_id, {
             status: 'completed',
             outputs: event.outputs,
@@ -117,11 +120,6 @@ export function useWorkflowExecution() {
       finalResultRef.current = null
       resetNodes()
 
-      // Mark all nodes as idle initially
-      for (const nodeId of Object.keys(storeNodes)) {
-        updateNode(nodeId, { status: 'idle' })
-      }
-
       console.log('[Execute] Starting workflow execution...')
 
       try {
@@ -147,7 +145,7 @@ export function useWorkflowExecution() {
         setCurrentNode(null)
       }
     },
-    [storeNodes, updateNode, resetNodes, handleStreamEvent]
+    [resetNodes, handleStreamEvent]
   )
 
   const executeById = useCallback(
@@ -158,10 +156,6 @@ export function useWorkflowExecution() {
       setCurrentNode(null)
       finalResultRef.current = null
       resetNodes()
-
-      for (const nodeId of Object.keys(storeNodes)) {
-        updateNode(nodeId, { status: 'idle' })
-      }
 
       console.log('[ExecuteById] Starting workflow execution...')
 
@@ -185,7 +179,7 @@ export function useWorkflowExecution() {
         setCurrentNode(null)
       }
     },
-    [storeNodes, updateNode, resetNodes, handleStreamEvent]
+    [resetNodes, handleStreamEvent]
   )
 
   const reset = useCallback(() => {

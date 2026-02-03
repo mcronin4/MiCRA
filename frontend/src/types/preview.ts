@@ -3,6 +3,7 @@ export interface NodeOutputRef {
   nodeType: string
   outputKey: string
   label: string
+  arrayIndex?: number  // undefined = whole output, number = specific item
 }
 
 export type SlotContentType = 'text' | 'image' | 'audio' | 'video' | 'json'
@@ -16,7 +17,23 @@ export interface TemplateSlot {
 
 export interface SlotAssignment {
   slotId: string
+  sources: NodeOutputRef[]
+}
+
+/** Legacy format for localStorage migration */
+interface LegacySlotAssignment {
+  slotId: string
   source: NodeOutputRef | null
+}
+
+/** Migrate legacy single-source assignment to multi-source */
+export function migrateAssignment(raw: SlotAssignment | LegacySlotAssignment): SlotAssignment {
+  if ('sources' in raw && Array.isArray(raw.sources)) return raw as SlotAssignment
+  const legacy = raw as LegacySlotAssignment
+  return {
+    slotId: legacy.slotId,
+    sources: legacy.source ? [legacy.source] : [],
+  }
 }
 
 export interface PlatformTemplate {
@@ -40,13 +57,13 @@ export const LINKEDIN_TEMPLATE: PlatformTemplate = {
     {
       slotId: 'headline',
       label: 'Headline',
-      acceptsTypes: ['text'],
+      acceptsTypes: ['text', 'json'],
       required: false,
     },
     {
       slotId: 'body',
       label: 'Body',
-      acceptsTypes: ['text'],
+      acceptsTypes: ['text', 'json'],
       required: true,
     },
     {
@@ -58,7 +75,7 @@ export const LINKEDIN_TEMPLATE: PlatformTemplate = {
     {
       slotId: 'caption',
       label: 'Caption',
-      acceptsTypes: ['text'],
+      acceptsTypes: ['text', 'json'],
       required: false,
     },
   ],

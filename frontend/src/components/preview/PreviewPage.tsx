@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
 import { useWorkflowExecution } from '@/hooks/useWorkflowExecution'
@@ -41,21 +41,14 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   // Check if the store has this workflow loaded
   const isWorkflowLoaded = currentWorkflowId === workflowId
 
-  const handleToneChange = async (newTone: string) => {
+  const handleToneChange = (newTone: string) => {
     setTone(newTone)
-
-    // Re-run workflow with new tone
-    if (isWorkflowLoaded && currentWorkflowId) {
-      try {
-        await executeById(currentWorkflowId)
-      } catch {
-        // Error handled by useWorkflowExecution hook
-      }
-    }
+    // Tone preference is saved but not injected into execution yet.
+    // Full tone injection requires a backend endpoint change (future work).
   }
 
-  // Show empty state if no workflow loaded or no outputs
-  if (!isWorkflowLoaded || !hasOutputs) {
+  // Show empty state if no workflow loaded or no outputs (but not while executing)
+  if (!isWorkflowLoaded || (!hasOutputs && !isExecuting)) {
     return (
       <div className="h-screen flex flex-col bg-white">
         <PreviewHeader workflowName={workflowName} />
@@ -117,9 +110,19 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
           </div>
 
           {/* Mockup */}
-          <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30">
+          <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30 relative">
             {(config?.platformId ?? 'linkedin') === 'linkedin' && (
               <LinkedInMockup />
+            )}
+
+            {/* Loading overlay during execution */}
+            {isExecuting && (
+              <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 pointer-events-none">
+                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md border border-slate-200">
+                  <Loader2 size={16} className="animate-spin text-indigo-500" />
+                  <span className="text-sm text-slate-600">Re-running workflow…</span>
+                </div>
+              </div>
             )}
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { PreviewConfig, SlotAssignment, NodeOutputRef } from '@/types/preview'
-import { LINKEDIN_TEMPLATE } from '@/types/preview'
+import { LINKEDIN_TEMPLATE, migrateAssignment } from '@/types/preview'
 
 function storageKey(workflowId: string) {
   return `preview_config_${workflowId}`
@@ -11,7 +11,12 @@ function loadConfig(workflowId: string): PreviewConfig | null {
   try {
     const raw = localStorage.getItem(storageKey(workflowId))
     if (!raw) return null
-    return JSON.parse(raw) as PreviewConfig
+    const parsed = JSON.parse(raw) as PreviewConfig
+    // Migrate legacy single-source assignments to multi-source
+    if (parsed.assignments) {
+      parsed.assignments = parsed.assignments.map(migrateAssignment)
+    }
+    return parsed
   } catch {
     return null
   }
@@ -32,7 +37,7 @@ function defaultConfig(workflowId: string): PreviewConfig {
     platformId: 'linkedin',
     assignments: LINKEDIN_TEMPLATE.slots.map((slot) => ({
       slotId: slot.slotId,
-      source: null,
+      sources: [],
     })),
     tone: 'professional',
     updatedAt: Date.now(),
@@ -45,8 +50,8 @@ interface PreviewStore {
   /** Load config from localStorage or create default */
   loadPreviewConfig: (workflowId: string) => void
 
-  /** Assign an output to a slot */
-  assignSlot: (slotId: string, source: NodeOutputRef) => void
+  /** Assign outputs to a slot (replaces all sources) */
+  assignSlot: (slotId: string, sources: NodeOutputRef[]) => void
 
   /** Clear a slot assignment */
   clearSlot: (slotId: string) => void
@@ -73,14 +78,14 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
     set({ config })
   },
 
-  assignSlot: (slotId, source) => {
+  assignSlot: (slotId, sources) => {
     const { config } = get()
     if (!config) return
 
     const updated: PreviewConfig = {
       ...config,
       assignments: config.assignments.map((a) =>
-        a.slotId === slotId ? { ...a, source } : a
+        a.slotId === slotId ? { ...a, sources } : a
       ),
       updatedAt: Date.now(),
     }
@@ -95,7 +100,7 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
     const updated: PreviewConfig = {
       ...config,
       assignments: config.assignments.map((a) =>
-        a.slotId === slotId ? { ...a, source: null } : a
+        a.slotId === slotId ? { ...a, sources: [] } : a
       ),
       updatedAt: Date.now(),
     }

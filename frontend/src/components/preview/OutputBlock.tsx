@@ -1,15 +1,8 @@
 'use client'
 
 import type { NodeOutputRef, SlotContentType } from '@/types/preview'
-import { FileText, Image, Music, Video, Braces } from 'lucide-react'
-
-const CONTENT_TYPE_ICONS: Record<SlotContentType, React.ElementType> = {
-  text: FileText,
-  image: Image,
-  audio: Music,
-  video: Video,
-  json: Braces,
-}
+import { CONTENT_TYPE_ICONS } from '@/lib/preview-utils'
+import { FileText } from 'lucide-react'
 
 interface OutputBlockProps {
   output: NodeOutputRef
@@ -20,6 +13,19 @@ interface OutputBlockProps {
 
 function formatPreview(value: unknown, contentType: SlotContentType): string {
   if (value === null || value === undefined) return '(empty)'
+
+  // Quote-like objects
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>
+    if (typeof obj.text === 'string') {
+      return obj.text.length > 80 ? obj.text.slice(0, 77) + '...' : obj.text
+    }
+    // Image match objects
+    if (typeof obj.url === 'string' || typeof obj.signedUrl === 'string') {
+      return 'Image'
+    }
+  }
+
   if (contentType === 'text' && typeof value === 'string') {
     return value.length > 80 ? value.slice(0, 77) + '...' : value
   }

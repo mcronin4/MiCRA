@@ -6,6 +6,7 @@ import { usePreviewStore } from '@/lib/stores/previewStore'
 import { NODE_REGISTRY } from '@/lib/nodeRegistry'
 import { runtimeTypeToSlotContentType } from '@/types/preview'
 import type { NodeOutputRef, SlotContentType } from '@/types/preview'
+import { refKey } from '@/lib/preview-utils'
 import { OutputBlock } from './OutputBlock'
 import {
   Image,
@@ -47,6 +48,31 @@ export interface NodeGroup {
   outputs: OutputEntry[]
 }
 
+/** Generate a preview label for an array item */
+function itemLabel(nodeType: string, outputKey: string, index: number, item: unknown): string {
+  if (nodeType === 'QuoteExtraction' && item && typeof item === 'object' && 'text' in item) {
+    const text = (item as Record<string, unknown>).text as string
+    const preview = text.length > 40 ? text.slice(0, 37) + '...' : text
+    return `Quote #${index + 1}: ${preview}`
+  }
+  if (nodeType === 'ImageMatching' && item && typeof item === 'object') {
+    const obj = item as Record<string, unknown>
+    const score = obj.score ?? obj.similarity
+    if (typeof score === 'number') {
+      return `Match #${index + 1} (${Math.round(score * 100)}%)`
+    }
+    return `Match #${index + 1}`
+  }
+  if (nodeType === 'TextBucket') {
+    if (typeof item === 'string') {
+      const preview = item.length > 40 ? item.slice(0, 37) + '...' : item
+      return `Text #${index + 1}: ${preview}`
+    }
+    return `Text #${index + 1}`
+  }
+  return `${outputKey} #${index + 1}`
+}
+
 export function useNodeOutputs(): NodeGroup[] {
   const nodes = useWorkflowStore((s) => s.nodes)
 
@@ -68,16 +94,33 @@ export function useNodeOutputs(): NodeGroup[] {
         const contentType = runtimeTypeToSlotContentType(portSpec.runtime_type)
         const shortId = nodeId.split('-').pop() ?? nodeId
 
-        entries.push({
-          ref: {
-            nodeId,
-            nodeType: node.type,
-            outputKey: portSpec.key,
-            label: `${node.type} (${shortId}) — ${portSpec.key}`,
-          },
-          contentType,
-          value: val,
-        })
+        // Expand array values into individual items
+        if (Array.isArray(val) && val.length > 0) {
+          for (let i = 0; i < val.length; i++) {
+            entries.push({
+              ref: {
+                nodeId,
+                nodeType: node.type,
+                outputKey: portSpec.key,
+                label: itemLabel(node.type, portSpec.key, i, val[i]),
+                arrayIndex: i,
+              },
+              contentType,
+              value: val[i],
+            })
+          }
+        } else {
+          entries.push({
+            ref: {
+              nodeId,
+              nodeType: node.type,
+              outputKey: portSpec.key,
+              label: `${node.type} (${shortId}) — ${portSpec.key}`,
+            },
+            contentType,
+            value: val,
+          })
+        }
       }
 
       if (entries.length > 0) {
@@ -102,8 +145,8 @@ export function OutputsSidebar() {
     const set = new Set<string>()
     if (!config) return set
     for (const a of config.assignments) {
-      if (a.source) {
-        set.add(`${a.source.nodeId}:${a.source.outputKey}`)
+      for (const src of a.sources) {
+        set.add(refKey(src))
       }
     }
     return set
@@ -135,7 +178,7 @@ export function OutputsSidebar() {
               </div>
               <div className="space-y-1.5">
                 {group.outputs.map((entry) => {
-                  const key = `${entry.ref.nodeId}:${entry.ref.outputKey}`
+                  const key = refKey(entry.ref)
                   return (
                     <OutputBlock
                       key={key}

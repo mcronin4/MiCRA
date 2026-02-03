@@ -4,28 +4,68 @@ import { useState, useCallback } from 'react'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
 import { LINKEDIN_TEMPLATE } from '@/types/preview'
-import type { TemplateSlot, SlotAssignment } from '@/types/preview'
+import type { TemplateSlot, SlotAssignment, NodeOutputRef } from '@/types/preview'
 import { SlotAssigner } from '../SlotAssigner'
 import { TextSlot } from '../slots/TextSlot'
 import { ImageSlot } from '../slots/ImageSlot'
 import { MediaSlot } from '../slots/MediaSlot'
 import { AlertTriangle, Linkedin } from 'lucide-react'
 
+/** Resolve a single NodeOutputRef to its raw value */
+function resolveRef(
+  ref: NodeOutputRef,
+  nodes: Record<string, { outputs: Record<string, unknown> | null }>
+): unknown | undefined {
+  const node = nodes[ref.nodeId]
+  if (!node?.outputs) return undefined
+
+  const val = node.outputs[ref.outputKey]
+  if (val === undefined) return undefined
+
+  // If an arrayIndex is specified, pick that item (with bounds check)
+  if (ref.arrayIndex !== undefined && Array.isArray(val)) {
+    if (ref.arrayIndex < 0 || ref.arrayIndex >= val.length) return undefined
+    return val[ref.arrayIndex]
+  }
+  return val
+}
+
 function resolveSlotValue(
   assignment: SlotAssignment,
-  nodes: Record<string, { outputs: Record<string, unknown> | null }>
+  nodes: Record<string, { outputs: Record<string, unknown> | null }>,
+  slotAcceptsTypes: string[]
 ): { value: unknown; stale: boolean } {
-  if (!assignment.source) return { value: null, stale: false }
+  if (assignment.sources.length === 0) return { value: null, stale: false }
 
-  const node = nodes[assignment.source.nodeId]
-  if (!node || !node.outputs) {
-    return { value: null, stale: true }
+  const isMediaSlot = slotAcceptsTypes.includes('image') || slotAcceptsTypes.includes('video')
+
+  const resolved: unknown[] = []
+  let anyStale = false
+
+  for (const ref of assignment.sources) {
+    const val = resolveRef(ref, nodes)
+    if (val === undefined) {
+      anyStale = true
+    } else {
+      resolved.push(val)
+    }
   }
 
-  const val = node.outputs[assignment.source.outputKey]
-  if (val === undefined) return { value: null, stale: true }
+  if (resolved.length === 0) return { value: null, stale: anyStale }
 
-  return { value: val, stale: false }
+  // For media slots, use the first resolved value
+  if (isMediaSlot) {
+    return { value: resolved[0], stale: anyStale }
+  }
+
+  // Single source → pass through as-is (preserves object structure for TextSlot)
+  if (resolved.length === 1) {
+    return { value: resolved[0], stale: anyStale }
+  }
+
+  // Multiple text sources → return as array so TextSlot can render each item
+  // (e.g. quote objects get blockquote rendering with attribution)
+  return { value: resolved, stale: anyStale }
 }
 
 export function LinkedInMockup() {
@@ -74,8 +114,9 @@ export function LinkedInMockup() {
               (a) => a.slotId === slot.slotId
             )
             const { value, stale } = resolveSlotValue(
-              assignment ?? { slotId: slot.slotId, source: null },
-              nodes
+              assignment ?? { slotId: slot.slotId, sources: [] },
+              nodes,
+              slot.acceptsTypes
             )
 
             return (
@@ -96,6 +137,7 @@ export function LinkedInMockup() {
       {/* Slot assigner popover */}
       {activeSlot && (
         <SlotAssigner
+          key={activeSlot.slotId}
           slot={activeSlot}
           onClose={() => setActiveSlotId(null)}
           position={popoverPos}
@@ -177,7 +219,7 @@ function SlotContainer({
         )
       ) : (
         <TextSlot
-          value={typeof value === 'string' ? value : Array.isArray(value) ? value.join('\n\n') : JSON.stringify(value, null, 2)}
+          value={value}
           variant={
             slot.slotId === 'headline'
               ? 'headline'
