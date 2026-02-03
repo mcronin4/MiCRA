@@ -1,58 +1,69 @@
+# Web framework & API
+fastapi
+uvicorn
+starlette
+python-multipart
+httpx
+requests
+websockets
+python-dotenv
+
+# Pydantic & typing
+pydantic
+pydantic_core
 annotated-types
+typing-inspection
+typing_extensions
+eval_type_backport
+
+# Async & networking
 anyio
+h11
+httpcore
+sniffio
+click
+colorama
+
+# Auth & security
+PyJWT[cryptography]
+google-auth
+pyasn1
+pyasn1_modules
+rsa
 cachetools
 certifi
 charset-normalizer
-click
-colorama
-dotenv
-exceptiongroup
-fastapi
-google-auth
-google-genai
-h11
-httpcore
-httpx
 idna
-pyasn1
-pyasn1_modules
-pydantic
-pydantic_core
-python-dotenv
-requests
-rsa
-sniffio
-starlette
-tenacity
-typing-inspection
-typing_extensions
 urllib3
-uvicorn
-websockets
 
-# New dependencies
-# yt-dlp - Large dependency, install separately if needed for URL transcription
-# numpy - Large dependency, install separately if needed
-tqdm
-python-multipart
-Pillow
-
-# VLM dependencies for V2 image_text_matching (vlm_anslysis.py) (VLM V2)
-fireworks-ai
-
-# Image extraction (OpenCV) - use headless for servers/containers
-opencv-python-headless
-imagehash
+# Supabase
+supabase
+asyncpg
 
 # Cloudflare R2 (S3-compatible) storage
 boto3
 
-# Supabase Storage integration
-supabase
-asyncpg
+# AI / LLM providers
+fireworks-ai
+google-genai
+openai
 
-# JWT verification for Supabase Auth
-PyJWT[cryptography]
+# Transcription (Faster-Whisper)
+faster-whisper
+
+# Image processing
+Pillow
+opencv-python-headless
+imagehash
+
+# Video processing
+scenedetect
+yt-dlp
+
+# Utilities
+tqdm
+tenacity
+numpy
 
 # Optional ML dependencies (uncomment if needed for original image_text_matching implementation)
 # torch
@@ -61,3 +72,5 @@ PyJWT[cryptography]
 # sentencepiece
 # scikit-learn
 # easyocr
+# deepface
+# matplotlib

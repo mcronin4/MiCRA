@@ -15,6 +15,8 @@ Key concepts:
 V2: Parallel execution with dynamic ready-queue, error stops execution.
 """
 
+from __future__ import annotations
+
 import asyncio
 import time
 import logging

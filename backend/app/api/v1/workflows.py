@@ -25,7 +25,7 @@ class ExecutionLogSummary(BaseModel):
     id: str
     workflow_id: str
     success: bool
-    error: str | None
+    error: Optional[str] = None
     total_execution_time_ms: int
     node_count: int
     nodes_completed: int
@@ -34,8 +34,8 @@ class ExecutionLogSummary(BaseModel):
 
 
 class ExecutionLogDetail(ExecutionLogSummary):
-    node_summaries: list[dict]
-    blueprint: dict | None = None  # The compiled blueprint that was executed
+    node_summaries: List[Dict[str, Any]] = []
+    blueprint: Optional[Dict[str, Any]] = None  # The compiled blueprint that was executed
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -605,8 +605,8 @@ class ExecuteRawRequest(BaseModel):
     """Execute a raw (unsaved) workflow."""
     nodes: List[Dict[str, Any]]
     edges: List[Dict[str, Any]]
-    workflow_id: str | None = None
-    workflow_name: str | None = None
+    workflow_id: Optional[str] = None
+    workflow_name: Optional[str] = None
 
 
 class ExecuteByIdRequest(BaseModel):
