@@ -619,6 +619,7 @@ async def list_files(
     parent_id: Optional[UUID] = Query(None, description="Filter by parent file ID"),
     status: str = Query("uploaded", description="Filter by status"),
     type: Optional[str] = Query(None, description="Filter by file type"),
+    ids: Optional[str] = Query(None, description="Comma-separated list of file UUIDs to retrieve"),
     limit: int = Query(50, ge=1, le=100, description="Number of items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     include_urls: bool = Query(False, description="Include signed URLs in response"),
@@ -628,6 +629,7 @@ async def list_files(
     """
     List files for the current user with optional filtering and pagination.
     Can optionally include presigned download URLs.
+    If 'ids' is provided, returns only those files.
     """
     r2 = get_r2()
 
@@ -654,12 +656,20 @@ async def list_files(
 
     if bucket:
         query = query.eq("bucket", bucket)
-    if parent_id:
-        query = query.eq("parent_id", str(parent_id))
-    if status:
-        query = query.eq("status", status)
-    if type:
-        query = query.eq("type", type)
+    
+    # If ids are provided, filter by those IDs
+    if ids:
+        id_list = [id.strip() for id in ids.split(",") if id.strip()]
+        if id_list:
+            query = query.in_("id", id_list)
+    else:
+        # Only apply other filters if not fetching by ID (or apply both? simpler to apply both but ID usually overrides)
+        if parent_id:
+            query = query.eq("parent_id", str(parent_id))
+        if status:
+            query = query.eq("status", status)
+        if type:
+            query = query.eq("type", type)
     
     # Order by created_at desc, paginate
     query = query.order("created_at", desc=True).range(offset, offset + limit - 1)

@@ -70,6 +70,7 @@ export interface SignDownloadResponse {
 
 export interface FileListItem extends FileResponse {
   signedUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface ListFilesResponse {
@@ -86,6 +87,7 @@ export interface ListFilesParams {
   offset?: number;
   includeUrls?: boolean;
   expiresIn?: number;
+  ids?: string[];
 }
 
 export interface DeleteFileRequest {
@@ -167,7 +169,7 @@ export async function listFiles(
   params: ListFilesParams = {}
 ): Promise<ListFilesResponse> {
   const searchParams = new URLSearchParams();
-  
+
   if (params.bucket) searchParams.append('bucket', params.bucket);
   if (params.parentId) searchParams.append('parent_id', params.parentId);
   if (params.status) searchParams.append('status', params.status);
@@ -178,10 +180,11 @@ export async function listFiles(
     searchParams.append('include_urls', params.includeUrls.toString());
   }
   if (params.expiresIn) searchParams.append('expires_in', params.expiresIn.toString());
-  
+  if (params.ids && params.ids.length > 0) searchParams.append('ids', params.ids.join(','));
+
   const queryString = searchParams.toString();
   const url = `/v1/files${queryString ? `?${queryString}` : ''}`;
-  
+
   return apiClient.request<ListFilesResponse>(url, {
     method: 'GET',
   });
