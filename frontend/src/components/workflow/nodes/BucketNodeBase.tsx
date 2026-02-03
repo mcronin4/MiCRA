@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, ReactNode } from "react";
+import React, { useState, useEffect, useRef, ReactNode } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { getNodeSpec } from "@/lib/nodeRegistry";
 import type { RuntimeType } from "@/types/blueprint";
 import { CheckCircle2, Loader2, LucideIcon } from "lucide-react";
-import { useWorkflowStore } from "@/lib/stores/workflowStore";
+import { useWorkflowStore, NodeStatus } from "@/lib/stores/workflowStore";
 import { listFiles, FileListItem } from "@/lib/fastapi/files";
 import Image from "next/image";
 
@@ -167,6 +167,27 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
   const isRunning = node?.status === "running";
   const isCompleted = node?.status === "completed";
 
+  // Track previous status for animations
+  const prevStatusRef = useRef<NodeStatus | undefined>(undefined);
+  const [justCompleted, setJustCompleted] = useState(false);
+
+  // Detect status changes for animations
+  useEffect(() => {
+    const currentStatus = node?.status;
+    const prevStatus = prevStatusRef.current;
+    
+    // Update previous status FIRST (before any early returns)
+    prevStatusRef.current = currentStatus;
+    
+    // Trigger completion animation when status changes to completed
+    if (currentStatus === 'completed' && prevStatus !== 'completed' && prevStatus !== undefined) {
+      setJustCompleted(true);
+      // Reset after animation completes
+      const timer = setTimeout(() => setJustCompleted(false), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [node?.status]);
+
   const initialSelectedIds = Array.isArray(node?.inputs?.selected_file_ids)
     ? (node.inputs.selected_file_ids as string[])
     : [];
@@ -179,10 +200,15 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
   const [error, setError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
 
-  // Fetch files from storage
+  // Fetch files from storage - refetch when picker is opened and poll while open
   useEffect(() => {
-    const fetchFiles = async () => {
-      setIsLoading(true);
+    let intervalId: NodeJS.Timeout | null = null;
+    let isMounted = true;
+
+    const fetchFiles = async (showLoadingSpinner = true) => {
+      if (showLoadingSpinner) {
+        setIsLoading(true);
+      }
       setError(null);
       try {
         const response = await listFiles({
@@ -191,16 +217,40 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
           includeUrls: true,
           limit: 100,
         });
-        setFiles(response.items);
+        if (isMounted) {
+          setFiles(response.items);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : `Failed to load ${bucketType} files`);
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : `Failed to load ${bucketType} files`);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
-    fetchFiles();
-  }, [bucketType]);
+    // Fetch on mount or when picker opens
+    if (showPicker || files.length === 0) {
+      fetchFiles(true);
+    }
+
+    // Poll for new files while picker is open (every 2 seconds)
+    if (showPicker) {
+      intervalId = setInterval(() => {
+        fetchFiles(false); // Don't show loading spinner for background refreshes
+      }, 2000);
+    }
+
+    return () => {
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucketType, showPicker]);
 
   // Sync selected IDs to node inputs
   useEffect(() => {
@@ -378,7 +428,8 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
         transition-all duration-300 ease-out
         hover:-translate-y-1
         ${containerClasses[bucketType]}
-        ${isRunning ? "animate-pulse" : ""}
+        ${isRunning ? "animate-running-glow" : ""}
+        ${justCompleted ? "animate-node-complete" : ""}
       `}
     >
       <div className="px-5 py-4 space-y-3">

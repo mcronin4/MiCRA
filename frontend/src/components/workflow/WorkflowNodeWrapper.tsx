@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Handle, Position } from "@xyflow/react";
 import {
   CheckCircle2,
@@ -13,7 +13,7 @@ import {
   Mic,
   TextQuote,
 } from "lucide-react";
-import { useWorkflowStore } from "@/lib/stores/workflowStore";
+import { useWorkflowStore, NodeStatus } from "@/lib/stores/workflowStore";
 import { NodeConfig } from "@/types/workflow";
 import { ManualInputToggle } from "./nodes/ManualInputToggle";
 import { getNodeSpec } from "@/lib/nodeRegistry";
@@ -219,6 +219,31 @@ export function WorkflowNodeWrapper({
 }: Props) {
   const node = useWorkflowStore((state) => state.nodes[nodeId]);
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
+  
+  // Track previous status for animations
+  const prevStatusRef = useRef<NodeStatus | undefined>(undefined);
+  const [justCompleted, setJustCompleted] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+
+  // Detect status changes for animations
+  useEffect(() => {
+    const currentStatus = node?.status;
+    const prevStatus = prevStatusRef.current;
+    
+    // Track running state for glow animation - MUST be set before early returns
+    setIsRunning(currentStatus === 'running');
+    
+    // Update previous status
+    prevStatusRef.current = currentStatus;
+    
+    // Trigger completion animation when status changes to completed
+    if (currentStatus === 'completed' && prevStatus !== 'completed' && prevStatus !== undefined) {
+      setJustCompleted(true);
+      // Reset after animation completes
+      const timer = setTimeout(() => setJustCompleted(false), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [node?.status]);
 
   const statusConfig = {
     idle: { icon: null, color: "text-slate-400 bg-slate-100", text: "Idle" },
@@ -238,10 +263,11 @@ export function WorkflowNodeWrapper({
 
   const StatusIcon = statusConfig.icon;
   const ThemeIcon = theme.icon;
+  const isCompleted = node?.status === "completed";
 
   return (
     <div
-      className="
+      className={`
         group
         relative
         bg-white
@@ -254,7 +280,9 @@ export function WorkflowNodeWrapper({
         hover:shadow-[0_8px_30px_-8px_rgba(0,0,0,0.12)]
         hover:border-slate-300/80
         hover:-translate-y-1
-      "
+        ${justCompleted ? 'animate-node-complete' : ''}
+        ${isRunning ? 'animate-running-glow border-blue-300' : ''}
+      `}
     >
       {/* Minimalist header */}
       <div className="px-6 py-5 pb-2">
@@ -262,11 +290,19 @@ export function WorkflowNodeWrapper({
           <div className="flex items-start gap-3.5">
             <div
               className={`
-              p-2.5 rounded-xl ${theme.iconBg} ${theme.iconColor} 
+              p-2.5 rounded-xl 
+              ${isCompleted ? 'bg-emerald-500' : theme.iconBg}
+              ${isCompleted ? 'text-white' : theme.iconColor}
               shadow-sm ring-1 ring-inset ring-black/5
+              transition-all duration-300
+              ${isCompleted ? 'scale-105' : ''}
             `}
             >
-              <ThemeIcon size={20} />
+              {isCompleted ? (
+                <CheckCircle2 size={20} strokeWidth={2.5} />
+              ) : (
+                <ThemeIcon size={20} />
+              )}
             </div>
             <div>
               <h3 className="font-semibold text-[16px] text-slate-900 leading-tight">
@@ -284,6 +320,7 @@ export function WorkflowNodeWrapper({
               flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase
               ${statusConfig.color}
               transition-colors duration-200
+              ${justCompleted ? 'animate-status-ripple' : ''}
             `}
           >
             {StatusIcon && (

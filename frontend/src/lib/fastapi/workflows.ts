@@ -349,8 +349,198 @@ function getBaseUrl(): string {
 }
 
 /**
- * Execute a workflow with SSE streaming.
- * Returns an async generator that yields events as each node executes.
+ * Execute a workflow with SSE streaming using callbacks.
+ * This approach ensures events are processed immediately as they arrive.
+ * 
+ * @param workflowData - The workflow data to execute
+ * @param onEvent - Callback called for each SSE event as it arrives
+ * @param workflowId - Optional workflow ID
+ * @param workflowName - Optional workflow name
+ * @returns Promise that resolves when the stream is complete
+ */
+export async function executeWorkflowStreamingWithCallback(
+  workflowData: SavedWorkflowData,
+  onEvent: (event: StreamingExecutionEvent) => void,
+  workflowId?: string | null,
+  workflowName?: string | null
+): Promise<void> {
+  // Get auth token
+  const { data: { session } } = await supabase.auth.getSession()
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  }
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`
+  }
+
+  const baseUrl = getBaseUrl()
+  const response = await fetch(`${baseUrl}/v1/workflows/execute/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      nodes: workflowData.nodes,
+      edges: workflowData.edges,
+      workflow_id: workflowId || null,
+      workflow_name: workflowName || null,
+    }),
+  })
+
+  if (!response.ok) {
+    let errorMessage = `HTTP error! status: ${response.status}`
+    try {
+      const errorData = await response.json()
+      if (errorData.detail) {
+        errorMessage = typeof errorData.detail === 'object'
+          ? JSON.stringify(errorData.detail)
+          : String(errorData.detail)
+      }
+    } catch {
+      // Use default error message
+    }
+    throw new Error(errorMessage)
+  }
+
+  if (!response.body) {
+    throw new Error('No response body')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      // Parse SSE events from buffer - process each event IMMEDIATELY
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim()
+          if (jsonStr) {
+            try {
+              const event = JSON.parse(jsonStr) as StreamingExecutionEvent
+              // Call the callback immediately for each event
+              onEvent(event)
+            } catch (e) {
+              console.warn('Failed to parse SSE event:', jsonStr, e)
+            }
+          }
+        }
+      }
+    }
+
+    // Process any remaining data in buffer
+    if (buffer.startsWith('data: ')) {
+      const jsonStr = buffer.slice(6).trim()
+      if (jsonStr) {
+        try {
+          const event = JSON.parse(jsonStr) as StreamingExecutionEvent
+          onEvent(event)
+        } catch {
+          // Ignore incomplete final event
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+/**
+ * Execute a saved workflow by ID with SSE streaming using callbacks.
+ */
+export async function executeWorkflowByIdStreamingWithCallback(
+  workflowId: string,
+  onEvent: (event: StreamingExecutionEvent) => void
+): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  }
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`
+  }
+
+  const baseUrl = getBaseUrl()
+  const response = await fetch(`${baseUrl}/v1/workflows/${workflowId}/execute/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  })
+
+  if (!response.ok) {
+    let errorMessage = `HTTP error! status: ${response.status}`
+    try {
+      const errorData = await response.json()
+      if (errorData.detail) {
+        errorMessage = typeof errorData.detail === 'object'
+          ? JSON.stringify(errorData.detail)
+          : String(errorData.detail)
+      }
+    } catch {
+      // Use default error message
+    }
+    throw new Error(errorMessage)
+  }
+
+  if (!response.body) {
+    throw new Error('No response body')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim()
+          if (jsonStr) {
+            try {
+              const event = JSON.parse(jsonStr) as StreamingExecutionEvent
+              onEvent(event)
+            } catch (e) {
+              console.warn('Failed to parse SSE event:', jsonStr, e)
+            }
+          }
+        }
+      }
+    }
+
+    if (buffer.startsWith('data: ')) {
+      const jsonStr = buffer.slice(6).trim()
+      if (jsonStr) {
+        try {
+          const event = JSON.parse(jsonStr) as StreamingExecutionEvent
+          onEvent(event)
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+// Keep the old async generator versions for backwards compatibility
+/**
+ * @deprecated Use executeWorkflowStreamingWithCallback instead for real-time updates
  */
 export async function* executeWorkflowStreaming(
   workflowData: SavedWorkflowData,

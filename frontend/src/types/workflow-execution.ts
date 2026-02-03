@@ -1,5 +1,6 @@
 export interface NodeExecutionResult {
   node_id: string
+  node_type: string | null
   status: 'completed' | 'error'
   outputs: Record<string, unknown> | null
   error: string | null
