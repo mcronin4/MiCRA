@@ -18,7 +18,7 @@ except ImportError:
 
 # load vitual environment variables
 load_dotenv()
-FIREWORK_API_KEY = os.getenv("FIREWORK_API_KEY")
+FIREWORK_API_KEY = os.getenv("FIREWORKS_API_KEY")
 FIREWORK_API_URL = "https://audio-turbo.api.fireworks.ai/v1/audio/transcriptions"
 
 

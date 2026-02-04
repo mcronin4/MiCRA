@@ -65,12 +65,15 @@ tqdm
 tenacity
 numpy
 
-# Optional ML dependencies (uncomment if needed for original image_text_matching implementation)
-# torch
-# torchvision
+# ML dependencies for image extraction & analysis
+torch
+torchvision
+deepface
+tf-keras
+
+# Optional ML dependencies (uncomment if needed)
 # transformers
 # sentencepiece
 # scikit-learn
 # easyocr
-# deepface
 # matplotlib

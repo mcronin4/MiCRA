@@ -15,7 +15,7 @@ class VLMConfig:
     """Configuration for VLM-based image text matchers"""
     
     # Fireworks API settings
-    FIREWORK_API_KEY: Optional[str] = os.getenv("FIREWORK_API_KEY")
+    FIREWORKS_API_KEY: Optional[str] = os.getenv("FIREWORKS_API_KEY")
     FIREWORKS_MODEL: str = "accounts/fireworks/models/qwen2p5-vl-32b-instruct"
     
     # Image processing settings
@@ -45,10 +45,10 @@ class VLMConfig:
         Raises:
             ValueError: If API key is not set
         """
-        api_key = cls.FIREWORK_API_KEY
+        api_key = cls.FIREWORKS_API_KEY
         if not api_key:
             raise ValueError(
-                "FIREWORK_API_KEY not found. "
+                "FIREWORKS_API_KEY not found. "
                 "Please set it in your environment or .env file."
             )
         return api_key

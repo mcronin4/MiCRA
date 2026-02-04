@@ -62,8 +62,8 @@ function formatOutputValue(value: unknown): string {
       // Truncate long URLs
       return value.length > 60 ? value.substring(0, 57) + '...' : value;
     }
-    // Truncate long strings
-    return value.length > 200 ? value.substring(0, 197) + '...' : value;
+    // Show full text for generated content (no truncation)
+    return value;
   }
   if (Array.isArray(value)) {
     // For small arrays of simple values, show them inline
