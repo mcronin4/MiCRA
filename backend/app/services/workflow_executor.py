@@ -579,14 +579,45 @@ async def _exec_transcription(params: dict, inputs: dict) -> dict[str, Any]:
     else:
         media_path = media_url
 
+    # Retry logic for intermittent Fireworks API failures
+    max_retries = 3
+    retry_delay = 2  # seconds, will double each retry
+    last_error = None
+
     try:
-        segments = transcribe_audio_or_video_file(media_path)
+        for attempt in range(max_retries):
+            try:
+                logger.info("Transcription: calling transcribe_audio_or_video_file on %s (attempt %d/%d)",
+                           media_path, attempt + 1, max_retries)
+                segments = transcribe_audio_or_video_file(media_path)
 
-        if segments is None:
-            raise RuntimeError("Transcription failed")
+                if segments is None:
+                    logger.warning("Transcription: API returned no segments (attempt %d/%d)",
+                                  attempt + 1, max_retries)
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay * (2 ** attempt))
+                        continue
+                    else:
+                        raise RuntimeError("Transcription failed - API returned no segments after all retries")
 
-        joined = " ".join(seg["text"] for seg in segments)
-        return {"transcription": joined}
+                logger.info("Transcription: got %d segments", len(segments))
+                joined = " ".join(seg["text"] for seg in segments)
+                return {"transcription": joined}
+
+            except RuntimeError:
+                raise  # Re-raise our own RuntimeError
+            except Exception as e:
+                last_error = e
+                logger.warning("Transcription attempt %d/%d failed: %s", attempt + 1, max_retries, e)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (2 ** attempt))
+                else:
+                    logger.exception("Transcription failed after %d attempts: %s", max_retries, e)
+                    raise RuntimeError(f"Transcription failed after {max_retries} attempts: {e}")
+
+        # Should not reach here, but just in case
+        raise RuntimeError(f"Transcription failed: {last_error}")
+
     finally:
         # Clean up temp file if we downloaded one
         if media_path and media_path != media_url and os.path.exists(media_path):
@@ -852,6 +883,97 @@ async def _exec_image_extraction(params: dict, inputs: dict) -> dict[str, Any]:
             image_refs.append(data_url)
 
         logger.info("ImageExtraction completed: extracted %d keyframes", len(image_refs))
+        return {"images": image_refs}
+
+    finally:
+        # Clean up temp file if we downloaded one
+        if video_path and video_path != source and os.path.exists(video_path):
+            try:
+                os.unlink(video_path)
+            except Exception:
+                pass
+
+
+@executor("ImageExtractionJB")
+async def _exec_image_extraction_jb(params: dict, inputs: dict) -> dict[str, Any]:
+    """
+    Extract keyframes from video using JB edition pipeline.
+
+    Expected inputs (after shape conversion in resolve_node_inputs):
+    - source: str (single VideoRef signed URL, automatically converted from VideoBucket list if needed)
+
+    Returns:
+    - images: list of base64 data URLs for extracted keyframes
+    """
+    import tempfile
+    import httpx
+    import os
+    import asyncio
+    from pathlib import Path
+
+    source = inputs.get("source", "")
+
+    # Validate input (shape conversion should have already happened)
+    if not source:
+        raise ValueError("No video source provided to ImageExtractionJB node")
+    if not isinstance(source, str):
+        raise ValueError(f"Expected source to be a string (shape conversion should have handled list→single), got {type(source).__name__}")
+
+    logger.info("ImageExtractionJB processing video: %s...", source[:80])
+
+    # If source is a URL, download to a temp file
+    video_path = None
+    try:
+        if source.startswith("http://") or source.startswith("https://"):
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.get(source)
+                resp.raise_for_status()
+                # Determine file extension from URL or default to .mp4
+                suffix = os.path.splitext(source.split("?")[0])[-1] or ".mp4"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                    f.write(resp.content)
+                    video_path = f.name
+        else:
+            video_path = source
+
+        # Run the JB keyframe extraction pipeline
+        from app.agents.image_extraction.keyframe_pipeline_jb import run_keyframe_pipeline_jb
+
+        # Create output directory for extracted frames
+        app_root = Path(__file__).resolve().parent.parent
+        output_dir = app_root / "agents" / "image_extraction" / "outputs" / "keyframes"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        config = {"output_dir": str(output_dir)}
+        result = await asyncio.to_thread(run_keyframe_pipeline_jb, video_path, config)
+
+        # Convert extracted frames to base64 data URLs
+        import base64
+
+        selected_frames = result.get("selected_frames", [])
+        image_refs = []
+
+        for frame in selected_frames:
+            image_path = frame.get("selected_path") or frame.get("frame_path")
+            if not image_path or not os.path.exists(image_path):
+                continue
+
+            # Determine MIME type
+            suffix = Path(image_path).suffix.lower().lstrip(".")
+            if suffix in ("jpg", "jpeg"):
+                mime = "image/jpeg"
+            elif suffix in ("png", "webp"):
+                mime = f"image/{suffix}"
+            else:
+                mime = "image/jpeg"
+
+            # Read and encode to base64
+            with open(image_path, "rb") as img_file:
+                encoded = base64.b64encode(img_file.read()).decode("ascii")
+            data_url = f"data:{mime};base64,{encoded}"
+            image_refs.append(data_url)
+
+        logger.info("ImageExtractionJB completed: extracted %d keyframes", len(image_refs))
         return {"images": image_refs}
 
     finally:
