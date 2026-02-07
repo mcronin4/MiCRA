@@ -157,6 +157,42 @@ body {
   animation: toast-exit 0.2s ease-in forwards;
 }
 
+/* Skeleton shimmer loading animation */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #e8eaef 0%,
+    #e8eaef 35%,
+    #f4f5f7 50%,
+    #e8eaef 65%,
+    #e8eaef 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes skeleton-fade {
+  0%, 100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.skeleton-pulse {
+  animation: skeleton-fade 1.6s ease-in-out infinite;
+}
+
 .chat-input-container {
   border: 1px solid #E6E6E6;
 }

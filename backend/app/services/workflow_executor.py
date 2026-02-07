@@ -18,6 +18,8 @@ V2: Parallel execution with dynamic ready-queue, error stops execution.
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import time
 import logging
 from typing import Any, Callable, Literal
@@ -36,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 class NodeExecutionResult(BaseModel):
     node_id: str
+    node_type: str | None = None
     status: Literal["completed", "error"]
     outputs: dict[str, Any] | None = None
     error: str | None = None
@@ -48,6 +51,7 @@ class WorkflowExecutionResult(BaseModel):
     node_results: list[NodeExecutionResult]
     total_execution_time_ms: int
     error: str | None = None
+    persistence_warning: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -924,6 +928,7 @@ async def execute_workflow(
         if bp_node is None:
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=None,
                 status="error",
                 error=f"Node {node_id} not found in blueprint",
             )
@@ -932,6 +937,7 @@ async def execute_workflow(
         if exec_fn is None:
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=bp_node.type,
                 status="error",
                 error=f"No executor for node type '{bp_node.type}'",
             )
@@ -973,6 +979,7 @@ async def execute_workflow(
 
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=bp_node.type,
                 status="completed",
                 outputs=outputs,
                 execution_time_ms=elapsed_ms,
@@ -982,6 +989,7 @@ async def execute_workflow(
             elapsed_ms = int((time.perf_counter() - node_start) * 1000)
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=bp_node.type,
                 status="error",
                 error="Execution cancelled",
                 execution_time_ms=elapsed_ms,
@@ -993,6 +1001,7 @@ async def execute_workflow(
             logger.exception("Node %s failed: %s", node_id, error_msg)
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=bp_node.type,
                 status="error",
                 error=error_msg,
                 execution_time_ms=elapsed_ms,
@@ -1060,6 +1069,7 @@ async def execute_workflow(
                     node_results.append(
                         NodeExecutionResult(
                             node_id=node_id,
+                            node_type=node_map.get(node_id).type if node_map.get(node_id) else None,
                             status="error",
                             error="Execution cancelled due to upstream error",
                         )
@@ -1137,6 +1147,7 @@ async def execute_workflow_streaming(
         if bp_node is None:
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=None,
                 status="error",
                 error=f"Node {node_id} not found in blueprint",
             )
@@ -1145,6 +1156,7 @@ async def execute_workflow_streaming(
         if exec_fn is None:
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=bp_node.type,
                 status="error",
                 error=f"No executor for node type '{bp_node.type}'",
             )
@@ -1164,6 +1176,7 @@ async def execute_workflow_streaming(
 
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=bp_node.type,
                 status="completed",
                 outputs=outputs,
                 execution_time_ms=elapsed_ms,
@@ -1173,6 +1186,7 @@ async def execute_workflow_streaming(
             elapsed_ms = int((time.perf_counter() - node_start) * 1000)
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=bp_node.type,
                 status="error",
                 error="Execution cancelled",
                 execution_time_ms=elapsed_ms,
@@ -1184,6 +1198,7 @@ async def execute_workflow_streaming(
             logger.exception("Node %s failed: %s", node_id, error_msg)
             return NodeExecutionResult(
                 node_id=node_id,
+                node_type=bp_node.type,
                 status="error",
                 error=error_msg,
                 execution_time_ms=elapsed_ms,
@@ -1281,6 +1296,7 @@ async def execute_workflow_streaming(
                             node_results.append(
                                 NodeExecutionResult(
                                     node_id=node_id,
+                                    node_type=node_map.get(node_id).type if node_map.get(node_id) else None,
                                     status="error",
                                     error="Execution cancelled due to upstream error",
                                 )
@@ -1363,18 +1379,33 @@ async def execute_workflow_streaming(
 # ---------------------------------------------------------------------------
 
 
+def _max_persisted_output_bytes() -> int:
+    raw = os.getenv("WORKFLOW_OUTPUT_MAX_BYTES", "5000000")
+    try:
+        parsed = int(raw)
+        if parsed <= 0:
+            return 5000000
+        return parsed
+    except ValueError:
+        return 5000000
+
+
 def save_execution_log(
     result: WorkflowExecutionResult,
     workflow_id: str | None,
     user_id: str,
     blueprint: Blueprint | None = None,
-) -> None:
-    """Persist a lightweight execution summary to executions table."""
-    # Allow saving logs even for unsaved workflows (workflow_id = None)
+) -> tuple[str | None, str | None]:
+    """
+    Persist execution summary and (for saved workflows) per-run outputs.
 
+    Returns:
+        (execution_id, persistence_warning)
+    """
     node_summaries = [
         {
             "node_id": nr.node_id,
+            "node_type": nr.node_type,
             "status": nr.status,
             "error": nr.error,
             "execution_time_ms": nr.execution_time_ms,
@@ -1385,7 +1416,7 @@ def save_execution_log(
     nodes_completed = sum(1 for nr in result.node_results if nr.status == "completed")
     nodes_errored = sum(1 for nr in result.node_results if nr.status == "error")
 
-    row = {
+    execution_row = {
         "workflow_id": workflow_id,
         "user_id": user_id,
         "success": result.success,
@@ -1396,17 +1427,71 @@ def save_execution_log(
         "nodes_errored": nodes_errored,
         "node_summaries": node_summaries,
     }
-    
-    # Add blueprint if provided (serialize to dict for JSONB storage)
-    # Use mode='json' to properly serialize datetime objects to ISO strings
-    if blueprint:
-        row["blueprint"] = blueprint.model_dump(mode='json')
+
+    blueprint_snapshot = blueprint.model_dump(mode="json") if blueprint else None
+    if blueprint_snapshot:
+        execution_row["blueprint"] = blueprint_snapshot
+
+    execution_id: str | None = None
+    warning: str | None = None
 
     try:
         supabase = get_supabase().client
-        result = supabase.table("executions").insert(row).execute()
-        if not result.data:
-            logger.warning("Execution log insert returned no data for workflow %s", workflow_id)
+        insert_result = supabase.table("executions").insert(execution_row).execute()
+        if not insert_result.data:
+            logger.warning(
+                "Execution log insert returned no data for workflow %s", workflow_id
+            )
+            return None, "Execution saved without run outputs due to a logging issue."
+        execution_id = str(insert_result.data[0]["id"])
     except Exception as e:
         logger.exception("Failed to save execution log for workflow %s: %s", workflow_id, str(e))
-        # Don't raise - execution logging failure shouldn't break the workflow
+        return None, "Execution completed but could not be saved to history."
+
+    # Persist full outputs only for saved workflows
+    if not workflow_id:
+        return execution_id, None
+
+    node_outputs = {
+        nr.node_id: nr.outputs
+        for nr in result.node_results
+        if nr.outputs is not None
+    }
+    output_payload = {
+        "node_outputs": node_outputs,
+        "workflow_outputs": result.workflow_outputs,
+        "blueprint_snapshot": blueprint_snapshot,
+    }
+    payload_bytes = len(json.dumps(output_payload, separators=(",", ":"), default=str).encode("utf-8"))
+    max_bytes = _max_persisted_output_bytes()
+
+    if payload_bytes > max_bytes:
+        warning = (
+            f"Run outputs were too large to persist ({payload_bytes} bytes exceeds "
+            f"limit of {max_bytes} bytes)."
+        )
+        return execution_id, warning
+
+    try:
+        supabase = get_supabase().client
+        supabase.table("workflow_run_outputs").insert(
+            {
+                "execution_id": execution_id,
+                "workflow_id": workflow_id,
+                "user_id": user_id,
+                "node_outputs": node_outputs,
+                "workflow_outputs": result.workflow_outputs,
+                "blueprint_snapshot": blueprint_snapshot,
+                "payload_bytes": payload_bytes,
+            }
+        ).execute()
+    except Exception as e:
+        logger.exception(
+            "Failed to save run outputs for workflow %s execution %s: %s",
+            workflow_id,
+            execution_id,
+            str(e),
+        )
+        warning = "Run completed, but outputs could not be persisted."
+
+    return execution_id, warning

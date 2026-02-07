@@ -48,6 +48,7 @@ export interface WorkflowCompleteEvent {
   workflow_outputs: Record<string, unknown>
   total_execution_time_ms: number
   node_results: NodeExecutionResult[]
+  persistence_warning?: string | null
 }
 
 export interface WorkflowErrorEvent {
@@ -55,6 +56,7 @@ export interface WorkflowErrorEvent {
   error: string
   total_execution_time_ms: number
   node_results?: NodeExecutionResult[]
+  persistence_warning?: string | null
 }
 
 export type StreamingExecutionEvent =
@@ -140,6 +142,34 @@ export interface WorkflowVersion {
   created_at: string
 }
 
+export interface WorkflowRunSummary {
+  execution_id: string
+  workflow_id: string
+  success: boolean
+  error: string | null
+  total_execution_time_ms: number
+  node_count: number
+  nodes_completed: number
+  nodes_errored: number
+  created_at: string
+  has_persisted_outputs: boolean
+}
+
+export interface WorkflowRunOutputs {
+  execution_id: string
+  workflow_id: string
+  node_outputs: Record<string, Record<string, unknown>>
+  workflow_outputs: Record<string, unknown>
+  blueprint_snapshot: {
+    nodes?: Array<{
+      node_id?: string
+      type?: string
+    }>
+  } | null
+  payload_bytes: number
+  created_at: string
+}
+
 /**
  * List all workflows accessible to the user (user workflows + system templates).
  * Returns only metadata (no payload) for efficient listing.
@@ -170,6 +200,37 @@ export async function getWorkflow(workflowId: string): Promise<Workflow> {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+/**
+ * List persisted run history for a workflow.
+ */
+export async function listWorkflowRuns(
+  workflowId: string
+): Promise<WorkflowRunSummary[]> {
+  return apiClient.request<WorkflowRunSummary[]>(
+    `/v1/workflows/${workflowId}/runs`,
+    {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  )
+}
+
+/**
+ * Get persisted outputs for a workflow run.
+ */
+export async function getWorkflowRunOutputs(
+  workflowId: string,
+  executionId: string
+): Promise<WorkflowRunOutputs> {
+  return apiClient.request<WorkflowRunOutputs>(
+    `/v1/workflows/${workflowId}/runs/${executionId}/outputs`,
+    {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  )
 }
 
 /**

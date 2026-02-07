@@ -1,20 +1,49 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
 import { useWorkflowExecution } from '@/hooks/useWorkflowExecution'
 import { TONE_OPTIONS } from '@/types/preview'
+import {
+  getWorkflowRunOutputs,
+  listWorkflowRuns,
+  type WorkflowRunSummary,
+  type WorkflowRunOutputs,
+} from '@/lib/fastapi/workflows'
 import { OutputsSidebar } from './OutputsSidebar'
 import { PreviewEmptyState } from './PreviewEmptyState'
 import { PlatformSelector } from './PlatformSelector'
 import { LinkedInMockup } from './mockups/LinkedInMockup'
 import { PreviewDndContext } from './PreviewDndContext'
+import { PreviewDataProvider, type PreviewNodeState } from './PreviewDataContext'
 
 interface PreviewPageProps {
   workflowId: string
+}
+
+function buildPersistedNodes(
+  runOutputs: WorkflowRunOutputs
+): Record<string, PreviewNodeState> {
+  const nodeTypeMap = new Map<string, string>()
+  for (const node of runOutputs.blueprint_snapshot?.nodes ?? []) {
+    if (node?.node_id && node?.type) {
+      nodeTypeMap.set(node.node_id, node.type)
+    }
+  }
+
+  const next: Record<string, PreviewNodeState> = {}
+  for (const [nodeId, outputs] of Object.entries(runOutputs.node_outputs ?? {})) {
+    next[nodeId] = {
+      id: nodeId,
+      type: nodeTypeMap.get(nodeId) ?? 'Unknown',
+      status: 'completed',
+      outputs,
+    }
+  }
+  return next
 }
 
 export function PreviewPage({ workflowId }: PreviewPageProps) {
@@ -26,33 +55,129 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   const workflowName = useWorkflowStore((s) => s.workflowName)
   const currentWorkflowId = useWorkflowStore((s) => s.currentWorkflowId)
   const { executeById, isExecuting } = useWorkflowExecution()
+  const [runs, setRuns] = useState<WorkflowRunSummary[]>([])
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null)
+  const [persistedNodes, setPersistedNodes] = useState<Record<string, PreviewNodeState>>({})
+  const [runsLoading, setRunsLoading] = useState(false)
+  const [outputsLoading, setOutputsLoading] = useState(false)
+  const [runsError, setRunsError] = useState<string | null>(null)
+  const [runNotice, setRunNotice] = useState<string | null>(null)
 
-  // Load config from localStorage on mount
   useEffect(() => {
     loadPreviewConfig(workflowId)
   }, [workflowId, loadPreviewConfig])
 
-  // Check if any node has completed outputs
-  const hasOutputs = useMemo(() => {
-    return Object.values(nodes).some(
-      (n) => n.status === 'completed' && n.outputs
-    )
+  const refreshRuns = useCallback(async (preferLatest = false) => {
+    setRunsLoading(true)
+    try {
+      const items = await listWorkflowRuns(workflowId)
+      setRuns(items)
+      setRunsError(null)
+      setSelectedExecutionId((prev) => {
+        if (preferLatest) {
+          return items[0]?.execution_id ?? null
+        }
+        if (prev && items.some((r) => r.execution_id === prev)) {
+          return prev
+        }
+        return items[0]?.execution_id ?? null
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load run history'
+      setRunsError(msg)
+      setRuns([])
+      setSelectedExecutionId(null)
+    } finally {
+      setRunsLoading(false)
+    }
+  }, [workflowId])
+
+  useEffect(() => {
+    refreshRuns(true).catch(() => {})
+  }, [refreshRuns])
+
+  const selectedRun = useMemo(
+    () => runs.find((r) => r.execution_id === selectedExecutionId) ?? null,
+    [runs, selectedExecutionId]
+  )
+
+  useEffect(() => {
+    if (!selectedRun) {
+      setPersistedNodes({})
+      setRunNotice(null)
+      return
+    }
+
+    if (!selectedRun.has_persisted_outputs) {
+      setPersistedNodes({})
+      setRunNotice(
+        'This run has no persisted outputs (older run or payload exceeded persistence limit).'
+      )
+      return
+    }
+
+    setPersistedNodes({})
+    setOutputsLoading(true)
+    let cancelled = false
+    getWorkflowRunOutputs(workflowId, selectedRun.execution_id)
+      .then((outputs) => {
+        if (cancelled) return
+        setPersistedNodes(buildPersistedNodes(outputs))
+        setRunNotice(null)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        const msg = err instanceof Error ? err.message : 'Failed to load run outputs'
+        setPersistedNodes({})
+        setRunNotice(msg)
+      })
+      .finally(() => {
+        if (!cancelled) setOutputsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [workflowId, selectedRun])
+
+  const inMemoryHasOutputs = useMemo(() => {
+    return Object.values(nodes).some((n) => n.status === 'completed' && n.outputs)
   }, [nodes])
 
-  // Check if the store has this workflow loaded
-  const isWorkflowLoaded = currentWorkflowId === workflowId
+  const persistedHasOutputs = useMemo(() => {
+    return Object.values(persistedNodes).some(
+      (n) => n.status === 'completed' && n.outputs
+    )
+  }, [persistedNodes])
+
+  const isViewingRun = selectedRun !== null
+  const displayNodes = isViewingRun ? persistedNodes : nodes
+  const hasOutputs = isViewingRun ? persistedHasOutputs : inMemoryHasOutputs
+  const hasAnyRuns = runs.length > 0
 
   const handleToneChange = (newTone: string) => {
     setTone(newTone)
-    // Tone preference is saved but not injected into execution yet.
-    // Full tone injection requires a backend endpoint change (future work).
   }
 
-  // Show empty state if no workflow loaded or no outputs (but not while executing)
-  if (!isWorkflowLoaded || (!hasOutputs && !isExecuting)) {
+  const handleRerun = async () => {
+    try {
+      const result = await executeById(workflowId)
+      if (result?.persistence_warning) {
+        setRunNotice(result.persistence_warning)
+      }
+      await refreshRuns(true)
+    } catch {
+      // Errors already surfaced by execution hook.
+    }
+  }
+
+  const headerName =
+    currentWorkflowId === workflowId ? workflowName : `Workflow ${workflowId.slice(0, 8)}`
+
+  if (!hasOutputs && !isExecuting && !hasAnyRuns) {
     return (
       <div className="h-screen flex flex-col bg-white">
-        <PreviewHeader workflowName={workflowName} />
+        <PreviewHeader workflowName={headerName} />
         <PreviewEmptyState />
       </div>
     )
@@ -60,76 +185,98 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
 
   return (
     <div className="h-screen flex flex-col bg-white">
-      <PreviewHeader workflowName={workflowName} />
+      <PreviewHeader workflowName={headerName} />
 
-      <PreviewDndContext>
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left sidebar: outputs */}
-          <OutputsSidebar />
+      <PreviewDataProvider value={{ nodes: displayNodes, outputsLoading: outputsLoading || isExecuting }}>
+        <PreviewDndContext>
+          <div className="flex-1 flex overflow-hidden">
+            <OutputsSidebar />
 
-          {/* Main mockup area */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Toolbar: platform selector + tone */}
-            <div className="flex items-center justify-between px-6 py-3 border-b border-slate-200 bg-slate-50/50">
-              <PlatformSelector
-                activePlatform={config?.platformId ?? 'linkedin'}
-                onSelect={setPlatform}
-              />
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-3 border-b border-slate-200 bg-slate-50/50">
+                <PlatformSelector
+                  activePlatform={config?.platformId ?? 'linkedin'}
+                  onSelect={setPlatform}
+                />
 
-              <div className="flex items-center gap-3">
-                {/* Tone selector */}
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-slate-500">Tone:</label>
-                  <select
-                    value={config?.tone ?? 'professional'}
-                    onChange={(e) => handleToneChange(e.target.value)}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Run:</label>
+                    <select
+                      value={selectedExecutionId ?? ''}
+                      onChange={(e) =>
+                        setSelectedExecutionId(e.target.value || null)
+                      }
+                      disabled={runsLoading || runs.length === 0}
+                      className="text-xs border border-slate-200 rounded-md px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 max-w-[240px]"
+                    >
+                      {runs.length === 0 && (
+                        <option value="">No runs yet</option>
+                      )}
+                      {runs.map((run) => (
+                        <option key={run.execution_id} value={run.execution_id}>
+                          {new Date(run.created_at).toLocaleString()} •{' '}
+                          {run.success ? 'Success' : 'Failed'}
+                          {!run.has_persisted_outputs ? ' • no outputs' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Tone:</label>
+                    <select
+                      value={config?.tone ?? 'professional'}
+                      onChange={(e) => handleToneChange(e.target.value)}
+                      disabled={isExecuting}
+                      className="text-xs border border-slate-200 rounded-md px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    >
+                      {TONE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={handleRerun}
                     disabled={isExecuting}
-                    className="text-xs border border-slate-200 rounded-md px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
                   >
-                    {TONE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    <RefreshCw
+                      size={12}
+                      className={isExecuting ? 'animate-spin' : ''}
+                    />
+                    {isExecuting ? 'Running...' : 'Re-run'}
+                  </button>
                 </div>
+              </div>
 
-                {/* Re-run button */}
-                <button
-                  onClick={() =>
-                    currentWorkflowId && executeById(currentWorkflowId).catch(() => {})
-                  }
-                  disabled={isExecuting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw
-                    size={12}
-                    className={isExecuting ? 'animate-spin' : ''}
-                  />
-                  {isExecuting ? 'Running...' : 'Re-run'}
-                </button>
+              {(runsError || runNotice) && (
+                <div className="px-6 py-2 text-xs border-b border-amber-200 bg-amber-50 text-amber-700">
+                  {runsError ?? runNotice}
+                </div>
+              )}
+
+              <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30 relative">
+                {(config?.platformId ?? 'linkedin') === 'linkedin' && (
+                  <LinkedInMockup />
+                )}
+
+                {isExecuting && (
+                  <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 pointer-events-none">
+                    <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md border border-slate-200">
+                      <Loader2 size={16} className="animate-spin text-indigo-500" />
+                      <span className="text-sm text-slate-600">Re-running workflow…</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-
-            {/* Mockup */}
-            <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30 relative">
-              {(config?.platformId ?? 'linkedin') === 'linkedin' && (
-                <LinkedInMockup />
-              )}
-
-              {/* Loading overlay during execution */}
-              {isExecuting && (
-                <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 pointer-events-none">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md border border-slate-200">
-                    <Loader2 size={16} className="animate-spin text-indigo-500" />
-                    <span className="text-sm text-slate-600">Re-running workflow…</span>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
-        </div>
-      </PreviewDndContext>
+        </PreviewDndContext>
+      </PreviewDataProvider>
     </div>
   )
 }

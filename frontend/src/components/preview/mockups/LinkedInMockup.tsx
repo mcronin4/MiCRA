@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from 'react'
 import { useDroppable } from '@dnd-kit/core'
-import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
 import { LINKEDIN_TEMPLATE } from '@/types/preview'
 import type {
@@ -16,6 +15,7 @@ import { TextSlot } from '../slots/TextSlot'
 import { ImageSlot } from '../slots/ImageSlot'
 import { MediaSlot } from '../slots/MediaSlot'
 import { AlertTriangle, Linkedin } from 'lucide-react'
+import { usePreviewData } from '../PreviewDataContext'
 
 /** Resolve a single NodeOutputRef to its raw value */
 function resolveRef(
@@ -78,8 +78,40 @@ function isVideoUrl(url: string): boolean {
   return /\.(mp4|webm|mov|avi)(\?|$)/i.test(url) || /\/videos?\//i.test(url)
 }
 
+function SlotSkeleton({ slot }: { slot: TemplateSlot }) {
+  const isMedia =
+    slot.acceptsTypes.includes('image') || slot.acceptsTypes.includes('video')
+  const isHeadline = slot.slotId === 'headline'
+
+  if (isMedia) {
+    return (
+      <div className="w-full rounded-lg overflow-hidden">
+        <div className="skeleton-shimmer w-full h-52 rounded-lg" />
+      </div>
+    )
+  }
+
+  if (isHeadline) {
+    return (
+      <div className="space-y-2 py-1">
+        <div className="skeleton-shimmer h-5 rounded-md w-[80%]" />
+        <div className="skeleton-shimmer h-5 rounded-md w-[55%]" style={{ animationDelay: '150ms' }} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1.5 py-1">
+      <div className="skeleton-shimmer h-3.5 rounded w-full" />
+      <div className="skeleton-shimmer h-3.5 rounded w-[92%]" style={{ animationDelay: '100ms' }} />
+      <div className="skeleton-shimmer h-3.5 rounded w-[78%]" style={{ animationDelay: '200ms' }} />
+      <div className="skeleton-shimmer h-3.5 rounded w-[60%]" style={{ animationDelay: '300ms' }} />
+    </div>
+  )
+}
+
 export function LinkedInMockup() {
-  const nodes = useWorkflowStore((s) => s.nodes)
+  const { nodes, outputsLoading } = usePreviewData()
   const config = usePreviewStore((s) => s.config)
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null)
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 })
@@ -136,6 +168,12 @@ export function LinkedInMockup() {
               nodes,
               slot.acceptsTypes
             )
+
+            // Show skeleton when loading and slot has no resolved value
+            // (stale slots during loading just mean sources haven't loaded yet)
+            if (outputsLoading && value === null) {
+              return <SlotSkeleton key={slot.slotId} slot={slot} />
+            }
 
             return (
               <DroppableSlotContainer
