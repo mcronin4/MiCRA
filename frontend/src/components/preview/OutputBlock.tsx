@@ -16,6 +16,35 @@ interface OutputBlockProps {
   isAssigned: boolean
 }
 
+function MatchedImagePreview({ value }: { value: Record<string, unknown> }) {
+  const score = value._matchScore as number | undefined
+  const caption = value._caption as string | undefined
+  const isFailed = value.status === 'failed' || !!value.error
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative shrink-0">
+        <ImagePreview value={value} size="thumbnail" />
+        {typeof score === 'number' && score > 0 && (
+          <div className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[9px] font-bold px-1 py-0.5 rounded-full min-w-[28px] text-center">
+            {Math.round(score * 100)}%
+          </div>
+        )}
+        {isFailed && (
+          <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-full">
+            !
+          </div>
+        )}
+      </div>
+      {caption && (
+        <p className="text-[10px] text-slate-500 truncate flex-1 min-w-0">
+          {caption}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function RichPreview({
   contentType,
   value,
@@ -27,6 +56,9 @@ function RichPreview({
 }) {
   switch (contentType) {
     case 'image':
+      if (nodeType === 'ImageMatching' && value && typeof value === 'object') {
+        return <MatchedImagePreview value={value as Record<string, unknown>} />
+      }
       return <ImagePreview value={value} size="thumbnail" />
     case 'video':
       return <VideoPreview value={value} size="thumbnail" />

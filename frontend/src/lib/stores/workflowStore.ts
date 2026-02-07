@@ -35,6 +35,10 @@ interface WorkflowStore {
   workflowName: string
   workflowDescription: string | undefined
 
+  // ReactFlow visual state (survives page navigation)
+  reactFlowNodes: Node[]
+  reactFlowEdges: Edge[]
+
   addNode: (node: WorkflowNodeState) => void
   removeNode: (nodeId: string) => void
   updateNode: (nodeId: string, updates: Partial<WorkflowNodeState>) => void
@@ -50,6 +54,9 @@ interface WorkflowStore {
   setWorkflowDescription: (description: string | undefined) => void
   setWorkflowMetadata: (id: string | undefined, name: string, description?: string | undefined) => void
   clearWorkflowMetadata: () => void
+
+  // ReactFlow state sync
+  setReactFlowState: (nodes: Node[], edges: Edge[]) => void
 
   // Workflow persistence methods
   exportWorkflowStructure: (reactFlowNodes: Node[], reactFlowEdges: Edge[]) => SavedWorkflowData
@@ -68,6 +75,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   currentWorkflowId: undefined,
   workflowName: 'Untitled Workflow',
   workflowDescription: undefined,
+  reactFlowNodes: [],
+  reactFlowEdges: [],
 
   addNode: (node) => set((state) => ({
     nodes: { ...state.nodes, [node.id]: node }
@@ -116,6 +125,13 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     currentWorkflowId: undefined,
     workflowName: 'Untitled Workflow',
     workflowDescription: undefined,
+    reactFlowNodes: [],
+    reactFlowEdges: [],
+  }),
+
+  setReactFlowState: (nodes, edges) => set({
+    reactFlowNodes: nodes,
+    reactFlowEdges: edges,
   }),
 
   /**
@@ -203,6 +219,9 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       ...(savedEdge.type && typeof savedEdge.type === 'string' ? { type: savedEdge.type } : {}),
     }))
 
+    // Cache in store so canvas state survives page navigation
+    set({ reactFlowNodes, reactFlowEdges })
+
     return {
       reactFlowNodes,
       reactFlowEdges,
@@ -269,5 +288,5 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
    * Reset workflow store to empty state.
    * Note: Does NOT clear imageBucket or workflow metadata - they persist across workflow changes
    */
-  reset: () => set({ nodes: {} }),
+  reset: () => set({ nodes: {}, reactFlowNodes: [], reactFlowEdges: [] }),
 }))

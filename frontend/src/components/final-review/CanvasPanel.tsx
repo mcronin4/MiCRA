@@ -140,10 +140,14 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   onDialogClose,
   interactionMode = "select",
 }) => {
-  const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const storeReactFlowNodes = useWorkflowStore((state) => state.reactFlowNodes);
+  const storeReactFlowEdges = useWorkflowStore((state) => state.reactFlowEdges);
+  const setReactFlowState = useWorkflowStore((state) => state.setReactFlowState);
   const removeNodeFromStore = useWorkflowStore((state) => state.removeNode);
   const workflowNodes = useWorkflowStore((state) => state.nodes);
+
+  const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>(storeReactFlowNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(storeReactFlowEdges);
 
   // Map nodes to ensure unknown types are handled gracefully
   const safeNodes = useMemo(() => {
@@ -195,6 +199,11 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       setNodesRef.current = setNodes;
     }
   }, [setNodesRef, setNodes]);
+
+  // Sync ReactFlow nodes/edges to Zustand store so canvas state survives page navigation
+  useEffect(() => {
+    setReactFlowState(nodes, edges);
+  }, [nodes, edges, setReactFlowState]);
 
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),

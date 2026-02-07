@@ -1,12 +1,13 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useWorkflowStore } from '@/lib/stores/workflowStore'
+import { useWorkflowStore, type ImageBucketItem } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
 import { NODE_REGISTRY } from '@/lib/nodeRegistry'
 import { runtimeTypeToSlotContentType } from '@/types/preview'
 import type { NodeOutputRef, SlotContentType } from '@/types/preview'
 import { refKey } from '@/lib/preview-utils'
+import { getImageSrc } from '@/lib/utils/imageUtils'
 import { OutputBlock } from './OutputBlock'
 import {
   Image,
@@ -29,7 +30,7 @@ const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
   TextGeneration: Sparkles,
   ImageGeneration: Image,
   Transcription: Mic,
-  ImageMatching: Layers,
+  ImageMatching: Image,
   ImageExtraction: Film,
   QuoteExtraction: TextQuote,
   End: Flag,
@@ -57,11 +58,18 @@ function itemLabel(nodeType: string, outputKey: string, index: number, item: unk
   }
   if (nodeType === 'ImageMatching' && item && typeof item === 'object') {
     const obj = item as Record<string, unknown>
-    const score = obj.score ?? obj.similarity
-    if (typeof score === 'number') {
-      return `Match #${index + 1} (${Math.round(score * 100)}%)`
+    const score = (obj._matchScore ?? obj.similarity_score ?? obj.combined_score ?? obj.score ?? obj.similarity) as number | undefined
+    if (typeof score === 'number' && score > 0) {
+      const pct = Math.round(score * 100)
+      const caption = typeof obj._caption === 'string' && obj._caption
+        ? ` — ${obj._caption.length > 25 ? obj._caption.slice(0, 22) + '...' : obj._caption}`
+        : ''
+      return `Image #${index + 1} — ${pct}% match${caption}`
     }
-    return `Match #${index + 1}`
+    if (obj.status === 'failed' || obj.error) {
+      return `Image #${index + 1} — failed`
+    }
+    return `Image #${index + 1}`
   }
   if (nodeType === 'TextBucket') {
     if (typeof item === 'string') {
@@ -73,40 +81,93 @@ function itemLabel(nodeType: string, outputKey: string, index: number, item: unk
   return `${outputKey} #${index + 1}`
 }
 
+/** Enrich an ImageMatching result item with image URL from bucket if needed */
+function enrichImageMatchItem(
+  item: Record<string, unknown>,
+  imageBucket: ImageBucketItem[],
+): Record<string, unknown> {
+  // Workflow mode: item already has image_url — normalize score field
+  if (typeof item.image_url === 'string') {
+    return {
+      ...item,
+      _matchScore: (item.similarity_score ?? item.combined_score ?? 0) as number,
+      _caption: (item.caption ?? '') as string,
+    }
+  }
+
+  // Manual test mode: item has image_id, resolve from bucket
+  if (typeof item.image_id === 'string') {
+    const bucketItem = imageBucket.find((img) => img.id === item.image_id)
+    const imageUrl = bucketItem ? getImageSrc(bucketItem) : ''
+    return {
+      ...item,
+      image_url: imageUrl,
+      _matchScore: (item.combined_score ?? item.similarity_score ?? 0) as number,
+      _caption: '',
+    }
+  }
+
+  return item
+}
+
 export function useNodeOutputs(): NodeGroup[] {
   const nodes = useWorkflowStore((s) => s.nodes)
+  const imageBucket = useWorkflowStore((s) => s.imageBucket)
 
   return useMemo(() => {
     const groups: NodeGroup[] = []
 
+    // Suppress ImageExtraction when ImageMatching is completed
+    const hasCompletedImageMatching = Object.values(nodes).some(
+      (n) => n.type === 'ImageMatching' && n.status === 'completed' && n.outputs
+    )
+
     for (const [nodeId, node] of Object.entries(nodes)) {
       if (node.status !== 'completed' || !node.outputs) continue
+
+      // Skip ImageExtraction when ImageMatching consolidates its images
+      if (node.type === 'ImageExtraction' && hasCompletedImageMatching) continue
 
       const spec = NODE_REGISTRY[node.type]
       if (!spec) continue
 
+      const isImageMatching = node.type === 'ImageMatching'
       const entries: OutputEntry[] = []
 
       for (const portSpec of spec.outputs) {
-        const val = node.outputs[portSpec.key]
+        // For ImageMatching, also check 'results' key (manual test mode stores under 'results')
+        let val = node.outputs[portSpec.key]
+        let actualOutputKey = portSpec.key
+        if (isImageMatching && (val === undefined || val === null)) {
+          val = node.outputs['results']
+          if (val !== undefined && val !== null) {
+            actualOutputKey = 'results'
+          }
+        }
         if (val === undefined || val === null) continue
 
-        const contentType = runtimeTypeToSlotContentType(portSpec.runtime_type)
+        // Override contentType to 'image' for ImageMatching so items can drop on media slots
+        const contentType = isImageMatching ? 'image' : runtimeTypeToSlotContentType(portSpec.runtime_type)
         const shortId = nodeId.split('-').pop() ?? nodeId
 
         // Expand array values into individual items
         if (Array.isArray(val) && val.length > 0) {
           for (let i = 0; i < val.length; i++) {
+            // Enrich ImageMatching items with image URL and normalized score
+            const item = isImageMatching && val[i] && typeof val[i] === 'object'
+              ? enrichImageMatchItem(val[i] as Record<string, unknown>, imageBucket)
+              : val[i]
+
             entries.push({
               ref: {
                 nodeId,
                 nodeType: node.type,
-                outputKey: portSpec.key,
-                label: itemLabel(node.type, portSpec.key, i, val[i]),
+                outputKey: actualOutputKey,
+                label: itemLabel(node.type, portSpec.key, i, item),
                 arrayIndex: i,
               },
               contentType,
-              value: val[i],
+              value: item,
             })
           }
         } else {
@@ -114,7 +175,7 @@ export function useNodeOutputs(): NodeGroup[] {
             ref: {
               nodeId,
               nodeType: node.type,
-              outputKey: portSpec.key,
+              outputKey: actualOutputKey,
               label: `${node.type} (${shortId}) — ${portSpec.key}`,
             },
             contentType,
@@ -134,7 +195,7 @@ export function useNodeOutputs(): NodeGroup[] {
     }
 
     return groups
-  }, [nodes])
+  }, [nodes, imageBucket])
 }
 
 export function OutputsSidebar() {
