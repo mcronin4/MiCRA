@@ -95,6 +95,7 @@ export function ImageExtractionNode({ id }: NodeProps) {
     });
 
     return selectedImages
+      .filter((image) => image.base64 && image.filename)
       .map((image) => ({
         ...image,
         score: scoreLookup.get(image.filename) ?? null,
