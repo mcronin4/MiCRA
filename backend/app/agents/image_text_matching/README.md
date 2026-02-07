@@ -21,12 +21,12 @@ pip install fireworks-ai>=0.10.0
 2. Set up your Fireworks API key:
 ```bash
 # Add to .env file
-FIREWORK_API_KEY=your_api_key_here
+FIREWORKS_API_KEY=your_api_key_here
 ```
 
 Or export it in your shell:
 ```bash
-export FIREWORK_API_KEY=your_api_key_here
+export FIREWORKS_API_KEY=your_api_key_here
 ```
 
 ### For Original Approach (Optional)
@@ -110,7 +110,7 @@ results = asyncio.run(match_images())
 
 ### Required for VLM Approaches
 
-- **FIREWORK_API_KEY**: Your Fireworks AI API key
+- **FIREWORKS_API_KEY**: Your Fireworks AI API key
   - Get one at: https://fireworks.ai/
   - Used by both VLM matchers
 
@@ -222,11 +222,11 @@ VLM Staged                     100.00%         100.00%         1.000
 
 ## Troubleshooting
 
-### "FIREWORK_API_KEY not found"
+### "FIREWORKS_API_KEY not found"
 
 Make sure you've set the environment variable:
 ```bash
-export FIREWORK_API_KEY=your_key_here
+export FIREWORKS_API_KEY=your_key_here
 ```
 
 Or add it to your `.env` file in the backend directory.

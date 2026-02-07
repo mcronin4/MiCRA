@@ -18,7 +18,7 @@ except ImportError:
 
 # load vitual environment variables
 load_dotenv()
-FIREWORK_API_KEY = os.getenv("FIREWORK_API_KEY")
+FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
 FIREWORK_API_URL = "https://audio-turbo.api.fireworks.ai/v1/audio/transcriptions"
 
 
@@ -114,8 +114,8 @@ def transcribe_audio_or_video_file(audio_path: str, model: Any = None):
     # normalize path
     audio_path = os.path.normpath(audio_path)
     
-    if not FIREWORK_API_KEY:
-        print("Error: FIREWORK_API_KEY not found in environment variables")
+    if not FIREWORKS_API_KEY:
+        print("Error: FIREWORKS_API_KEY not found in environment variables")
         return None
     
     try:
@@ -132,7 +132,7 @@ def transcribe_audio_or_video_file(audio_path: str, model: Any = None):
         with open(audio_path, "rb") as f:
             response = requests.post(
                 FIREWORK_API_URL,
-                headers={"Authorization": f"Bearer {FIREWORK_API_KEY}"},
+                headers={"Authorization": f"Bearer {FIREWORKS_API_KEY}"},
                 files={"file": f},
                 data={
                     "model": "whisper-v3-turbo",
@@ -240,8 +240,8 @@ if __name__ == "__main__":
 
     print("Using Firework API for transcription...")
     
-    if not FIREWORK_API_KEY:
-        print("Error: FIREWORK_API_KEY not found in environment variables")
+    if not FIREWORKS_API_KEY:
+        print("Error: FIREWORKS_API_KEY not found in environment variables")
         exit(1)
     
     print("API key loaded successfully")

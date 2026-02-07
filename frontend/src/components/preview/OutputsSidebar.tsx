@@ -153,14 +153,14 @@ export function OutputsSidebar() {
   }, [config])
 
   return (
-    <div className="w-72 border-r border-slate-200 bg-slate-50 flex flex-col h-full">
+    <div className="w-72 border-r border-slate-200 bg-slate-50 flex flex-col h-full overflow-x-hidden">
       <div className="px-4 py-3 border-b border-slate-200 bg-white">
         <h2 className="text-sm font-semibold text-slate-800">Node Outputs</h2>
         <p className="text-xs text-slate-500 mt-0.5">
           Drag to slots or click to assign
         </p>
       </div>
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4">
         {groups.length === 0 && (
           <p className="text-xs text-slate-400 text-center mt-8">
             No completed outputs. Run the workflow first.

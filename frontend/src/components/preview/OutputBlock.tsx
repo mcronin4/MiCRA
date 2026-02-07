@@ -1,7 +1,6 @@
 'use client'
 
 import { useDraggable } from '@dnd-kit/core'
-import { CSS } from '@dnd-kit/utilities'
 import type { NodeOutputRef, SlotContentType } from '@/types/preview'
 import { CONTENT_TYPE_ICONS, refKey } from '@/lib/preview-utils'
 import { ImagePreview } from './previews/ImagePreview'
@@ -47,15 +46,14 @@ export function OutputBlock({
   isAssigned,
 }: OutputBlockProps) {
   const dragId = refKey(output)
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
+  const { attributes, listeners, setNodeRef, isDragging } =
     useDraggable({
       id: dragId,
       data: { ref: output, contentType, value },
     })
 
   const style = {
-    transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.55 : 1,
   }
 
   const Icon = CONTENT_TYPE_ICONS[contentType] ?? FileText
@@ -73,10 +71,10 @@ export function OutputBlock({
       } ${isDragging ? 'ring-2 ring-indigo-300 shadow-lg' : ''}`}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-1.5">
+      <div className="flex items-center gap-2 mb-1.5 min-w-0">
         <GripVertical size={12} className="text-slate-300 shrink-0" />
         <Icon size={14} className="text-slate-400 shrink-0" />
-        <span className="text-xs font-medium text-slate-700 truncate flex-1">
+        <span className="text-xs font-medium text-slate-700 truncate flex-1 min-w-0">
           {output.label}
         </span>
         {isAssigned && (
