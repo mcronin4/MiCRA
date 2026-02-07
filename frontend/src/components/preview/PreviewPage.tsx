@@ -19,6 +19,7 @@ import { PlatformSelector } from './PlatformSelector'
 import { LinkedInMockup } from './mockups/LinkedInMockup'
 import { PreviewDndContext } from './PreviewDndContext'
 import { PreviewDataProvider, type PreviewNodeState } from './PreviewDataContext'
+import { RunSelector } from './RunSelector'
 
 interface PreviewPageProps {
   workflowId: string
@@ -202,25 +203,12 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-slate-500">Run:</label>
-                    <select
-                      value={selectedExecutionId ?? ''}
-                      onChange={(e) =>
-                        setSelectedExecutionId(e.target.value || null)
-                      }
-                      disabled={runsLoading || runs.length === 0}
-                      className="text-xs border border-slate-200 rounded-md px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 max-w-[240px]"
-                    >
-                      {runs.length === 0 && (
-                        <option value="">No runs yet</option>
-                      )}
-                      {runs.map((run) => (
-                        <option key={run.execution_id} value={run.execution_id}>
-                          {new Date(run.created_at).toLocaleString()} •{' '}
-                          {run.success ? 'Success' : 'Failed'}
-                          {!run.has_persisted_outputs ? ' • no outputs' : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <RunSelector
+                      runs={runs}
+                      selectedId={selectedExecutionId}
+                      onChange={setSelectedExecutionId}
+                      disabled={runsLoading}
+                    />
                   </div>
 
                   <div className="flex items-center gap-2">
