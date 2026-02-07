@@ -87,8 +87,16 @@ export function LinkedInMockup() {
   const handleSlotClick = useCallback(
     (slotId: string, e: React.MouseEvent) => {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const estimatedPopupHeight = 320
+      const spaceBelow = window.innerHeight - rect.bottom - 4
+
+      const top =
+        spaceBelow >= estimatedPopupHeight
+          ? rect.bottom + 4
+          : Math.max(8, rect.top - estimatedPopupHeight - 4)
+
       setPopoverPos({
-        top: rect.bottom + 4,
+        top,
         left: Math.min(rect.left, window.innerWidth - 300),
       })
       setActiveSlotId((prev) => (prev === slotId ? null : slotId))
