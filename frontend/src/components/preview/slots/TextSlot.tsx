@@ -28,17 +28,32 @@ function isQuoteObject(item: unknown): item is QuoteObject {
 /** Extract readable text from an unknown value */
 function valueToString(value: unknown): string {
   if (typeof value === 'string') return value
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>
+    // ImageMatching: extract caption or describe the match
+    if ('caption' in obj && typeof obj.caption === 'string') return obj.caption
+    if ('image_url' in obj) {
+      const score = obj.similarity_score ?? obj.similarity ?? 0
+      return `Image match (${Math.round(Number(score) * 100)}%)`
+    }
+    if (isQuoteObject(value)) return value.text
+    return JSON.stringify(value, null, 2)
+  }
+
   if (Array.isArray(value)) {
     return value
       .map((item) => {
         if (typeof item === 'string') return item
         if (isQuoteObject(item)) return item.text
+        if (item && typeof item === 'object' && 'caption' in item) {
+          return String((item as Record<string, unknown>).caption)
+        }
         return JSON.stringify(item, null, 2)
       })
       .join('\n\n')
   }
-  if (isQuoteObject(value)) return value.text
-  if (value && typeof value === 'object') return JSON.stringify(value, null, 2)
+
   return String(value ?? '')
 }
 

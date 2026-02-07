@@ -157,7 +157,7 @@ export function OutputsSidebar() {
       <div className="px-4 py-3 border-b border-slate-200 bg-white">
         <h2 className="text-sm font-semibold text-slate-800">Node Outputs</h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          Click a slot in the mockup, then pick an output
+          Drag to slots or click to assign
         </p>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-4">

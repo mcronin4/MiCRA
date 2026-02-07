@@ -1,10 +1,16 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useDroppable } from '@dnd-kit/core'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
 import { LINKEDIN_TEMPLATE } from '@/types/preview'
-import type { TemplateSlot, SlotAssignment, NodeOutputRef } from '@/types/preview'
+import type {
+  TemplateSlot,
+  SlotAssignment,
+  NodeOutputRef,
+} from '@/types/preview'
+import type { DragData } from '../PreviewDndContext'
 import { SlotAssigner } from '../SlotAssigner'
 import { TextSlot } from '../slots/TextSlot'
 import { ImageSlot } from '../slots/ImageSlot'
@@ -37,7 +43,8 @@ function resolveSlotValue(
 ): { value: unknown; stale: boolean } {
   if (assignment.sources.length === 0) return { value: null, stale: false }
 
-  const isMediaSlot = slotAcceptsTypes.includes('image') || slotAcceptsTypes.includes('video')
+  const isMediaSlot =
+    slotAcceptsTypes.includes('image') || slotAcceptsTypes.includes('video')
 
   const resolved: unknown[] = []
   let anyStale = false
@@ -64,8 +71,11 @@ function resolveSlotValue(
   }
 
   // Multiple text sources → return as array so TextSlot can render each item
-  // (e.g. quote objects get blockquote rendering with attribution)
   return { value: resolved, stale: anyStale }
+}
+
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|avi)(\?|$)/i.test(url) || /\/videos?\//i.test(url)
 }
 
 export function LinkedInMockup() {
@@ -120,15 +130,14 @@ export function LinkedInMockup() {
             )
 
             return (
-              <div key={slot.slotId}>
-                <SlotContainer
-                  slot={slot}
-                  value={value}
-                  stale={stale}
-                  isActive={activeSlotId === slot.slotId}
-                  onClick={(e) => handleSlotClick(slot.slotId, e)}
-                />
-              </div>
+              <DroppableSlotContainer
+                key={slot.slotId}
+                slot={slot}
+                value={value}
+                stale={stale}
+                isActive={activeSlotId === slot.slotId}
+                onClick={(e) => handleSlotClick(slot.slotId, e)}
+              />
             )
           })}
         </div>
@@ -147,7 +156,7 @@ export function LinkedInMockup() {
   )
 }
 
-function SlotContainer({
+function DroppableSlotContainer({
   slot,
   value,
   stale,
@@ -160,20 +169,37 @@ function SlotContainer({
   isActive: boolean
   onClick: (e: React.MouseEvent) => void
 }) {
+  const { isOver, setNodeRef, active } = useDroppable({
+    id: `slot-${slot.slotId}`,
+    data: { slotId: slot.slotId, acceptsTypes: slot.acceptsTypes },
+  })
+
+  // Check if the currently dragged item is compatible with this slot
+  const dragData = active?.data.current as DragData | undefined
+  const isDragging = !!active
+  const isCompatible = dragData
+    ? slot.acceptsTypes.includes(dragData.contentType)
+    : false
+  const showDropHighlight = isOver && isCompatible
+  const showInvalidHighlight = isOver && !isCompatible
+
   const hasValue = value !== null && value !== undefined
 
   if (stale) {
     return (
       <button
+        ref={setNodeRef}
         onClick={onClick}
-        className={`w-full text-left rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 p-3 transition-colors hover:border-amber-400 ${
+        className={`w-full text-left rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 p-3 transition-all hover:border-amber-400 ${
           isActive ? 'ring-2 ring-amber-300' : ''
-        }`}
+        } ${showDropHighlight ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200 scale-[1.01]' : ''}`}
       >
         <div className="flex items-center gap-2 text-xs text-amber-600">
           <AlertTriangle size={14} />
           <span className="font-medium">{slot.label}</span>
-          <span>— stale, re-run workflow</span>
+          <span>
+            {showDropHighlight ? '— drop to replace' : '— stale, re-run workflow'}
+          </span>
         </div>
       </button>
     )
@@ -182,17 +208,29 @@ function SlotContainer({
   if (!hasValue) {
     return (
       <button
+        ref={setNodeRef}
         onClick={onClick}
-        className={`w-full text-left rounded-lg border-2 border-dashed p-3 transition-colors ${
-          isActive
-            ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200'
-            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'
+        className={`w-full text-left rounded-lg border-2 border-dashed p-3 transition-all ${
+          showDropHighlight
+            ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200 scale-[1.01]'
+            : showInvalidHighlight
+              ? 'border-red-300 bg-red-50/50'
+              : isActive
+                ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200'
+                : isDragging && isCompatible
+                  ? 'border-indigo-300 bg-indigo-50/30'
+                  : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'
         }`}
       >
         <span className="text-xs text-slate-400">
           {slot.label}
           {slot.required && <span className="text-red-400 ml-0.5">*</span>}
-          {' — click to assign'}
+          {' — '}
+          {showDropHighlight
+            ? 'Drop here!'
+            : showInvalidHighlight
+              ? 'Incompatible type'
+              : 'drag or click to assign'}
         </span>
       </button>
     )
@@ -201,18 +239,23 @@ function SlotContainer({
   // Render filled slot
   return (
     <button
+      ref={setNodeRef}
       onClick={onClick}
-      className={`w-full text-left rounded-lg border p-3 transition-colors ${
-        isActive
-          ? 'border-indigo-300 ring-2 ring-indigo-200'
-          : 'border-transparent hover:border-slate-200'
+      className={`w-full text-left rounded-lg border p-3 transition-all ${
+        showDropHighlight
+          ? 'border-indigo-300 ring-2 ring-indigo-200 scale-[1.01]'
+          : showInvalidHighlight
+            ? 'border-red-300 ring-1 ring-red-200'
+            : isActive
+              ? 'border-indigo-300 ring-2 ring-indigo-200'
+              : 'border-transparent hover:border-slate-200'
       }`}
     >
       {slot.acceptsTypes.includes('image') ||
       slot.acceptsTypes.includes('video') ? (
         slot.acceptsTypes.includes('video') &&
         typeof value === 'string' &&
-        (value.includes('.mp4') || value.includes('video')) ? (
+        isVideoUrl(value) ? (
           <MediaSlot value={value} mediaType="video" />
         ) : (
           <ImageSlot value={value} />

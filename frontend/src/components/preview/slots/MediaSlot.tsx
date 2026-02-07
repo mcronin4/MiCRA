@@ -9,12 +9,13 @@ interface MediaSlotProps {
 
 function extractUrl(value: unknown): string | null {
   if (typeof value === 'string' && value.startsWith('http')) return value
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>
+    if (typeof obj.url === 'string') return obj.url
+    if (typeof obj.signedUrl === 'string') return obj.signedUrl
+  }
   if (Array.isArray(value) && value.length > 0) {
-    const first = value[0]
-    if (typeof first === 'string' && first.startsWith('http')) return first
-    if (first && typeof first === 'object' && 'url' in first) {
-      return String((first as Record<string, unknown>).url)
-    }
+    return extractUrl(value[0])
   }
   return null
 }
