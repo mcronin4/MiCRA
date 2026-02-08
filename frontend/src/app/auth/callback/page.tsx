@@ -25,7 +25,7 @@ function AuthCallbackContent() {
           console.error('Unexpected error during auth callback:', err);
         } finally {
           // Always redirect to home, successful or not (user state will reflect reality)
-          router.push('/');
+          router.push('/dashboard');
         }
       };
 

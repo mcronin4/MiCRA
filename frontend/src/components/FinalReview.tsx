@@ -26,7 +26,12 @@ import type {
 } from "./final-review/types";
 import { WORKFLOW_NODES, FLOW_NODES, BUCKET_NODES } from "./final-review/types";
 
-const FinalReview = () => {
+interface FinalReviewProps {
+  autoLoadWorkflowId?: string | null;
+  onAutoLoadComplete?: () => void;
+}
+
+const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProps = {}) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<"select" | "pan">(
     "select",
@@ -361,7 +366,6 @@ const FinalReview = () => {
       {/* Top Navigation Bar */}
       <TopNavBar
         onSave={() => setShowSaveDialog(true)}
-        onLoad={() => setShowLoadDialog(true)}
         canSave={true}
       />
 
@@ -401,6 +405,8 @@ const FinalReview = () => {
                   setShowLoadDialog(false);
                 }}
                 interactionMode={interactionMode}
+                autoLoadWorkflowId={autoLoadWorkflowId}
+                onAutoLoadComplete={onAutoLoadComplete}
               />
             )}
           </ReactFlowWrapper>

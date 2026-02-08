@@ -121,6 +121,7 @@ export function useWorkflowPersistence() {
       nodes?: Node[]
       edges?: Edge[]
       workflowName?: string
+      workflowDescription?: string
       error?: string
     }> => {
       setIsLoading(true)
@@ -145,6 +146,7 @@ export function useWorkflowPersistence() {
           nodes: reactFlowNodes,
           edges: reactFlowEdges,
           workflowName: response.name,
+          workflowDescription: response.description ?? undefined,
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error'
