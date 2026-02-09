@@ -536,9 +536,9 @@ async def main():
         print(f"  Image downsampling: {args.downsampling}px")
     
     # Get API key for VLM matchers
-    api_key = os.getenv("FIREWORKS_API_KEY")
+    api_key = os.getenv("FIREWORK_API_KEY")
     if not api_key:
-        print("\n⚠️  Warning: FIREWORKS_API_KEY not found in environment")
+        print("\n⚠️  Warning: FIREWORK_API_KEY not found in environment")
         print("   VLM matchers will be skipped")
     
     # Run matchers
