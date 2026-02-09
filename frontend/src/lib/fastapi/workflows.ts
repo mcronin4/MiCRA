@@ -398,18 +398,6 @@ export async function executeWorkflowById(
 }
 
 /**
- * Helper to get the base URL for API requests.
- */
-function getBaseUrl(): string {
-  const envUrl = process.env.NEXT_PUBLIC_BACKEND_URL
-  if (envUrl) {
-    const cleanUrl = envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl
-    return `${cleanUrl}/api`
-  }
-  return '/backend'
-}
-
-/**
  * Helper to get the base URL for SSE streaming requests.
  *
  * IMPORTANT: SSE streams MUST bypass the Next.js proxy (rewrites) because
