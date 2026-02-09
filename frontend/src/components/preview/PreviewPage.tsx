@@ -25,13 +25,20 @@ interface PreviewPageProps {
   workflowId: string
 }
 
-function buildPersistedNodes(
+export function buildPersistedNodes(
   runOutputs: WorkflowRunOutputs
 ): Record<string, PreviewNodeState> {
   const nodeTypeMap = new Map<string, string>()
-  for (const node of runOutputs.blueprint_snapshot?.nodes ?? []) {
-    if (node?.node_id && node?.type) {
-      nodeTypeMap.set(node.node_id, node.type)
+  
+  // Validate blueprint_snapshot structure before accessing nodes
+  if (runOutputs.blueprint_snapshot && runOutputs.blueprint_snapshot.nodes) {
+    const nodes = runOutputs.blueprint_snapshot.nodes
+    if (Array.isArray(nodes)) {
+      for (const node of nodes) {
+        if (node && typeof node === 'object' && node.node_id && node.type) {
+          nodeTypeMap.set(node.node_id, node.type)
+        }
+      }
     }
   }
 

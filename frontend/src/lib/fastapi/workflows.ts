@@ -155,17 +155,21 @@ export interface WorkflowRunSummary {
   has_persisted_outputs: boolean
 }
 
+export interface BlueprintSnapshotNode {
+  node_id?: string | null
+  type?: string | null
+}
+
+export interface BlueprintSnapshot {
+  nodes?: BlueprintSnapshotNode[] | null
+}
+
 export interface WorkflowRunOutputs {
   execution_id: string
   workflow_id: string
   node_outputs: Record<string, Record<string, unknown>>
   workflow_outputs: Record<string, unknown>
-  blueprint_snapshot: {
-    nodes?: Array<{
-      node_id?: string
-      type?: string
-    }>
-  } | null
+  blueprint_snapshot: BlueprintSnapshot | null
   payload_bytes: number
   created_at: string
 }

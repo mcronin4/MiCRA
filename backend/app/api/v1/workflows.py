@@ -22,6 +22,27 @@ from app.auth.dependencies import User, get_current_user, get_supabase_client
 from supabase import Client
 
 
+class BlueprintSnapshotNode(BaseModel):
+    """A node in a blueprint snapshot (minimal structure for preview purposes)."""
+    node_id: Optional[str] = None
+    type: Optional[str] = None
+
+
+class BlueprintSnapshot(BaseModel):
+    """
+    Snapshot of a blueprint structure saved with workflow run outputs.
+    
+    This model validates the nodes array from a full Blueprint dump.
+    The full blueprint may contain additional fields (connections, workflow_inputs, etc.)
+    which are ignored during validation.
+    """
+    nodes: Optional[List[BlueprintSnapshotNode]] = None
+    
+    class Config:
+        # Allow extra fields from the full Blueprint structure
+        extra = "ignore"
+
+
 class ExecutionLogSummary(BaseModel):
     id: str
     workflow_id: str
@@ -57,7 +78,7 @@ class WorkflowRunOutputsResponse(BaseModel):
     workflow_id: str
     node_outputs: Dict[str, Any]
     workflow_outputs: Dict[str, Any]
-    blueprint_snapshot: Optional[Dict[str, Any]] = None
+    blueprint_snapshot: Optional[BlueprintSnapshot] = None
     payload_bytes: int
     created_at: datetime
 
@@ -1184,12 +1205,31 @@ async def get_workflow_run_outputs(
             raise HTTPException(status_code=404, detail="Persisted outputs not found for this run")
 
         row = result.data[0]
+        
+        # Parse blueprint_snapshot with validation
+        blueprint_snapshot_raw = row.get("blueprint_snapshot")
+        blueprint_snapshot: Optional[BlueprintSnapshot] = None
+        if blueprint_snapshot_raw:
+            try:
+                # Validate and parse the blueprint snapshot structure
+                blueprint_snapshot = BlueprintSnapshot.model_validate(blueprint_snapshot_raw)
+            except Exception as e:
+                # If validation fails, log but don't fail the request
+                # This handles legacy data that might not match the expected structure
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to validate blueprint_snapshot for execution {execution_id}: {e}. "
+                    "Returning None to maintain backward compatibility."
+                )
+                blueprint_snapshot = None
+        
         return WorkflowRunOutputsResponse(
             execution_id=str(row["execution_id"]),
             workflow_id=str(row["workflow_id"]),
             node_outputs=row.get("node_outputs") or {},
             workflow_outputs=row.get("workflow_outputs") or {},
-            blueprint_snapshot=row.get("blueprint_snapshot"),
+            blueprint_snapshot=blueprint_snapshot,
             payload_bytes=row.get("payload_bytes") or 0,
             created_at=row["created_at"],
         )
