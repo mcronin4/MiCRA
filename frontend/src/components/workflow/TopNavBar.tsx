@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Save, FolderOpen, Eye } from "lucide-react";
+import { Save, LayoutDashboard, Eye } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import type { User } from "@supabase/supabase-js";
 
 interface TopNavBarProps {
   onSave?: () => void;
-  onLoad?: () => void;
   canSave?: boolean;
 }
 
@@ -30,7 +29,6 @@ function displayNameFromUser(user: User | null): string | null {
 
 export const TopNavBar: React.FC<TopNavBarProps> = ({
   onSave,
-  onLoad,
   canSave = true,
 }) => {
   const workflowName = useWorkflowStore((state) => state.workflowName);
@@ -60,7 +58,9 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     <div className="h-12 bg-white border-b border-gray-100 flex items-center justify-between px-4">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-gray-400">{projectsLabel}</span>
+        <Link href="/dashboard" className="text-gray-400 hover:text-indigo-600 transition-colors">
+          {projectsLabel}
+        </Link>
         <span className="text-gray-300">/</span>
         {isEditingName ? (
           <input
@@ -105,13 +105,13 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           <Save size={14} />
           Save
         </button>
-        <button
-          onClick={onLoad}
+        <Link
+          href="/dashboard"
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
         >
-          <FolderOpen size={14} />
-          Load
-        </button>
+          <LayoutDashboard size={14} />
+          Dashboard
+        </Link>
       </div>
     </div>
   );

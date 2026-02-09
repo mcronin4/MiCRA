@@ -50,6 +50,9 @@ export interface PreviewConfig {
   updatedAt: number
 }
 
+export const LIVE_PREVIEW_CONTEXT_ID = '__live__' as const
+export type PreviewContextId = string | typeof LIVE_PREVIEW_CONTEXT_ID
+
 export const LINKEDIN_TEMPLATE: PlatformTemplate = {
   platformId: 'linkedin',
   platformLabel: 'LinkedIn',

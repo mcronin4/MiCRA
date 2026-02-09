@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { FcGoogle } from 'react-icons/fc';
 

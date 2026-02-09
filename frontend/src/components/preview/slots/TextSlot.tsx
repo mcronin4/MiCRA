@@ -11,6 +11,44 @@ interface TextSlotProps {
   variant?: 'headline' | 'body' | 'caption'
 }
 
+function stripCodeFence(raw: string): string {
+  const trimmed = raw.trim()
+  const match = trimmed.match(/^```(?:json|text)?\s*([\s\S]*?)\s*```$/i)
+  return match ? match[1] : raw
+}
+
+function tryParseJson(raw: string): unknown | null {
+  const candidate = stripCodeFence(raw).trim()
+  if (!candidate) return null
+  if (!candidate.startsWith('{') && !candidate.startsWith('[')) return null
+  try {
+    return JSON.parse(candidate)
+  } catch {
+    return null
+  }
+}
+
+function extractPrimaryTextFromObject(
+  obj: Record<string, unknown>
+): string | null {
+  const preferredKeys = [
+    'content',
+    'text',
+    'generated_text',
+    'transcription',
+    'caption',
+    'body',
+    'message',
+  ] as const
+
+  for (const key of preferredKeys) {
+    const val = obj[key]
+    if (typeof val === 'string' && val.trim()) return val
+  }
+
+  return null
+}
+
 /** Replace literal \n sequences with real newlines and clean up escaped quotes */
 function normalizeText(raw: string): string {
   return raw
@@ -27,10 +65,20 @@ function isQuoteObject(item: unknown): item is QuoteObject {
 
 /** Extract readable text from an unknown value */
 function valueToString(value: unknown): string {
-  if (typeof value === 'string') return value
+  if (typeof value === 'string') {
+    const parsed = tryParseJson(value)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const extracted = extractPrimaryTextFromObject(parsed as Record<string, unknown>)
+      if (extracted) return extracted
+      return JSON.stringify(parsed, null, 2)
+    }
+    return value
+  }
 
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const obj = value as Record<string, unknown>
+    const extracted = extractPrimaryTextFromObject(obj)
+    if (extracted) return extracted
     // ImageMatching: extract caption or describe the match
     if ('caption' in obj && typeof obj.caption === 'string') return obj.caption
     if ('image_url' in obj) {

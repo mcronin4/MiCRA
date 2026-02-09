@@ -6,7 +6,7 @@ import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
 import { useWorkflowExecution } from '@/hooks/useWorkflowExecution'
-import { TONE_OPTIONS } from '@/types/preview'
+import { TONE_OPTIONS, LIVE_PREVIEW_CONTEXT_ID } from '@/types/preview'
 import {
   getWorkflowRunOutputs,
   listWorkflowRuns,
@@ -55,7 +55,7 @@ export function buildPersistedNodes(
 }
 
 export function PreviewPage({ workflowId }: PreviewPageProps) {
-  const loadPreviewConfig = usePreviewStore((s) => s.loadPreviewConfig)
+  const setActiveContext = usePreviewStore((s) => s.setActiveContext)
   const config = usePreviewStore((s) => s.config)
   const setTone = usePreviewStore((s) => s.setTone)
   const setPlatform = usePreviewStore((s) => s.setPlatform)
@@ -70,10 +70,6 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   const [outputsLoading, setOutputsLoading] = useState(false)
   const [runsError, setRunsError] = useState<string | null>(null)
   const [runNotice, setRunNotice] = useState<string | null>(null)
-
-  useEffect(() => {
-    loadPreviewConfig(workflowId)
-  }, [workflowId, loadPreviewConfig])
 
   const refreshRuns = useCallback(async (preferLatest = false) => {
     setRunsLoading(true)
@@ -108,6 +104,11 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
     () => runs.find((r) => r.execution_id === selectedExecutionId) ?? null,
     [runs, selectedExecutionId]
   )
+  const activePreviewContextId = selectedRun?.execution_id ?? LIVE_PREVIEW_CONTEXT_ID
+
+  useEffect(() => {
+    setActiveContext(workflowId, activePreviewContextId)
+  }, [workflowId, activePreviewContextId, setActiveContext])
 
   useEffect(() => {
     if (!selectedRun) {

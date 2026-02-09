@@ -105,6 +105,8 @@ interface CanvasPanelProps {
   showLoadDialog?: boolean;
   onDialogClose?: () => void;
   interactionMode?: "select" | "pan";
+  autoLoadWorkflowId?: string | null;
+  onAutoLoadComplete?: () => void;
 }
 
 export const CanvasPanel: React.FC<CanvasPanelProps> = ({
@@ -139,6 +141,8 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   showLoadDialog,
   onDialogClose,
   interactionMode = "select",
+  autoLoadWorkflowId,
+  onAutoLoadComplete,
 }) => {
   const storeReactFlowNodes = useWorkflowStore((state) => state.reactFlowNodes);
   const storeReactFlowEdges = useWorkflowStore((state) => state.reactFlowEdges);
@@ -337,6 +341,8 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         showSaveDialogExternal={showSaveDialog}
         showLoadDialogExternal={showLoadDialog}
         onDialogClose={onDialogClose}
+        autoLoadWorkflowId={autoLoadWorkflowId}
+        onAutoLoadComplete={onAutoLoadComplete}
       />
     </div>
   );

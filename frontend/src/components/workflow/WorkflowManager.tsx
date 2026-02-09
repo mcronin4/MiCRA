@@ -30,6 +30,8 @@ interface WorkflowManagerProps {
   showSaveDialogExternal?: boolean;
   showLoadDialogExternal?: boolean;
   onDialogClose?: () => void;
+  autoLoadWorkflowId?: string | null;
+  onAutoLoadComplete?: () => void;
 }
 
 export function WorkflowManager({
@@ -41,6 +43,8 @@ export function WorkflowManager({
   showSaveDialogExternal,
   showLoadDialogExternal,
   onDialogClose,
+  autoLoadWorkflowId,
+  onAutoLoadComplete,
 }: WorkflowManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -121,6 +125,28 @@ export function WorkflowManager({
       loadWorkflows();
     }
   }, [isOpen, loadWorkflows]);
+
+  // Auto-load a workflow when navigating from dashboard
+  const autoLoadProcessed = React.useRef(false);
+  useEffect(() => {
+    if (!autoLoadWorkflowId || !reactFlowInstance || autoLoadProcessed.current) return;
+    autoLoadProcessed.current = true;
+
+    const doAutoLoad = async () => {
+      const result = await loadWorkflow(autoLoadWorkflowId, reactFlowInstance);
+      if (result.success && result.nodes && result.edges) {
+        setNodes(result.nodes);
+        setEdges(result.edges);
+        setWorkflowMetadata(
+          autoLoadWorkflowId,
+          result.workflowName || "Untitled Workflow",
+          result.workflowDescription
+        );
+      }
+      onAutoLoadComplete?.();
+    };
+    doAutoLoad();
+  }, [autoLoadWorkflowId, reactFlowInstance, loadWorkflow, setNodes, setEdges, setWorkflowMetadata, onAutoLoadComplete]);
 
   const handleSave = useCallback(async () => {
     const nameToSave = localWorkflowName.trim() || workflowName.trim();
