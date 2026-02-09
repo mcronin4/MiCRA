@@ -208,9 +208,9 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
     fetchSelectedFiles();
   }, []); // Only run once on mount
 
-  // Lazy load: Fetch picker files only when picker is opened
+  // Eagerly prefetch picker files on mount so they're ready when user clicks "Select"
   useEffect(() => {
-    if (showPicker && !pickerLoaded) {
+    if (!pickerLoaded) {
       const fetchPickerFiles = async () => {
         setIsLoadingPicker(true);
         setError(null);
@@ -233,7 +233,7 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
 
       fetchPickerFiles();
     }
-  }, [showPicker, bucketType, pickerLoaded]); // Run when showPicker becomes true
+  }, [bucketType]); // Run on mount
 
   // Sync selected IDs to node inputs
   useEffect(() => {
