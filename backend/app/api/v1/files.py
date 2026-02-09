@@ -25,7 +25,7 @@ router = APIRouter(prefix="/files", tags=["files"])
 
 # Simple in-memory cache for file list queries (avoids 3s+ Supabase round trips)
 _list_cache: Dict[str, Any] = {}  # key -> {"data": result_data, "expires": timestamp}
-LIST_CACHE_TTL = 10  # seconds — short enough that uploads appear quickly
+LIST_CACHE_TTL = 120  # seconds — cache is invalidated on upload/delete mutations anyway
 
 
 def _cache_key(user_id: str, bucket: Optional[str], status: str,
@@ -664,7 +664,6 @@ async def list_files(
     Can optionally include presigned download URLs.
     If 'ids' is provided, returns only those files.
     """
-    t0 = time.perf_counter()
     r2 = get_r2()
     supabase = get_supabase().client
 
@@ -692,7 +691,6 @@ async def list_files(
 
     if cached is not None:
         result_data = cached
-        logger.info(f"[list_files] cache HIT ({time.perf_counter()-t0:.3f}s)")
     else:
         # Build query (scope to current user automatically via RLS)
         # But explicitly adding user_id eq check is good defense in depth
@@ -717,10 +715,10 @@ async def list_files(
         # Order by created_at desc, paginate
         query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
 
-        t2 = time.perf_counter()
-        result = query.execute()
-        t3 = time.perf_counter()
-        logger.info(f"[list_files] DB query: {t3-t2:.3f}s, rows={len(result.data) if result.data else 0}")
+        # Run synchronous DB call in thread pool so it doesn't block the event loop
+        # This allows parallel requests to execute concurrently
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, query.execute)
         result_data = result.data or []
         _set_cached(ck, result_data)
 
@@ -745,9 +743,11 @@ async def list_files(
         
         # Fetch thumbnail records if needed
         thumbnail_map = {}
+        loop = asyncio.get_event_loop()
         if thumbnail_ids and include_urls:
             try:
-                thumbs_result = supabase.table("files").select("*").in_("id", list(thumbnail_ids)).execute()
+                thumb_query = supabase.table("files").select("*").in_("id", list(thumbnail_ids))
+                thumbs_result = await loop.run_in_executor(None, thumb_query.execute)
                 for thumb in thumbs_result.data:
                     thumbnail_map[thumb["id"]] = thumb
             except Exception as e:
@@ -755,7 +755,6 @@ async def list_files(
 
         # If include_urls, generate presigned URLs for R2 in parallel
         if include_urls:
-            loop = asyncio.get_event_loop()
 
             async def sign_item(item: FileListItem):
                 if item.status != "uploaded":
