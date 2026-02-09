@@ -5,6 +5,7 @@ Validates Supabase-issued JWT tokens on protected endpoints.
 
 import os
 import logging
+import time
 from typing import Optional
 from functools import lru_cache
 from fastapi import Depends, HTTPException, status, Header
@@ -164,8 +165,12 @@ async def get_current_user(authorization: str = Header(..., description="Bearer 
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token is required"
         )
-    
-    return verify_jwt(token)
+
+    t0 = time.perf_counter()
+    user = verify_jwt(token)
+    t1 = time.perf_counter()
+    logger.info(f"[get_current_user] verify_jwt: {t1-t0:.3f}s")
+    return user
 
 
 from ..db.supabase import get_authenticated_supabase

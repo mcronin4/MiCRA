@@ -194,6 +194,7 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
         const response = await listFiles({
           ids: initialSelectedIds,
           includeUrls: bucketType === "image",
+          thumbnailsOnly: bucketType === "image",
         });
         setSelectedFilesData(response.items);
       } catch (err) {
@@ -218,6 +219,7 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
             type: bucketType,
             status: "uploaded",
             includeUrls: bucketType === "image",
+            thumbnailsOnly: bucketType === "image",
             limit: 100,
           });
           setPickerFiles(response.items);

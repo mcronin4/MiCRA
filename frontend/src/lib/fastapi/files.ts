@@ -88,6 +88,7 @@ export interface ListFilesParams {
   includeUrls?: boolean;
   expiresIn?: number;
   ids?: string[];
+  thumbnailsOnly?: boolean;
 }
 
 export interface DeleteFileRequest {
@@ -181,6 +182,7 @@ export async function listFiles(
   }
   if (params.expiresIn) searchParams.append('expires_in', params.expiresIn.toString());
   if (params.ids && params.ids.length > 0) searchParams.append('ids', params.ids.join(','));
+  if (params.thumbnailsOnly) searchParams.append('thumbnails_only', 'true');
 
   const queryString = searchParams.toString();
   const url = `/v1/files${queryString ? `?${queryString}` : ''}`;
