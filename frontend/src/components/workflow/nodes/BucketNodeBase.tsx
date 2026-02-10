@@ -246,7 +246,6 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
         clearInterval(intervalId);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bucketType, showPicker]);
 
   // Sync selected IDs to node inputs
