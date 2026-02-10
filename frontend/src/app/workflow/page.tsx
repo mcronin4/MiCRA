@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import FinalReview from "@/components/FinalReview";
+import WorkflowBuilder from "@/components/workflow/WorkflowBuilder";
 import { Loader2 } from "lucide-react";
 
 function WorkflowContent() {
@@ -22,7 +22,7 @@ function WorkflowContent() {
   if (loadWorkflowId) {
     return (
       <main>
-        <FinalReview
+        <WorkflowBuilder
           autoLoadWorkflowId={autoLoadId}
           onAutoLoadComplete={handleAutoLoadComplete}
         />
@@ -32,7 +32,7 @@ function WorkflowContent() {
 
   return (
     <main>
-      <FinalReview />
+      <WorkflowBuilder />
     </main>
   );
 }

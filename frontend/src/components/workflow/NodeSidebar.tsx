@@ -19,7 +19,7 @@ import {
   Video,
   TextQuote,
 } from "lucide-react";
-import type { NodeType } from "../final-review/types";
+import type { NodeType } from "./types";
 import { ImageBucketPanel } from "./ImageBucketPanel";
 import AuthNav from '@/components/AuthNav';
 

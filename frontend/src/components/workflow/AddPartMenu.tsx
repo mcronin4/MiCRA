@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
-import { Button } from "./ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Linkedin,
   Mail,
@@ -13,7 +13,7 @@ import {
   TextQuote,
 } from "lucide-react";
 import { FaTiktok } from "react-icons/fa";
-import { NodeType } from "./final-review/types";
+import type { NodeType } from "./types";
 
 interface AddPartMenuProps {
   onAddPart: (nodeType: NodeType) => void;

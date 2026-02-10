@@ -1,13 +1,13 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ReactFlowWrapper } from "./canvas/ReactFlowWrapper";
-import { ChatPanel } from "./final-review/ChatPanel";
-import { CanvasPanel } from "./final-review/CanvasPanel";
-import { NodeSidebar } from "./workflow/NodeSidebar";
-import { TopNavBar } from "./workflow/TopNavBar";
-import { ExecutionBar } from "./workflow/ExecutionBar";
-import { CompilationDiagnosticsModal } from "./workflow/CompilationDiagnosticsModal";
+import { ReactFlowWrapper } from "./ReactFlowWrapper";
+import { ChatPanel } from "./ChatPanel";
+import { CanvasPanel } from "./CanvasPanel";
+import { NodeSidebar } from "./NodeSidebar";
+import { TopNavBar } from "./TopNavBar";
+import { ExecutionBar } from "./ExecutionBar";
+import { CompilationDiagnosticsModal } from "./CompilationDiagnosticsModal";
 import { showToast } from "@/lib/stores/toastStore";
 import { useSourceTexts } from "@/hooks/useSourceTexts";
 import { useTranscription } from "@/hooks/useTranscription";
@@ -23,15 +23,15 @@ import type {
   BucketNodeType,
   FlowNodeType,
   NodeType,
-} from "./final-review/types";
-import { WORKFLOW_NODES, FLOW_NODES, BUCKET_NODES } from "./final-review/types";
+} from "./types";
+import { WORKFLOW_NODES, FLOW_NODES, BUCKET_NODES } from "./types";
 
-interface FinalReviewProps {
+interface WorkflowBuilderProps {
   autoLoadWorkflowId?: string | null;
   onAutoLoadComplete?: () => void;
 }
 
-const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProps = {}) => {
+const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBuilderProps = {}) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<"select" | "pan">(
     "select",
@@ -456,4 +456,4 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
   );
 };
 
-export default FinalReview;
+export default WorkflowBuilder;

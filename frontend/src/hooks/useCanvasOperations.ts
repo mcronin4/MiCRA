@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Node, Edge, ReactFlowInstance } from '@xyflow/react';
-import type { NodeType, NodeContent, WorkflowNodeType, BucketNodeType } from '@/components/final-review/types';
-import { WORKFLOW_NODES, BUCKET_NODES } from '@/components/final-review/types';
+import type { NodeType, NodeContent, WorkflowNodeType, BucketNodeType } from '@/components/workflow/types';
+import { WORKFLOW_NODES, BUCKET_NODES } from '@/components/workflow/types';
 import { useWorkflowStore } from '@/lib/stores/workflowStore';
 
 export const useCanvasOperations = () => {

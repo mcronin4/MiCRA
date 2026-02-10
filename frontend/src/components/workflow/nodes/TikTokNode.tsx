@@ -1,8 +1,30 @@
 import React from 'react';
 import { Heart, MessageCircle, Share2, Bookmark, Music2 } from 'lucide-react';
 
-const TikTokPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void }) => (
-    <div className="cursor-move w-min" onContextMenu={onContextMenu}>
+interface TikTokNodeData {
+  username?: string;
+  content?: string;
+  caption?: string;
+  music?: string;
+  likes?: string;
+  comments?: string;
+  shares?: string;
+  bookmarks?: string;
+  label?: string;
+}
+
+export function TikTokNode({ data }: { data: TikTokNodeData }) {
+  const username = data?.username || '@micra_official';
+  // If content is provided, use it as the caption, otherwise use default
+  const caption = data?.content || data?.caption || 'Check out this amazing content! 🔥 #contentcreation #micra #innovation';
+  const music = data?.music || 'Original Sound - MiCRA';
+  const likes = data?.likes || '1.2M';
+  const comments = data?.comments || '40.2K';
+  const shares = data?.shares || '12.5K';
+  const bookmarks = data?.bookmarks || '89.3K';
+
+  return (
+    <div className="w-min">
       {/* TikTok Draft */}
       <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-black w-80 h-[580px] rounded-[28px] shadow-2xl overflow-hidden border border-gray-700">
         {/* Video Background with Gradient Overlay */}
@@ -27,18 +49,18 @@ const TikTokPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTM
                 <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold shadow-lg">
                   M
                 </div>
-                <p className="font-bold text-base">@micra_official</p>
+                <p className="font-bold text-base">{username}</p>
               </div>
-              
+
               {/* Caption */}
               <p className="text-sm leading-relaxed line-clamp-3 break-words">
-                Check out this amazing content! 🔥 #contentcreation #micra #innovation
+                {caption}
               </p>
-              
+
               {/* Music */}
               <div className="flex items-center space-x-2">
                 <Music2 size={14} className="flex-shrink-0" />
-                <p className="text-xs font-medium truncate">Original Sound - MiCRA</p>
+                <p className="text-xs font-medium truncate">{music}</p>
               </div>
             </div>
 
@@ -61,7 +83,7 @@ const TikTokPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTM
                 <div className="transition-transform hover:scale-110 cursor-pointer">
                   <Heart size={34} fill="white" stroke="white" className="drop-shadow-lg" />
                 </div>
-                <span className="text-xs font-bold drop-shadow-md">1.2M</span>
+                <span className="text-xs font-bold drop-shadow-md">{likes}</span>
               </div>
 
               {/* Comment Button */}
@@ -69,7 +91,7 @@ const TikTokPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTM
                 <div className="transition-transform hover:scale-110 cursor-pointer">
                   <MessageCircle size={34} fill="white" stroke="white" className="drop-shadow-lg" />
                 </div>
-                <span className="text-xs font-bold drop-shadow-md">40.2K</span>
+                <span className="text-xs font-bold drop-shadow-md">{comments}</span>
               </div>
 
               {/* Bookmark Button */}
@@ -77,7 +99,7 @@ const TikTokPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTM
                 <div className="transition-transform hover:scale-110 cursor-pointer">
                   <Bookmark size={32} fill="white" stroke="white" className="drop-shadow-lg" />
                 </div>
-                <span className="text-xs font-bold drop-shadow-md">89.3K</span>
+                <span className="text-xs font-bold drop-shadow-md">{bookmarks}</span>
               </div>
 
               {/* Share Button */}
@@ -85,7 +107,7 @@ const TikTokPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTM
                 <div className="transition-transform hover:scale-110 cursor-pointer">
                   <Share2 size={32} stroke="white" strokeWidth={2} className="drop-shadow-lg" />
                 </div>
-                <span className="text-xs font-bold drop-shadow-md">12.5K</span>
+                <span className="text-xs font-bold drop-shadow-md">{shares}</span>
               </div>
 
               {/* Rotating Music Disc */}
@@ -107,5 +129,4 @@ const TikTokPost = ({ onContextMenu }: { onContextMenu: (e: React.MouseEvent<HTM
       </div>
     </div>
   );
-
-export default TikTokPost;
+}

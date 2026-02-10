@@ -60,4 +60,3 @@ export interface TranscriptionSegment {
 export interface TranscriptionResult {
   segments: TranscriptionSegment[];
 }
-

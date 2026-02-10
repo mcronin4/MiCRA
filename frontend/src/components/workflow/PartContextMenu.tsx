@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { Button } from './ui/button';
+import { Button } from '@/components/ui/button';
 import { Copy, Trash2, CopyPlus } from 'lucide-react';
 
 type PartContextMenuProps = {

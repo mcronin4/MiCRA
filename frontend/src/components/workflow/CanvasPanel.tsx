@@ -1,23 +1,23 @@
 import React, { useEffect, useCallback, useMemo } from "react";
 import type { Node, Edge, OnConnect, ReactFlowInstance, NodeChange } from "@xyflow/react";
-import AddPartMenu from "../AddPartMenu";
-import PartContextMenu from "../PartContextMenu";
-import { LinkedInComponent } from "../canvas/LinkedInComponent";
-import { TikTokComponent } from "../canvas/TikTokComponent";
-import { EmailComponent } from "../canvas/EmailComponent";
-import { ImageMatchingNode } from "../workflow/nodes/ImageMatchingNode";
-import { TextGenerationNode } from "../workflow/nodes/TextGenerationNode";
-import { ImageGenerationNode } from "../workflow/nodes/ImageGenerationNode";
-import { ImageExtractionNode } from "../workflow/nodes/ImageExtractionNode";
-import { TranscriptionNode } from "../workflow/nodes/TranscriptionNode";
-import { QuoteExtractionNode } from "../workflow/nodes/QuoteExtractionNode";
-import { ImageBucketNode } from "../workflow/nodes/ImageBucketNode";
-import { AudioBucketNode } from "../workflow/nodes/AudioBucketNode";
-import { VideoBucketNode } from "../workflow/nodes/VideoBucketNode";
-import { TextBucketNode } from "../workflow/nodes/TextBucketNode";
-import { EndNode } from "../workflow/nodes/EndNode";
-import { UnknownNode } from "../workflow/nodes/UnknownNode";
-import { WorkflowManager } from "../workflow/WorkflowManager";
+import AddPartMenu from "./AddPartMenu";
+import PartContextMenu from "./PartContextMenu";
+import { LinkedInNode } from "./nodes/LinkedInNode";
+import { TikTokNode } from "./nodes/TikTokNode";
+import { EmailNode } from "./nodes/EmailNode";
+import { ImageMatchingNode } from "./nodes/ImageMatchingNode";
+import { TextGenerationNode } from "./nodes/TextGenerationNode";
+import { ImageGenerationNode } from "./nodes/ImageGenerationNode";
+import { ImageExtractionNode } from "./nodes/ImageExtractionNode";
+import { TranscriptionNode } from "./nodes/TranscriptionNode";
+import { QuoteExtractionNode } from "./nodes/QuoteExtractionNode";
+import { ImageBucketNode } from "./nodes/ImageBucketNode";
+import { AudioBucketNode } from "./nodes/AudioBucketNode";
+import { VideoBucketNode } from "./nodes/VideoBucketNode";
+import { TextBucketNode } from "./nodes/TextBucketNode";
+import { EndNode } from "./nodes/EndNode";
+import { UnknownNode } from "./nodes/UnknownNode";
+import { WorkflowManager } from "./WorkflowManager";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import { getNodeSpec } from "@/lib/nodeRegistry";
 import type { NodeType } from "./types";
@@ -32,9 +32,9 @@ const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
 };
 
 const nodeTypes = {
-  LinkedIn: LinkedInComponent,
-  TikTok: TikTokComponent,
-  Email: EmailComponent,
+  LinkedIn: LinkedInNode,
+  TikTok: TikTokNode,
+  Email: EmailNode,
   ImageMatching: ImageMatchingNode,
   TextGeneration: TextGenerationNode,
   ImageGeneration: ImageGenerationNode,
@@ -232,7 +232,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         // Node type not found in registry - use default color
         console.warn(`Node type "${sourceNode.type}" not found in registry for edge ${edge.id}`);
       }
-      
+
       // Check if either node is in test mode
       const sourceNodeState = workflowNodes[edge.source];
       const targetNodeState = workflowNodes[edge.target];

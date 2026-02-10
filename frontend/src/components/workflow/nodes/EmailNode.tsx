@@ -7,7 +7,7 @@ interface EmailNodeData {
   label?: string;
 }
 
-export function EmailComponent({ data }: { data: EmailNodeData }) {
+export function EmailNode({ data }: { data: EmailNodeData }) {
   const content = data?.content || `Hi [First Name],
 
 I'm excited to introduce the brilliant people behind Micra—a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.

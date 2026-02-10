@@ -6,9 +6,9 @@ interface LinkedInNodeData {
   label?: string;
 }
 
-export function LinkedInComponent({ data }: { data: LinkedInNodeData }) {
+export function LinkedInNode({ data }: { data: LinkedInNodeData }) {
   const content = data?.content || "Proud to introduce the brilliant people behind Micra. We're a tight-knit crew of builders, researchers, and problem-solvers obsessed with crafting elegant solutions to complex problems.";
-  
+
   return (
     <div className="w-[500px] bg-white p-5 rounded-xl shadow-md">
       <div className="flex items-center justify-between mb-4">
