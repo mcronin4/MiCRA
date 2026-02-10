@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import type { SourceText } from '@/components/final-review/types';
+import type { SourceText } from '@/components/workflow/types';
 
 export const useSourceTexts = () => {
   const [sourceTexts, setSourceTexts] = useState<SourceText[]>([]);

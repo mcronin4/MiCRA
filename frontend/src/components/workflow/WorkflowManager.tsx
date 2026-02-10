@@ -20,6 +20,7 @@ import {
   Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { showToast } from "@/lib/stores/toastStore";
 
 interface WorkflowManagerProps {
   reactFlowNodes: Node[];
@@ -30,6 +31,8 @@ interface WorkflowManagerProps {
   showSaveDialogExternal?: boolean;
   showLoadDialogExternal?: boolean;
   onDialogClose?: () => void;
+  autoLoadWorkflowId?: string | null;
+  onAutoLoadComplete?: () => void;
 }
 
 export function WorkflowManager({
@@ -41,6 +44,8 @@ export function WorkflowManager({
   showSaveDialogExternal,
   showLoadDialogExternal,
   onDialogClose,
+  autoLoadWorkflowId,
+  onAutoLoadComplete,
 }: WorkflowManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -122,15 +127,37 @@ export function WorkflowManager({
     }
   }, [isOpen, loadWorkflows]);
 
+  // Auto-load a workflow when navigating from dashboard
+  const autoLoadProcessed = React.useRef(false);
+  useEffect(() => {
+    if (!autoLoadWorkflowId || !reactFlowInstance || autoLoadProcessed.current) return;
+    autoLoadProcessed.current = true;
+
+    const doAutoLoad = async () => {
+      const result = await loadWorkflow(autoLoadWorkflowId, reactFlowInstance);
+      if (result.success && result.nodes && result.edges) {
+        setNodes(result.nodes);
+        setEdges(result.edges);
+        setWorkflowMetadata(
+          autoLoadWorkflowId,
+          result.workflowName || "Untitled Workflow",
+          result.workflowDescription
+        );
+      }
+      onAutoLoadComplete?.();
+    };
+    doAutoLoad();
+  }, [autoLoadWorkflowId, reactFlowInstance, loadWorkflow, setNodes, setEdges, setWorkflowMetadata, onAutoLoadComplete]);
+
   const handleSave = useCallback(async () => {
     const nameToSave = localWorkflowName.trim() || workflowName.trim();
     if (!nameToSave) {
-      alert("Please enter a workflow name");
+      showToast("Please enter a workflow name", "warning");
       return;
     }
 
     if (reactFlowNodes.length === 0) {
-      alert("Cannot save empty workflow");
+      showToast("Cannot save empty workflow", "warning");
       return;
     }
 
@@ -147,9 +174,9 @@ export function WorkflowManager({
       setWorkflowMetadata(result.workflowId, nameToSave, localWorkflowDescription.trim() || workflowDescription || undefined);
       handleCloseSaveDialog();
       await loadWorkflows(); // Refresh list
-      alert(currentWorkflowId ? "Workflow updated" : "Workflow saved");
+      showToast(currentWorkflowId ? "Workflow updated" : "Workflow saved", "success");
     } else {
-      alert(`Failed to save: ${result.error}`);
+      showToast(`Failed to save: ${result.error}`, "error");
     }
   }, [
     localWorkflowName,
@@ -187,7 +214,7 @@ export function WorkflowManager({
           );
           handleCloseLoadDialog();
         } else {
-          alert(`Failed to load: ${result.error}`);
+          showToast(`Failed to load: ${result.error}`, "error");
         }
       }
     },
@@ -218,7 +245,7 @@ export function WorkflowManager({
           setWorkflowMetadata(undefined, 'Untitled Workflow', undefined);
         }
       } else {
-        alert(`Failed to delete: ${result.error}`);
+        showToast(`Failed to delete: ${result.error}`, "error");
       }
     },
     [removeWorkflow, currentWorkflowId, setWorkflowMetadata, loadWorkflows],
@@ -234,7 +261,7 @@ export function WorkflowManager({
         const versionList = await listWorkflowVersions(workflowId);
         setVersions(versionList);
       } catch (err) {
-        alert(`Failed to load version history: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        showToast(`Failed to load version history: ${err instanceof Error ? err.message : 'Unknown error'}`, "error");
         setShowVersionHistory(false);
       } finally {
         setIsLoadingVersions(false);
@@ -279,7 +306,7 @@ export function WorkflowManager({
           );
         }
       } catch (err) {
-        alert(`Failed to load version: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        showToast(`Failed to load version: ${err instanceof Error ? err.message : 'Unknown error'}`, "error");
       }
     },
     [reactFlowInstance, setNodes, setEdges, setWorkflowMetadata, workflows, handleCloseLoadDialog, importWorkflowStructure]

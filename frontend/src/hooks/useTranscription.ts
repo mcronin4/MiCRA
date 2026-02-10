@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { transcribeUrl, transcribeFile } from '@/lib/fastapi/transcription';
-import type { TranscriptionResult } from '@/components/final-review/types';
+import type { TranscriptionResult } from '@/components/workflow/types';
 
 export const useTranscription = (onTranscriptionComplete?: (fullText: string) => void) => {
   const [mediaUrl, setMediaUrl] = useState('');

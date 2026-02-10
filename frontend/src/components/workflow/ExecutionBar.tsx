@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Play,
   Loader2,
+  Eye,
 } from "lucide-react";
 import type { ReactFlowInstance } from "@xyflow/react";
 
@@ -29,6 +30,9 @@ interface ExecutionBarProps {
   onUndo: () => void;
   onRedo: () => void;
   isExecuting?: boolean;
+  executionJustCompleted?: boolean;
+  currentWorkflowId?: string;
+  onViewResults?: () => void;
 }
 
 export const ExecutionBar: React.FC<ExecutionBarProps> = ({
@@ -43,7 +47,12 @@ export const ExecutionBar: React.FC<ExecutionBarProps> = ({
   onUndo,
   onRedo,
   isExecuting = false,
+  executionJustCompleted = false,
+  currentWorkflowId,
+  onViewResults,
 }) => {
+  const showViewResults =
+    executionJustCompleted && currentWorkflowId && onViewResults;
   return (
     <div className="h-14 bg-white border-t border-gray-100 flex items-center justify-between px-4">
       {/* Left Controls */}
@@ -136,6 +145,15 @@ export const ExecutionBar: React.FC<ExecutionBarProps> = ({
           <MessageCircle size={18} />
         </button>
         <div className="w-px h-6 bg-gray-200 mx-1" />
+        {showViewResults && (
+          <button
+            onClick={onViewResults}
+            className="h-9 px-4 flex items-center gap-2 rounded-lg font-medium text-sm bg-indigo-500 hover:bg-indigo-600 text-white shadow-sm hover:shadow-md transition-all"
+          >
+            <Eye size={14} />
+            <span>View Results</span>
+          </button>
+        )}
         <button
           onClick={onExecuteWorkflow}
           disabled={isExecuting}

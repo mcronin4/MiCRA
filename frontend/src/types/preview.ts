@@ -13,6 +13,8 @@ export interface TemplateSlot {
   label: string
   acceptsTypes: SlotContentType[]
   required: boolean
+  /** Max characters for text slots (e.g. LinkedIn 3000, X 280). Omit = no limit. */
+  maxChars?: number
 }
 
 export interface SlotAssignment {
@@ -50,21 +52,19 @@ export interface PreviewConfig {
   updatedAt: number
 }
 
+export const LIVE_PREVIEW_CONTEXT_ID = '__live__' as const
+export type PreviewContextId = string | typeof LIVE_PREVIEW_CONTEXT_ID
+
 export const LINKEDIN_TEMPLATE: PlatformTemplate = {
   platformId: 'linkedin',
   platformLabel: 'LinkedIn',
   slots: [
     {
-      slotId: 'headline',
-      label: 'Headline',
-      acceptsTypes: ['text', 'json'],
-      required: false,
-    },
-    {
       slotId: 'body',
       label: 'Body',
       acceptsTypes: ['text', 'json'],
       required: true,
+      maxChars: 3000,
     },
     {
       slotId: 'media',
@@ -72,13 +72,12 @@ export const LINKEDIN_TEMPLATE: PlatformTemplate = {
       acceptsTypes: ['image', 'video'],
       required: false,
     },
-    {
-      slotId: 'caption',
-      label: 'Caption',
-      acceptsTypes: ['text', 'json'],
-      required: false,
-    },
   ],
+}
+
+/** Registry of platform templates for slot resolution and draft building */
+export const PLATFORM_TEMPLATES: Record<string, PlatformTemplate> = {
+  linkedin: LINKEDIN_TEMPLATE,
 }
 
 export const TONE_OPTIONS = [

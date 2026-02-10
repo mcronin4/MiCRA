@@ -1,15 +1,29 @@
 import { create } from 'zustand'
-import type { PreviewConfig, SlotAssignment, NodeOutputRef } from '@/types/preview'
-import { LINKEDIN_TEMPLATE, migrateAssignment } from '@/types/preview'
+import type {
+  PreviewConfig,
+  SlotAssignment,
+  NodeOutputRef,
+  PreviewContextId,
+} from '@/types/preview'
+import {
+  LINKEDIN_TEMPLATE,
+  PLATFORM_TEMPLATES,
+  migrateAssignment,
+  LIVE_PREVIEW_CONTEXT_ID,
+} from '@/types/preview'
 
-function storageKey(workflowId: string) {
+function legacyStorageKey(workflowId: string) {
   return `preview_config_${workflowId}`
 }
 
-function loadConfig(workflowId: string): PreviewConfig | null {
+function storageKey(workflowId: string, contextId: PreviewContextId) {
+  return `preview_config_${workflowId}_${contextId}`
+}
+
+function loadConfig(workflowId: string, contextId: PreviewContextId): PreviewConfig | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = localStorage.getItem(storageKey(workflowId))
+    const raw = localStorage.getItem(storageKey(workflowId, contextId))
     if (!raw) return null
     const parsed = JSON.parse(raw) as PreviewConfig
     // Migrate legacy single-source assignments to multi-source
@@ -22,12 +36,31 @@ function loadConfig(workflowId: string): PreviewConfig | null {
   }
 }
 
-function saveConfig(config: PreviewConfig) {
+function saveConfig(config: PreviewConfig, contextId: PreviewContextId) {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(storageKey(config.workflowId), JSON.stringify(config))
+    localStorage.setItem(storageKey(config.workflowId, contextId), JSON.stringify(config))
   } catch {
     // localStorage full or unavailable
+  }
+}
+
+function migrateLegacyConfigToLive(workflowId: string) {
+  if (typeof window === 'undefined') return
+  try {
+    const liveKey = storageKey(workflowId, LIVE_PREVIEW_CONTEXT_ID)
+    if (localStorage.getItem(liveKey)) return
+
+    const raw = localStorage.getItem(legacyStorageKey(workflowId))
+    if (!raw) return
+
+    const parsed = JSON.parse(raw) as PreviewConfig
+    if (parsed.assignments) {
+      parsed.assignments = parsed.assignments.map(migrateAssignment)
+    }
+    localStorage.setItem(liveKey, JSON.stringify(parsed))
+  } catch {
+    // Ignore malformed legacy payloads.
   }
 }
 
@@ -46,9 +79,14 @@ function defaultConfig(workflowId: string): PreviewConfig {
 
 interface PreviewStore {
   config: PreviewConfig | null
+  activeWorkflowId: string | null
+  activeContextId: PreviewContextId
 
   /** Load config from localStorage or create default */
-  loadPreviewConfig: (workflowId: string) => void
+  loadPreviewConfig: (workflowId: string, contextId: PreviewContextId) => void
+
+  /** Set active workflow/context pair and load config */
+  setActiveContext: (workflowId: string, contextId: PreviewContextId) => void
 
   /** Assign outputs to a slot (replaces all sources) */
   assignSlot: (slotId: string, sources: NodeOutputRef[]) => void
@@ -67,19 +105,31 @@ interface PreviewStore {
 
   /** Reset config */
   resetConfig: () => void
+
+  /** Set config from a draft (tone, platform) - does not persist, used when viewing draft */
+  setConfigFromDraft: (workflowId: string, platformId: string, tone: string) => void
 }
 
 export const usePreviewStore = create<PreviewStore>((set, get) => ({
   config: null,
+  activeWorkflowId: null,
+  activeContextId: LIVE_PREVIEW_CONTEXT_ID,
 
-  loadPreviewConfig: (workflowId) => {
-    const saved = loadConfig(workflowId)
+  loadPreviewConfig: (workflowId, contextId) => {
+    if (contextId === LIVE_PREVIEW_CONTEXT_ID) {
+      migrateLegacyConfigToLive(workflowId)
+    }
+    const saved = loadConfig(workflowId, contextId)
     const config = saved ?? defaultConfig(workflowId)
-    set({ config })
+    set({ config, activeWorkflowId: workflowId, activeContextId: contextId })
+  },
+
+  setActiveContext: (workflowId, contextId) => {
+    get().loadPreviewConfig(workflowId, contextId)
   },
 
   assignSlot: (slotId, sources) => {
-    const { config } = get()
+    const { config, activeContextId } = get()
     if (!config) return
 
     const updated: PreviewConfig = {
@@ -89,12 +139,12 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
       ),
       updatedAt: Date.now(),
     }
-    saveConfig(updated)
+    saveConfig(updated, activeContextId)
     set({ config: updated })
   },
 
   clearSlot: (slotId) => {
-    const { config } = get()
+    const { config, activeContextId } = get()
     if (!config) return
 
     const updated: PreviewConfig = {
@@ -104,12 +154,12 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
       ),
       updatedAt: Date.now(),
     }
-    saveConfig(updated)
+    saveConfig(updated, activeContextId)
     set({ config: updated })
   },
 
   setPlatform: (platformId) => {
-    const { config } = get()
+    const { config, activeContextId } = get()
     if (!config) return
 
     const updated: PreviewConfig = {
@@ -117,12 +167,12 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
       platformId,
       updatedAt: Date.now(),
     }
-    saveConfig(updated)
+    saveConfig(updated, activeContextId)
     set({ config: updated })
   },
 
   setTone: (tone) => {
-    const { config } = get()
+    const { config, activeContextId } = get()
     if (!config) return
 
     const updated: PreviewConfig = {
@@ -130,7 +180,7 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
       tone,
       updatedAt: Date.now(),
     }
-    saveConfig(updated)
+    saveConfig(updated, activeContextId)
     set({ config: updated })
   },
 
@@ -141,10 +191,26 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
   },
 
   resetConfig: () => {
-    const { config } = get()
+    const { config, activeContextId } = get()
     if (!config) return
     const fresh = defaultConfig(config.workflowId)
-    saveConfig(fresh)
+    saveConfig(fresh, activeContextId)
     set({ config: fresh })
+  },
+
+  setConfigFromDraft: (workflowId, platformId, tone) => {
+    const template = PLATFORM_TEMPLATES[platformId] ?? LINKEDIN_TEMPLATE
+    set({
+      config: {
+        workflowId,
+        platformId,
+        tone,
+        assignments: template.slots.map((slot) => ({
+          slotId: slot.slotId,
+          sources: [],
+        })),
+        updatedAt: Date.now(),
+      },
+    })
   },
 }))

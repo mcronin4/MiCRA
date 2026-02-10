@@ -95,6 +95,7 @@ export function ImageExtractionNode({ id }: NodeProps) {
     });
 
     return selectedImages
+      .filter((image) => image.base64 && image.filename)
       .map((image) => ({
         ...image,
         score: scoreLookup.get(image.filename) ?? null,
@@ -446,8 +447,8 @@ export function ImageExtractionNode({ id }: NodeProps) {
               <span>{scoredImages.length} total</span>
             </div>
             <div className="flex gap-2">
-              {topImages.map((img) => (
-                <div key={img.id} className="relative w-20 shrink-0">
+              {topImages.map((img, index) => (
+                <div key={`${img.id}-${index}`} className="relative w-20 shrink-0">
                   <Image
                     src={img.base64}
                     alt={img.filename}
@@ -547,9 +548,9 @@ export function ImageExtractionNode({ id }: NodeProps) {
                   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 }}
               >
-                {scoredImages.map((img) => (
+                {scoredImages.map((img, index) => (
                   <a
-                    key={img.id}
+                    key={`${img.id}-${index}`}
                     href={img.base64}
                     download={img.filename}
                     className="nodrag group relative rounded-xl border border-slate-200 bg-white overflow-hidden transition-shadow hover:shadow-md"

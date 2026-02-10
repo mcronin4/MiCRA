@@ -1,5 +1,5 @@
-import FinalReview from '@/components/FinalReview';
+import { redirect } from 'next/navigation';
 
 export default function FinalReviewPage() {
-  return <FinalReview />;
+  redirect('/workflow');
 }

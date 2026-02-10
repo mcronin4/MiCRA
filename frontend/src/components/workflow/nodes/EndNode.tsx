@@ -1,13 +1,16 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { NodeProps, Handle, Position } from "@xyflow/react";
-import { Flag, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Flag, Loader2, CheckCircle2, XCircle, Eye } from "lucide-react";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 
 export function EndNode({ id }: NodeProps) {
   const node = useWorkflowStore((state) => state.nodes[id]);
+  const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
   const status = node?.status || "idle";
+  const router = useRouter();
 
   const statusConfig = {
     idle: {
@@ -109,15 +112,20 @@ export function EndNode({ id }: NodeProps) {
         </div>
       </div>
 
-      {/* Show outputs if completed */}
-      {status === "completed" && node?.outputs && (
+      {/* View Results button when completed */}
+      {status === "completed" && currentWorkflowId && (
         <div className="px-5 pb-4">
-          <div className="bg-white/60 rounded-lg p-3 text-xs text-slate-600 max-h-32 overflow-auto">
-            <pre className="whitespace-pre-wrap">
-              {JSON.stringify(node.outputs, null, 2).slice(0, 200)}
-              {JSON.stringify(node.outputs).length > 200 && "..."}
-            </pre>
-          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/preview/${currentWorkflowId}`);
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-white/80 hover:bg-white text-emerald-700 hover:text-emerald-800 font-medium text-sm shadow-sm border border-emerald-200/80 transition-colors"
+          >
+            <Eye size={14} />
+            View Results
+          </button>
         </div>
       )}
 

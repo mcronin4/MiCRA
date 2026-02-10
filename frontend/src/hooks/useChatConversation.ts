@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import type { ChatMessage, ConversationState, SourceText, NodeContent } from '@/components/final-review/types';
+import type { ChatMessage, ConversationState, SourceText, NodeContent } from '@/components/workflow/types';
 import { apiClient } from '@/lib/fastapi/client';
 
 interface ChatResponse {

@@ -1,8 +1,13 @@
 'use client'
 
+import { useDraggable } from '@dnd-kit/core'
 import type { NodeOutputRef, SlotContentType } from '@/types/preview'
-import { CONTENT_TYPE_ICONS } from '@/lib/preview-utils'
-import { FileText } from 'lucide-react'
+import { CONTENT_TYPE_ICONS, refKey } from '@/lib/preview-utils'
+import { ImagePreview } from './previews/ImagePreview'
+import { VideoPreview } from './previews/VideoPreview'
+import { TextPreview } from './previews/TextPreview'
+import { JsonPreview } from './previews/JsonPreview'
+import { GripVertical, FileText } from 'lucide-react'
 
 interface OutputBlockProps {
   output: NodeOutputRef
@@ -11,60 +16,114 @@ interface OutputBlockProps {
   isAssigned: boolean
 }
 
-function formatPreview(value: unknown, contentType: SlotContentType): string {
-  if (value === null || value === undefined) return '(empty)'
+function MatchedImagePreview({ value }: { value: Record<string, unknown> }) {
+  const score = value._matchScore as number | undefined
+  const caption = value._caption as string | undefined
+  const isFailed = value.status === 'failed' || !!value.error
 
-  // Quote-like objects
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const obj = value as Record<string, unknown>
-    if (typeof obj.text === 'string') {
-      return obj.text.length > 80 ? obj.text.slice(0, 77) + '...' : obj.text
-    }
-    // Image match objects
-    if (typeof obj.url === 'string' || typeof obj.signedUrl === 'string') {
-      return 'Image'
-    }
-  }
-
-  if (contentType === 'text' && typeof value === 'string') {
-    return value.length > 80 ? value.slice(0, 77) + '...' : value
-  }
-  if (contentType === 'image') {
-    if (typeof value === 'string') return 'Image'
-    if (Array.isArray(value)) return `${value.length} image(s)`
-  }
-  if (contentType === 'json') {
-    return typeof value === 'string' ? value.slice(0, 60) : JSON.stringify(value).slice(0, 60)
-  }
-  if (Array.isArray(value)) return `[${value.length} items]`
-  return String(value).slice(0, 80)
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative shrink-0">
+        <ImagePreview value={value} size="thumbnail" />
+        {typeof score === 'number' && score > 0 && (
+          <div className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[9px] font-bold px-1 py-0.5 rounded-full min-w-[28px] text-center">
+            {Math.round(score * 100)}%
+          </div>
+        )}
+        {isFailed && (
+          <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-full">
+            !
+          </div>
+        )}
+      </div>
+      {caption && (
+        <p className="text-[10px] text-slate-500 truncate flex-1 min-w-0">
+          {caption}
+        </p>
+      )}
+    </div>
+  )
 }
 
-export function OutputBlock({ output, contentType, value, isAssigned }: OutputBlockProps) {
+function RichPreview({
+  contentType,
+  value,
+  nodeType,
+}: {
+  contentType: SlotContentType
+  value: unknown
+  nodeType: string
+}) {
+  switch (contentType) {
+    case 'image':
+      if (nodeType === 'ImageMatching' && value && typeof value === 'object') {
+        return <MatchedImagePreview value={value as Record<string, unknown>} />
+      }
+      return <ImagePreview value={value} size="thumbnail" />
+    case 'video':
+      return <VideoPreview value={value} size="thumbnail" />
+    case 'text':
+      return <TextPreview value={value} maxLength={80} />
+    case 'json':
+      return <JsonPreview value={value} nodeType={nodeType} />
+    default:
+      return <TextPreview value={value} maxLength={60} />
+  }
+}
+
+export function OutputBlock({
+  output,
+  contentType,
+  value,
+  isAssigned,
+}: OutputBlockProps) {
+  const dragId = refKey(output)
+  const { attributes, listeners, setNodeRef, isDragging } =
+    useDraggable({
+      id: dragId,
+      data: { ref: output, contentType, value },
+    })
+
+  const style = {
+    opacity: isDragging ? 0.55 : 1,
+  }
+
   const Icon = CONTENT_TYPE_ICONS[contentType] ?? FileText
 
   return (
     <div
-      className={`px-3 py-2.5 rounded-lg border text-left transition-colors ${
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className={`px-3 py-2.5 rounded-lg border text-left transition-all cursor-grab active:cursor-grabbing ${
         isAssigned
           ? 'bg-indigo-50 border-indigo-200'
-          : 'bg-white border-slate-200 hover:border-slate-300'
-      }`}
+          : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
+      } ${isDragging ? 'ring-2 ring-indigo-300 shadow-lg' : ''}`}
     >
-      <div className="flex items-center gap-2 mb-1">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-1.5 min-w-0">
+        <GripVertical size={12} className="text-slate-300 shrink-0" />
         <Icon size={14} className="text-slate-400 shrink-0" />
-        <span className="text-xs font-medium text-slate-700 truncate">
+        <span className="text-xs font-medium text-slate-700 truncate flex-1 min-w-0">
           {output.label}
         </span>
         {isAssigned && (
-          <span className="ml-auto text-[10px] font-medium text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded">
+          <span className="text-[10px] font-medium text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded shrink-0">
             Assigned
           </span>
         )}
       </div>
-      <p className="text-xs text-slate-500 truncate pl-[22px]">
-        {formatPreview(value, contentType)}
-      </p>
+
+      {/* Rich Preview */}
+      <div className="pl-[26px]">
+        <RichPreview
+          contentType={contentType}
+          value={value}
+          nodeType={output.nodeType}
+        />
+      </div>
     </div>
   )
 }

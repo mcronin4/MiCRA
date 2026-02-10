@@ -82,6 +82,7 @@ export function useWorkflowExecution() {
             node_results: event.node_results,
             total_execution_time_ms: event.total_execution_time_ms,
             error: null,
+            persistence_warning: event.persistence_warning ?? null,
           }
           setExecutionResult(finalResultRef.current)
           setCurrentNode(null)
@@ -97,6 +98,7 @@ export function useWorkflowExecution() {
               node_results: event.node_results,
               total_execution_time_ms: event.total_execution_time_ms,
               error: event.error,
+              persistence_warning: event.persistence_warning ?? null,
             }
             setExecutionResult(finalResultRef.current)
           }

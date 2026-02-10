@@ -11,6 +11,7 @@ User workflows belong to authenticated users and can only be modified by their o
 Workflow data is stored in workflow_versions table. The workflows table stores metadata only.
 """
 
+import json
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -19,6 +20,27 @@ from uuid import UUID
 from datetime import datetime
 from app.auth.dependencies import User, get_current_user, get_supabase_client
 from supabase import Client
+
+
+class BlueprintSnapshotNode(BaseModel):
+    """A node in a blueprint snapshot (minimal structure for preview purposes)."""
+    node_id: Optional[str] = None
+    type: Optional[str] = None
+
+
+class BlueprintSnapshot(BaseModel):
+    """
+    Snapshot of a blueprint structure saved with workflow run outputs.
+    
+    This model validates the nodes array from a full Blueprint dump.
+    The full blueprint may contain additional fields (connections, workflow_inputs, etc.)
+    which are ignored during validation.
+    """
+    nodes: Optional[List[BlueprintSnapshotNode]] = None
+    
+    class Config:
+        # Allow extra fields from the full Blueprint structure
+        extra = "ignore"
 
 
 class ExecutionLogSummary(BaseModel):
@@ -36,6 +58,30 @@ class ExecutionLogSummary(BaseModel):
 class ExecutionLogDetail(ExecutionLogSummary):
     node_summaries: List[Dict[str, Any]] = []
     blueprint: Optional[Dict[str, Any]] = None  # The compiled blueprint that was executed
+
+
+class WorkflowRunSummary(BaseModel):
+    execution_id: str
+    workflow_id: str
+    success: bool
+    error: Optional[str] = None
+    total_execution_time_ms: int
+    node_count: int
+    nodes_completed: int
+    nodes_errored: int
+    created_at: datetime
+    has_persisted_outputs: bool
+
+
+class WorkflowRunOutputsResponse(BaseModel):
+    execution_id: str
+    workflow_id: str
+    node_outputs: Dict[str, Any]
+    workflow_outputs: Dict[str, Any]
+    blueprint_snapshot: Optional[BlueprintSnapshot] = None
+    payload_bytes: int
+    created_at: datetime
+
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -630,6 +676,30 @@ class ExecuteByIdRequest(BaseModel):
     pass
 
 
+def _assert_workflow_access_or_404(
+    supabase: Client,
+    workflow_id: str,
+    user: User,
+) -> Dict[str, Any]:
+    wf_result = supabase.table("workflows")\
+        .select("*")\
+        .eq("id", workflow_id)\
+        .execute()
+
+    if not wf_result.data or len(wf_result.data) == 0:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    wf = wf_result.data[0]
+    wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
+    is_system = wf.get("is_system", False)
+    if not is_system and wf_user_id != user.sub:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this workflow",
+        )
+    return wf
+
+
 @router.post("/execute")
 async def execute_workflow_raw(
     request: ExecuteRawRequest,
@@ -641,7 +711,7 @@ async def execute_workflow_raw(
     Accepts nodes and edges. Returns execution results.
     """
     from app.services.blueprint_compiler import compile_workflow
-    from app.services.workflow_executor import execute_workflow
+    from app.services.workflow_executor import execute_workflow, save_execution_log
 
     # Use provided workflow_id and name if available, otherwise use defaults
     workflow_id = request.workflow_id
@@ -667,16 +737,15 @@ async def execute_workflow_raw(
     execution_result = await execute_workflow(
         blueprint=result.blueprint,
     )
-    
-    # Save execution log with workflow_id if provided
-    from app.services.workflow_executor import save_execution_log
-    # Pass supabase client if save_execution_log needs it, but it might use admin client internaly?
-    # execution logs are safer to use Admin client as they are write-only usually? 
-    # Or RLS allows insert.
-    # The method definition for save_execution_log is unknown to me here.
-    # I should assume it works.
-    save_execution_log(execution_result, workflow_id, user.sub, blueprint=result.blueprint)
-    
+
+    _, warning = save_execution_log(
+        execution_result,
+        workflow_id,
+        user.sub,
+        blueprint=result.blueprint,
+    )
+    execution_result.persistence_warning = warning
+
     return execution_result.model_dump()
 
 
@@ -784,28 +853,10 @@ async def execute_workflow_by_id(
     Fetch the latest version of a saved workflow, compile it, and execute.
     """
     from app.services.blueprint_compiler import compile_workflow
-    from app.services.workflow_executor import execute_workflow
+    from app.services.workflow_executor import execute_workflow, save_execution_log
 
     try:
-        
-
-        wf_result = supabase.table("workflows")\
-            .select("*")\
-            .eq("id", workflow_id)\
-            .execute()
-
-        if not wf_result.data or len(wf_result.data) == 0:
-            raise HTTPException(status_code=404, detail="Workflow not found")
-
-        wf = wf_result.data[0]
-        wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
-        is_system = wf.get("is_system", False)
-
-        if not is_system and wf_user_id != user.sub:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to access this workflow",
-            )
+        wf = _assert_workflow_access_or_404(supabase, workflow_id, user)
 
         version = get_latest_version(supabase, workflow_id)
         if not version:
@@ -835,8 +886,13 @@ async def execute_workflow_by_id(
             blueprint=compilation.blueprint,
         )
 
-        from app.services.workflow_executor import save_execution_log
-        save_execution_log(execution_result, workflow_id, user.sub, blueprint=compilation.blueprint)
+        _, warning = save_execution_log(
+            execution_result,
+            workflow_id,
+            user.sub,
+            blueprint=compilation.blueprint,
+        )
+        execution_result.persistence_warning = warning
 
         return execution_result.model_dump()
 
@@ -862,7 +918,7 @@ async def execute_workflow_stream(
     - workflow_error: Execution stopped due to error
     """
     from app.services.blueprint_compiler import compile_workflow
-    from app.services.workflow_executor import execute_workflow_streaming
+    from app.services.workflow_executor import execute_workflow_streaming, save_execution_log
 
     # Compile first (not streamed)
     compilation = compile_workflow(
@@ -884,6 +940,40 @@ async def execute_workflow_stream(
 
     async def event_generator():
         async for event in execute_workflow_streaming(compilation.blueprint):
+            if not event.startswith("data: "):
+                yield event
+                continue
+
+            payload = event[len("data: "):].strip()
+            try:
+                parsed = json.loads(payload)
+            except Exception:
+                yield event
+                continue
+
+            event_type = parsed.get("event")
+            if event_type in ("workflow_complete", "workflow_error"):
+                from app.services.workflow_executor import WorkflowExecutionResult
+
+                node_results = parsed.get("node_results") or []
+                workflow_result = WorkflowExecutionResult(
+                    success=event_type == "workflow_complete",
+                    workflow_outputs=parsed.get("workflow_outputs") or {},
+                    node_results=node_results,
+                    total_execution_time_ms=parsed.get("total_execution_time_ms") or 0,
+                    error=parsed.get("error"),
+                )
+                _, warning = save_execution_log(
+                    workflow_result,
+                    request.workflow_id,
+                    user.sub,
+                    blueprint=compilation.blueprint,
+                )
+                if warning:
+                    parsed["persistence_warning"] = warning
+                yield f"data: {json.dumps(parsed)}\n\n"
+                continue
+
             yield event
 
     return StreamingResponse(
@@ -902,33 +992,17 @@ async def execute_workflow_by_id_stream(
     workflow_id: str,
     request: ExecuteByIdRequest,
     user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
 ):
     """
     Fetch, compile, and execute a saved workflow with SSE streaming.
     """
     from app.services.blueprint_compiler import compile_workflow
-    from app.services.workflow_executor import execute_workflow_streaming
+    from app.services.workflow_executor import execute_workflow_streaming, save_execution_log
 
     try:
-        supabase = get_supabase().client
-
-        wf_result = supabase.table("workflows")\
-            .select("*")\
-            .eq("id", workflow_id)\
-            .execute()
-
-        if not wf_result.data or len(wf_result.data) == 0:
-            raise HTTPException(status_code=404, detail="Workflow not found")
-
-        wf = wf_result.data[0]
-        wf_user_id = str(wf.get("user_id")) if wf.get("user_id") else None
-        is_system = wf.get("is_system", False)
-
-        if not is_system and wf_user_id != user.sub:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to access this workflow",
-            )
+        _ = request
+        wf = _assert_workflow_access_or_404(supabase, workflow_id, user)
 
         version = get_latest_version(supabase, workflow_id)
         if not version:
@@ -956,6 +1030,39 @@ async def execute_workflow_by_id_stream(
 
         async def event_generator():
             async for event in execute_workflow_streaming(compilation.blueprint):
+                if not event.startswith("data: "):
+                    yield event
+                    continue
+
+                payload = event[len("data: "):].strip()
+                try:
+                    parsed = json.loads(payload)
+                except Exception:
+                    yield event
+                    continue
+
+                event_type = parsed.get("event")
+                if event_type in ("workflow_complete", "workflow_error"):
+                    from app.services.workflow_executor import WorkflowExecutionResult
+
+                    workflow_result = WorkflowExecutionResult(
+                        success=event_type == "workflow_complete",
+                        workflow_outputs=parsed.get("workflow_outputs") or {},
+                        node_results=parsed.get("node_results") or [],
+                        total_execution_time_ms=parsed.get("total_execution_time_ms") or 0,
+                        error=parsed.get("error"),
+                    )
+                    _, warning = save_execution_log(
+                        workflow_result,
+                        workflow_id,
+                        user.sub,
+                        blueprint=compilation.blueprint,
+                    )
+                    if warning:
+                        parsed["persistence_warning"] = warning
+                    yield f"data: {json.dumps(parsed)}\n\n"
+                    continue
+
                 yield event
 
         return StreamingResponse(
@@ -983,6 +1090,7 @@ async def delete_workflow(workflow_id: str, user: User = Depends(get_current_use
     Deleting a workflow will cascade delete all versions (via foreign key).
     """
     try:
+        from app.db.supabase import get_supabase
         supabase = get_supabase().client
         
         # Check if workflow exists
@@ -1024,15 +1132,121 @@ async def delete_workflow(workflow_id: str, user: User = Depends(get_current_use
         raise HTTPException(status_code=500, detail=f"Failed to delete workflow: {str(e)}")
 
 
+@router.get("/{workflow_id}/runs", response_model=List[WorkflowRunSummary])
+async def list_workflow_runs(
+    workflow_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """List run history for a workflow with persisted-output availability."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        execution_result = supabase.table("executions")\
+            .select("id, workflow_id, success, error, total_execution_time_ms, node_count, nodes_completed, nodes_errored, created_at")\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .order("created_at", desc=True)\
+            .execute()
+
+        execution_rows = execution_result.data or []
+        execution_ids = [str(row["id"]) for row in execution_rows]
+        persisted_ids: set[str] = set()
+        if execution_ids:
+            outputs_result = supabase.table("workflow_run_outputs")\
+                .select("execution_id")\
+                .in_("execution_id", execution_ids)\
+                .execute()
+            persisted_ids = {
+                str(row["execution_id"])
+                for row in (outputs_result.data or [])
+            }
+
+        return [
+            WorkflowRunSummary(
+                execution_id=str(row["id"]),
+                workflow_id=str(row["workflow_id"]),
+                success=row["success"],
+                error=row.get("error"),
+                total_execution_time_ms=row["total_execution_time_ms"],
+                node_count=row["node_count"],
+                nodes_completed=row["nodes_completed"],
+                nodes_errored=row["nodes_errored"],
+                created_at=row["created_at"],
+                has_persisted_outputs=str(row["id"]) in persisted_ids,
+            )
+            for row in execution_rows
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list workflow runs: {str(e)}")
+
+
+@router.get("/{workflow_id}/runs/{execution_id}/outputs", response_model=WorkflowRunOutputsResponse)
+async def get_workflow_run_outputs(
+    workflow_id: str,
+    execution_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Get persisted outputs for a specific workflow run."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        result = supabase.table("workflow_run_outputs")\
+            .select("*")\
+            .eq("workflow_id", workflow_id)\
+            .eq("execution_id", execution_id)\
+            .eq("user_id", user.sub)\
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Persisted outputs not found for this run")
+
+        row = result.data[0]
+        
+        # Parse blueprint_snapshot with validation
+        blueprint_snapshot_raw = row.get("blueprint_snapshot")
+        blueprint_snapshot: Optional[BlueprintSnapshot] = None
+        if blueprint_snapshot_raw:
+            try:
+                # Validate and parse the blueprint snapshot structure
+                blueprint_snapshot = BlueprintSnapshot.model_validate(blueprint_snapshot_raw)
+            except Exception as e:
+                # If validation fails, log but don't fail the request
+                # This handles legacy data that might not match the expected structure
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to validate blueprint_snapshot for execution {execution_id}: {e}. "
+                    "Returning None to maintain backward compatibility."
+                )
+                blueprint_snapshot = None
+        
+        return WorkflowRunOutputsResponse(
+            execution_id=str(row["execution_id"]),
+            workflow_id=str(row["workflow_id"]),
+            node_outputs=row.get("node_outputs") or {},
+            workflow_outputs=row.get("workflow_outputs") or {},
+            blueprint_snapshot=blueprint_snapshot,
+            payload_bytes=row.get("payload_bytes") or 0,
+            created_at=row["created_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch run outputs: {str(e)}")
+
+
 @router.get("/{workflow_id}/executions", response_model=List[ExecutionLogSummary])
 async def list_execution_logs(
     workflow_id: str,
     user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
 ):
     """List execution logs for a workflow (summary only, no node_summaries)."""
     try:
-        supabase = get_supabase().client
-
         # Verify workflow exists and user has access
         wf_result = supabase.table("workflows")\
             .select("user_id, is_system")\
@@ -1078,11 +1292,10 @@ async def get_execution_log(
     workflow_id: str,
     execution_id: str,
     user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
 ):
     """Get a single execution log with node_summaries."""
     try:
-        supabase = get_supabase().client
-
         # Verify workflow exists and user has access
         wf_result = supabase.table("workflows")\
             .select("user_id, is_system")\
@@ -1124,3 +1337,265 @@ async def get_execution_log(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get execution log: {str(e)}")
+
+
+# --- Preview Drafts ---
+
+class DraftCreate(BaseModel):
+    name: str
+    execution_id: Optional[str] = None
+    platform_id: str = "linkedin"
+    tone: str = "professional"
+    slot_content: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DraftUpdate(BaseModel):
+    name: Optional[str] = None
+    tone: Optional[str] = None
+    slot_content: Optional[Dict[str, Any]] = None
+
+
+class DraftResponse(BaseModel):
+    id: str
+    workflow_id: str
+    user_id: str
+    execution_id: Optional[str]
+    name: str
+    platform_id: str
+    tone: str
+    slot_content: Dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class DraftListItem(BaseModel):
+    id: str
+    name: str
+    execution_id: Optional[str]
+    platform_id: str
+    tone: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@router.get("/{workflow_id}/drafts", response_model=List[DraftListItem])
+async def list_preview_drafts(
+    workflow_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """List preview drafts for a workflow."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        result = supabase.table("preview_drafts")\
+            .select("id, name, execution_id, platform_id, tone, created_at, updated_at")\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .order("updated_at", desc=True)\
+            .execute()
+
+        return [
+            DraftListItem(
+                id=str(row["id"]),
+                name=row["name"],
+                execution_id=str(row["execution_id"]) if row.get("execution_id") else None,
+                platform_id=row.get("platform_id", "linkedin"),
+                tone=row.get("tone", "professional"),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+            for row in (result.data or [])
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list drafts: {str(e)}")
+
+
+@router.post("/{workflow_id}/drafts", response_model=DraftResponse, status_code=201)
+async def create_preview_draft(
+    workflow_id: str,
+    body: DraftCreate,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Create a new preview draft."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        row = {
+            "workflow_id": workflow_id,
+            "user_id": user.sub,
+            "name": body.name,
+            "platform_id": body.platform_id,
+            "tone": body.tone,
+            "slot_content": body.slot_content or {},
+        }
+        if body.execution_id:
+            row["execution_id"] = body.execution_id
+
+        result = supabase.table("preview_drafts").insert(row).execute()
+
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to create draft")
+
+        r = result.data[0]
+        return DraftResponse(
+            id=str(r["id"]),
+            workflow_id=str(r["workflow_id"]),
+            user_id=str(r["user_id"]),
+            execution_id=str(r["execution_id"]) if r.get("execution_id") else None,
+            name=r["name"],
+            platform_id=r.get("platform_id", "linkedin"),
+            tone=r.get("tone", "professional"),
+            slot_content=r.get("slot_content") or {},
+            created_at=r["created_at"],
+            updated_at=r["updated_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create draft: {str(e)}")
+
+
+@router.get("/{workflow_id}/drafts/{draft_id}", response_model=DraftResponse)
+async def get_preview_draft(
+    workflow_id: str,
+    draft_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Get a single preview draft."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        result = supabase.table("preview_drafts")\
+            .select("*")\
+            .eq("id", draft_id)\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .execute()
+
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(status_code=404, detail="Draft not found")
+
+        r = result.data[0]
+        return DraftResponse(
+            id=str(r["id"]),
+            workflow_id=str(r["workflow_id"]),
+            user_id=str(r["user_id"]),
+            execution_id=str(r["execution_id"]) if r.get("execution_id") else None,
+            name=r["name"],
+            platform_id=r.get("platform_id", "linkedin"),
+            tone=r.get("tone", "professional"),
+            slot_content=r.get("slot_content") or {},
+            created_at=r["created_at"],
+            updated_at=r["updated_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get draft: {str(e)}")
+
+
+@router.patch("/{workflow_id}/drafts/{draft_id}", response_model=DraftResponse)
+async def update_preview_draft(
+    workflow_id: str,
+    draft_id: str,
+    body: DraftUpdate,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Update a preview draft."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        updates: Dict[str, Any] = {}
+        if body.name is not None:
+            updates["name"] = body.name
+        if body.tone is not None:
+            updates["tone"] = body.tone
+        if body.slot_content is not None:
+            updates["slot_content"] = body.slot_content
+
+        if not updates:
+            # Fetch and return current state
+            result = supabase.table("preview_drafts")\
+                .select("*")\
+                .eq("id", draft_id)\
+                .eq("workflow_id", workflow_id)\
+                .eq("user_id", user.sub)\
+                .execute()
+            if not result.data:
+                raise HTTPException(status_code=404, detail="Draft not found")
+            r = result.data[0]
+            return DraftResponse(
+                id=str(r["id"]),
+                workflow_id=str(r["workflow_id"]),
+                user_id=str(r["user_id"]),
+                execution_id=str(r["execution_id"]) if r.get("execution_id") else None,
+                name=r["name"],
+                platform_id=r.get("platform_id", "linkedin"),
+                tone=r.get("tone", "professional"),
+                slot_content=r.get("slot_content") or {},
+                created_at=r["created_at"],
+                updated_at=r["updated_at"],
+            )
+
+        result = supabase.table("preview_drafts")\
+            .update(updates)\
+            .eq("id", draft_id)\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .execute()
+
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(status_code=404, detail="Draft not found")
+
+        r = result.data[0]
+        return DraftResponse(
+            id=str(r["id"]),
+            workflow_id=str(r["workflow_id"]),
+            user_id=str(r["user_id"]),
+            execution_id=str(r["execution_id"]) if r.get("execution_id") else None,
+            name=r["name"],
+            platform_id=r.get("platform_id", "linkedin"),
+            tone=r.get("tone", "professional"),
+            slot_content=r.get("slot_content") or {},
+            created_at=r["created_at"],
+            updated_at=r["updated_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update draft: {str(e)}")
+
+
+@router.delete("/{workflow_id}/drafts/{draft_id}", status_code=204)
+async def delete_preview_draft(
+    workflow_id: str,
+    draft_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Delete a preview draft."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        result = supabase.table("preview_drafts")\
+            .delete()\
+            .eq("id", draft_id)\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .execute()
+
+        # Supabase delete returns the deleted rows; empty means nothing was deleted
+        if result.data is not None and len(result.data) > 0:
+            return
+        # If no rows returned, the draft may not have existed - still return 204 for idempotency
+        return
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete draft: {str(e)}")

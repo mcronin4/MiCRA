@@ -24,6 +24,33 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("🚀 Starting MiCRA application...")
+
+    # Pre-warm JWKS keys (avoids 3-4s network fetch on first request)
+    try:
+        from .auth.dependencies import get_jwks_client
+        jwks_client = get_jwks_client()
+        jwks_client.get_jwk_set()  # Force fetch and cache signing keys
+        logger.info("✅ JWKS keys pre-warmed")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to pre-warm JWKS keys: {e}")
+
+    # Pre-warm Supabase admin client + DB connection pool
+    try:
+        from .db.supabase import get_supabase
+        sb = get_supabase().client
+        sb.table("files").select("id").limit(1).execute()
+        logger.info("✅ Supabase connection pre-warmed")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to pre-warm Supabase connection: {e}")
+
+    # Pre-warm R2 client
+    try:
+        from .storage.r2 import get_r2
+        get_r2()
+        logger.info("✅ R2 client pre-warmed")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to pre-warm R2 client: {e}")
+
     logger.info("✅ Application startup complete")
 
     yield

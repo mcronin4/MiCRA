@@ -7,22 +7,17 @@ interface ImageSlotProps {
 }
 
 function extractUrl(value: unknown): string | null {
-  if (typeof value === 'string' && value.startsWith('http')) return value
+  if (typeof value === 'string') {
+    if (value.startsWith('http') || value.startsWith('data:image')) return value
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>
+    if (typeof obj.image_url === 'string') return obj.image_url
+    if (typeof obj.url === 'string') return obj.url
+    if (typeof obj.signedUrl === 'string') return obj.signedUrl
+  }
   if (Array.isArray(value) && value.length > 0) {
-    const first = value[0]
-    if (typeof first === 'string' && first.startsWith('http')) return first
-    if (first && typeof first === 'object' && 'url' in first) {
-      return String((first as Record<string, unknown>).url)
-    }
-    if (first && typeof first === 'object' && 'signedUrl' in first) {
-      return String((first as Record<string, unknown>).signedUrl)
-    }
-  }
-  if (value && typeof value === 'object' && 'url' in value) {
-    return String((value as Record<string, unknown>).url)
-  }
-  if (value && typeof value === 'object' && 'signedUrl' in value) {
-    return String((value as Record<string, unknown>).signedUrl)
+    return extractUrl(value[0])
   }
   return null
 }

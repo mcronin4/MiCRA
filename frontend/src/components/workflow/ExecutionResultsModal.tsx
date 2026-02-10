@@ -2,7 +2,7 @@
 
 import Modal from '@/components/ui/Modal';
 import type { WorkflowExecutionResult } from '@/types/workflow-execution';
-import { CheckCircle, XCircle, Clock, Image, Music, Video, FileText, Sparkles, Type, Mic, Layers, Flag } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Image, Music, Video, FileText, Sparkles, Type, Mic, Layers, Flag, AlertTriangle } from 'lucide-react';
 import NextImage from 'next/image';
 
 type ImageMatchingMatch = {
@@ -242,6 +242,17 @@ export function ExecutionResultsModal({
               Execution Error
             </div>
             <div className="text-xs text-red-700 font-mono bg-red-100/50 p-2 rounded">{result.error}</div>
+          </div>
+        )}
+
+        {/* Persistence warning if present */}
+        {result.persistence_warning && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="text-sm font-medium text-amber-800 mb-1 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Persistence Warning
+            </div>
+            <div className="text-xs text-amber-700 bg-amber-100/50 p-2 rounded">{result.persistence_warning}</div>
           </div>
         )}
 

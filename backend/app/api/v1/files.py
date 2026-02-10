@@ -10,14 +10,45 @@ from uuid import UUID, uuid4
 import os
 import re
 import logging
+import asyncio
+import time
+from functools import partial
 from ...auth.dependencies import User, get_current_user, get_supabase_client
 from supabase import Client
+from ...db.supabase import get_supabase
 from ...storage.r2 import get_r2, R2_BUCKET
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
+
+# Simple in-memory cache for file list queries (avoids 3s+ Supabase round trips)
+_list_cache: Dict[str, Any] = {}  # key -> {"data": result_data, "expires": timestamp}
+LIST_CACHE_TTL = 600  # seconds (10 min) — cache is invalidated on upload/delete mutations anyway
+
+
+def _cache_key(user_id: str, bucket: Optional[str], status: str,
+               file_type: Optional[str], ids: Optional[str],
+               parent_id: Optional[str], limit: int, offset: int) -> str:
+    return f"{user_id}:{bucket}:{status}:{file_type}:{ids}:{parent_id}:{limit}:{offset}"
+
+
+def _get_cached(key: str) -> Optional[list]:
+    entry = _list_cache.get(key)
+    if entry and time.perf_counter() < entry["expires"]:
+        return entry["data"]
+    _list_cache.pop(key, None)
+    return None
+
+
+def _set_cached(key: str, data: list) -> None:
+    _list_cache[key] = {"data": data, "expires": time.perf_counter() + LIST_CACHE_TTL}
+
+
+def invalidate_list_cache() -> None:
+    """Call after mutations (upload complete, delete) to clear stale cache."""
+    _list_cache.clear()
 
 # Constants
 ALLOWED_BUCKETS = {"media", "docs"}  # Kept for API compatibility, but all use "micra" bucket
@@ -493,11 +524,12 @@ async def complete_upload(
         if not update_result.data:
             raise HTTPException(status_code=500, detail="Failed to update file record")
 
+        invalidate_list_cache()
         return CompleteUploadResponse(
             ok=True,
             file=FileResponse(**update_result.data[0])
         )
-        
+
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', '')
         if error_code == '404' or error_code == 'NoSuchKey':
@@ -514,14 +546,14 @@ async def complete_upload(
 
 @router.post("/sign-download", response_model=SignDownloadResponse)
 async def sign_download(
-    request: SignDownloadRequest, 
+    request: SignDownloadRequest,
     user: User = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
 ):
     """
     Generate a presigned download URL for a file in R2.
     """
     r2 = get_r2()
+    supabase = get_supabase().client
 
     result = supabase.table("files").select("*").eq("id", str(request.fileId)).execute()
 
@@ -601,6 +633,7 @@ async def delete_file(
         if not update_result.data:
             raise HTTPException(status_code=500, detail="Failed to update file record")
         
+        invalidate_list_cache()
         return DeleteFileResponse(
             ok=True,
             deleted=True
@@ -619,17 +652,20 @@ async def list_files(
     parent_id: Optional[UUID] = Query(None, description="Filter by parent file ID"),
     status: str = Query("uploaded", description="Filter by status"),
     type: Optional[str] = Query(None, description="Filter by file type"),
+    ids: Optional[str] = Query(None, description="Comma-separated list of file UUIDs to retrieve"),
     limit: int = Query(50, ge=1, le=100, description="Number of items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     include_urls: bool = Query(False, description="Include signed URLs in response"),
+    thumbnails_only: bool = Query(False, description="If true, prefers thumbnail URLs and skips main file URL if thumbnail exists"),
     expires_in: int = Query(60, ge=1, le=3600, description="URL expiration in seconds"),
-    supabase: Client = Depends(get_supabase_client)
 ):
     """
     List files for the current user with optional filtering and pagination.
     Can optionally include presigned download URLs.
+    If 'ids' is provided, returns only those files.
     """
     r2 = get_r2()
+    supabase = get_supabase().client
 
     # Validate filters
     if bucket and bucket not in ALLOWED_BUCKETS:
@@ -647,52 +683,133 @@ async def list_files(
             status_code=400,
             detail=f"Type must be one of: {', '.join(ALLOWED_TYPES)}"
         )
-    
-    # Build query (scope to current user automatically via RLS)
-    # But explicitly adding user_id eq check is good defense in depth
-    query = supabase.table("files").select("*").eq("user_id", user.sub)
 
-    if bucket:
-        query = query.eq("bucket", bucket)
-    if parent_id:
-        query = query.eq("parent_id", str(parent_id))
-    if status:
-        query = query.eq("status", status)
-    if type:
-        query = query.eq("type", type)
-    
-    # Order by created_at desc, paginate
-    query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
-    
+    # Check cache first
+    ck = _cache_key(user.sub, bucket, status, type, ids,
+                     str(parent_id) if parent_id else None, limit, offset)
+    cached = _get_cached(ck)
+
+    if cached is not None:
+        result_data = cached
+    else:
+        # Build query (scope to current user automatically via RLS)
+        # But explicitly adding user_id eq check is good defense in depth
+        query = supabase.table("files").select("*").eq("user_id", user.sub)
+
+        if bucket:
+            query = query.eq("bucket", bucket)
+
+        # If ids are provided, filter by those IDs
+        if ids:
+            id_list = [id.strip() for id in ids.split(",") if id.strip()]
+            if id_list:
+                query = query.in_("id", id_list)
+        else:
+            if parent_id:
+                query = query.eq("parent_id", str(parent_id))
+            if status:
+                query = query.eq("status", status)
+            if type:
+                query = query.eq("type", type)
+
+        # Order by created_at desc, paginate
+        query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+
+        # Run synchronous DB call in thread pool so it doesn't block the event loop
+        # This allows parallel requests to execute concurrently
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, query.execute)
+        result_data = result.data or []
+        _set_cached(ck, result_data)
+
     try:
-        result = query.execute()
-        
-        if not result.data:
+        if not result_data:
             return ListFilesResponse(items=[], nextOffset=None)
+
+        # Filter out thumbnails from the main list (if mixed in)
+        filtered_data = [
+            item for item in result_data
+            if not item.get("metadata", {}).get("is_thumbnail")
+        ]
         
-        items = [FileListItem(**item) for item in result.data]
+        items = [FileListItem(**item) for item in filtered_data]
         
-        # If include_urls, generate presigned URLs for R2
+        # Collect thumbnail IDs
+        thumbnail_ids = set()
+        for item in items:
+            thumb_id = item.metadata.get("thumbnail_file_id")
+            if thumb_id:
+                thumbnail_ids.add(thumb_id)
+        
+        # Fetch thumbnail records if needed
+        thumbnail_map = {}
+        loop = asyncio.get_event_loop()
+        if thumbnail_ids and include_urls:
+            try:
+                thumb_query = supabase.table("files").select("*").in_("id", list(thumbnail_ids))
+                thumbs_result = await loop.run_in_executor(None, thumb_query.execute)
+                for thumb in thumbs_result.data:
+                    thumbnail_map[thumb["id"]] = thumb
+            except Exception as e:
+                print(f"Error fetching thumbnails: {e}")
+
+        # If include_urls, generate presigned URLs for R2 in parallel
         if include_urls:
-            for item in items:
-                if item.status == "uploaded":
+
+            async def sign_item(item: FileListItem):
+                if item.status != "uploaded":
+                    return
+                thumb_id = item.metadata.get("thumbnail_file_id")
+                has_thumbnail = False
+
+                # Generate Thumbnail URL
+                if thumb_id and thumb_id in thumbnail_map:
+                    thumb_record = thumbnail_map[thumb_id]
+                    if thumb_record["status"] == "uploaded":
+                        try:
+                            thumb_url = await loop.run_in_executor(
+                                None,
+                                partial(
+                                    r2.client.generate_presigned_url,
+                                    'get_object',
+                                    Params={
+                                        'Bucket': R2_BUCKET,
+                                        'Key': thumb_record["path"],
+                                    },
+                                    ExpiresIn=expires_in,
+                                ),
+                            )
+                            setattr(item, "thumbnailUrl", thumb_url)
+                            has_thumbnail = True
+                        except Exception as e:
+                            print(f"Error signing thumbnail URL: {e}")
+
+                # Generate Main URL
+                should_generate_main = not thumbnails_only or not has_thumbnail
+
+                if should_generate_main:
                     try:
-                        signed_url = r2.client.generate_presigned_url(
-                            'get_object',
-                            Params={
-                                'Bucket': R2_BUCKET,
-                                'Key': item.path,
-                            },
-                            ExpiresIn=expires_in
+                        signed_url = await loop.run_in_executor(
+                            None,
+                            partial(
+                                r2.client.generate_presigned_url,
+                                'get_object',
+                                Params={
+                                    'Bucket': R2_BUCKET,
+                                    'Key': item.path,
+                                },
+                                ExpiresIn=expires_in,
+                            ),
                         )
                         item.signedUrl = signed_url
                     except Exception as e:
                         print(f"Error signing URL for {item.path}: {e}")
-                        # Continue without URL for this item
+
+            await asyncio.gather(*[sign_item(item) for item in items])
         
-        # Determine next offset
+        # Determine next offset based on ORIGINAL result length (to keep pagination stable-ish)
         next_offset = None
-        if len(items) == limit:
+        if len(result_data) == limit:
             next_offset = offset + limit
         
         return ListFilesResponse(items=items, nextOffset=next_offset)

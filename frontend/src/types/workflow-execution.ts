@@ -13,6 +13,7 @@ export interface WorkflowExecutionResult {
   node_results: NodeExecutionResult[]
   total_execution_time_ms: number
   error: string | null
+  persistence_warning?: string | null
 }
 
 export interface ExecutionLogSummary {
@@ -30,6 +31,7 @@ export interface ExecutionLogSummary {
 export interface ExecutionLogDetail extends ExecutionLogSummary {
   node_summaries: {
     node_id: string
+    node_type?: string | null  // Added in later versions; may be null for older executions
     status: 'completed' | 'error'
     error: string | null
     execution_time_ms: number
