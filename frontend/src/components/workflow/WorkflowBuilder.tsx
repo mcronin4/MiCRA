@@ -17,6 +17,7 @@ import { useContextMenus } from "@/hooks/useContextMenus";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
 import { useBlueprintCompile } from "@/hooks/useBlueprintCompile";
 import { useWorkflowStore, getParamKeysToPersist } from "@/lib/stores/workflowStore";
+import { listFiles } from "@/lib/fastapi/files";
 import type {
   OutputNodeType,
   WorkflowNodeType,
@@ -69,6 +70,20 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       );
     },
   });
+
+  // Prefetch all file types on mount so backend cache is warm before any bucket is created
+  useEffect(() => {
+    const types = ["image", "audio", "video", "text"] as const;
+    types.forEach((t) => {
+      listFiles({
+        type: t,
+        status: "uploaded",
+        includeUrls: t === "image",
+        thumbnailsOnly: t === "image",
+        limit: 100,
+      }).catch(() => {}); // fire-and-forget; errors are non-critical
+    });
+  }, []);
 
   const handleAddPart = (partType: NodeType) => {
     // Check if it's a workflow node, bucket node, or flow node - if so, just add it directly to canvas

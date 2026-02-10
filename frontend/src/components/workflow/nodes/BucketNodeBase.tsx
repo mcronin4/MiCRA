@@ -195,58 +195,66 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(
     new Set(initialSelectedIds)
   );
-  const [files, setFiles] = useState<FileListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // Separate state for files shown in picker and files shown in preview
+  const [pickerFiles, setPickerFiles] = useState<FileListItem[]>([]);
+  const [selectedFilesData, setSelectedFilesData] = useState<FileListItem[]>([]);
+
+  const [isLoadingPicker, setIsLoadingPicker] = useState(false);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [pickerLoaded, setPickerLoaded] = useState(false);
 
-  // Fetch files from storage - refetch when picker is opened and poll while open
+  // Initial load: Fetch CURRENTLY SELECTED files only (Targeted Fetching)
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
-    let isMounted = true;
+    const fetchSelectedFiles = async () => {
+      if (initialSelectedIds.length === 0) return;
 
-    const fetchFiles = async (showLoadingSpinner = true) => {
-      if (showLoadingSpinner) {
-        setIsLoading(true);
-      }
-      setError(null);
+      setIsLoadingPreview(true);
       try {
         const response = await listFiles({
-          type: bucketType,
-          status: "uploaded",
-          includeUrls: true,
-          limit: 100,
+          ids: initialSelectedIds,
+          includeUrls: bucketType === "image",
+          thumbnailsOnly: bucketType === "image",
         });
-        if (isMounted) {
-          setFiles(response.items);
-        }
+        setSelectedFilesData(response.items);
       } catch (err) {
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : `Failed to load ${bucketType} files`);
-        }
+        console.error("Failed to load selected files:", err);
+        // Don't show global error, just maybe fail to show preview
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
+        setIsLoadingPreview(false);
+      }
+    };
+
+    fetchSelectedFiles();
+  }, []); // Only run once on mount
+
+  // Eagerly prefetch picker files on mount so they're ready when user clicks "Select"
+  useEffect(() => {
+    if (!pickerLoaded) {
+      const fetchPickerFiles = async () => {
+        setIsLoadingPicker(true);
+        setError(null);
+        try {
+          const response = await listFiles({
+            type: bucketType,
+            status: "uploaded",
+            includeUrls: bucketType === "image",
+            thumbnailsOnly: bucketType === "image",
+            limit: 100,
+          });
+          setPickerFiles(response.items);
+          setPickerLoaded(true);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : `Failed to load ${bucketType} files`);
+        } finally {
+          setIsLoadingPicker(false);
         }
-      }
-    };
+      };
 
-    // Only fetch when user opens the picker (avoids hitting API for every bucket on canvas when idle)
-    if (showPicker) {
-      fetchFiles(true);
-      // Poll for new files while picker is open (every 5 seconds)
-      intervalId = setInterval(() => {
-        fetchFiles(false); // Don't show loading spinner for background refreshes
-      }, 5000);
+      fetchPickerFiles();
     }
-
-    return () => {
-      isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [bucketType, showPicker]);
+  }, [bucketType]); // Run on mount
 
   // Sync selected IDs to node inputs
   useEffect(() => {
@@ -267,23 +275,37 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
     }
   }, [selectedFileIds, id, updateNode, node]);
 
-  const toggleFile = (fileId: string) => {
+  const toggleFile = (file: FileListItem) => {
+    const fileId = file.id;
     setSelectedFileIds((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(fileId)) {
         newSet.delete(fileId);
+        // Update selectedFilesData: remove
+        setSelectedFilesData(prevData => prevData.filter(f => f.id !== fileId));
       } else {
         newSet.add(fileId);
+        // Update selectedFilesData: add if not present
+        setSelectedFilesData(prevData => {
+          if (prevData.some(f => f.id === fileId)) return prevData;
+          return [...prevData, file];
+        });
       }
       return newSet;
     });
   };
 
-  const selectedFiles = files.filter((f) => selectedFileIds.has(f.id));
-
   // Render file picker content based on bucket type
   const renderFilePickerContent = (): ReactNode => {
-    if (files.length === 0) {
+    if (isLoadingPicker) {
+      return (
+        <div className="col-span-4 flex justify-center py-8">
+          <Loader2 size={24} className="animate-spin text-slate-400" />
+        </div>
+      );
+    }
+
+    if (pickerFiles.length === 0) {
       return (
         <div className={bucketType === "image" ? "col-span-4 text-xs text-slate-500 text-center py-4" : "text-xs text-slate-500 text-center py-4"}>
           {config.emptyText}
@@ -292,10 +314,10 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
     }
 
     if (bucketType === "image") {
-      return files.map((file) => (
+      return pickerFiles.map((file) => (
         <button
           key={file.id}
-          onClick={() => toggleFile(file.id)}
+          onClick={() => toggleFile(file)}
           className={`
             relative aspect-square rounded-lg overflow-hidden border-2 transition-all
             ${selectedFileIds.has(file.id)
@@ -323,10 +345,10 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
     }
 
     // For audio, video, and text - render as list
-    return files.map((file) => (
+    return pickerFiles.map((file) => (
       <button
         key={file.id}
-        onClick={() => toggleFile(file.id)}
+        onClick={() => toggleFile(file)}
         className={`
           w-full px-3 py-2 text-left rounded-lg transition-all flex items-center gap-2
           ${selectedFileIds.has(file.id)
@@ -348,23 +370,23 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
 
   // Render selected files preview based on bucket type
   const renderSelectedFilesPreview = (): ReactNode => {
-    if (selectedFiles.length === 0) return null;
+    if (selectedFilesData.length === 0) return null;
 
     if (bucketType === "image") {
       return (
         <div className="space-y-1">
           <div className={`text-xs font-medium ${theme.selectedLabel}`}>
-            Selected ({selectedFiles.length}):
+            Selected ({selectedFilesData.length}):
           </div>
           <div className="grid grid-cols-4 gap-1">
-            {selectedFiles.slice(0, 4).map((file) => (
+            {selectedFilesData.slice(0, 4).map((file) => (
               <div
                 key={file.id}
                 className={`relative aspect-square rounded overflow-hidden border ${theme.pickerBorder}`}
               >
                 {file.signedUrl && (
                   <Image
-                    src={file.signedUrl}
+                    src={file.thumbnailUrl || file.signedUrl}
                     alt={file.name}
                     fill
                     className="object-cover"
@@ -373,10 +395,10 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
                 )}
               </div>
             ))}
-            {selectedFiles.length > 4 && (
+            {selectedFilesData.length > 4 && (
               <div className={`relative aspect-square rounded border ${theme.pickerBorder} ${theme.selectedBg.replace('bg-', 'bg-').replace('-100', '-50')} flex items-center justify-center`}>
                 <span className={`text-xs font-medium ${theme.subtitleColor}`}>
-                  +{selectedFiles.length - 4}
+                  +{selectedFilesData.length - 4}
                 </span>
               </div>
             )}
@@ -389,10 +411,10 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
     return (
       <div className="space-y-1">
         <div className={`text-xs font-medium ${theme.selectedLabel}`}>
-          Selected ({selectedFiles.length}):
+          Selected ({selectedFilesData.length}):
         </div>
         <div className="space-y-1 max-h-24 overflow-y-auto">
-          {selectedFiles.map((file) => (
+          {selectedFilesData.map((file) => (
             <div
               key={file.id}
               className="text-xs text-slate-600 bg-white/60 px-2 py-1 rounded truncate"
@@ -461,14 +483,8 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
           <button
             onClick={() => setShowPicker(!showPicker)}
             className={`w-full px-3 py-2 text-sm bg-white/90 hover:bg-white border ${theme.buttonBorder} rounded-lg ${theme.buttonText} font-medium transition-all hover:shadow-sm active:scale-[0.98]`}
-            disabled={isLoading}
           >
-            {isLoading ? (
-              <span className="flex items-center justify-center gap-2">
-                <Loader2 size={14} className="animate-spin" />
-                Loading...
-              </span>
-            ) : showPicker ? (
+            {showPicker ? (
               config.hideButtonText
             ) : (
               config.selectButtonText
@@ -481,7 +497,7 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
             </div>
           )}
 
-          {showPicker && !isLoading && (
+          {showPicker && (
             <div className={`nodrag ${bucketType === "image" ? "grid grid-cols-4 gap-1.5" : "space-y-1"} p-2 border ${theme.pickerBorder} rounded-xl bg-white max-h-48 overflow-y-auto`}>
               {renderFilePickerContent()}
             </div>
@@ -500,14 +516,14 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
           video: 'VideoBucket',
           text: 'TextBucket',
         };
-        
+
         const nodeType = nodeTypeMap[bucketType];
-        
+
         // Get the actual data type color from node registry
         const nodeSpec = getNodeSpec(nodeType);
         const outputPort = nodeSpec?.outputs.find(p => p.key === config.outputHandle);
         const runtimeType = outputPort?.runtime_type;
-        
+
         // Color mapping for data types (matches edge colors)
         const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
           Text: '#10b981', // emerald-500
@@ -516,11 +532,11 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
           VideoRef: '#ec4899', // pink-500
           JSON: '#f59e0b', // amber-500
         };
-        
-        const handleColor = runtimeType && DATA_TYPE_COLORS[runtimeType] 
-          ? DATA_TYPE_COLORS[runtimeType] 
+
+        const handleColor = runtimeType && DATA_TYPE_COLORS[runtimeType]
+          ? DATA_TYPE_COLORS[runtimeType]
           : theme.handleColor; // fallback to theme color
-        
+
         return (
           <Handle
             type="source"

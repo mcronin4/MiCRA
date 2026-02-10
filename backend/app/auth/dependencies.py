@@ -164,7 +164,7 @@ async def get_current_user(authorization: str = Header(..., description="Bearer 
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token is required"
         )
-    
+
     return verify_jwt(token)
 
 
