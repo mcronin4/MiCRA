@@ -25,7 +25,7 @@ router = APIRouter(prefix="/files", tags=["files"])
 
 # Simple in-memory cache for file list queries (avoids 3s+ Supabase round trips)
 _list_cache: Dict[str, Any] = {}  # key -> {"data": result_data, "expires": timestamp}
-LIST_CACHE_TTL = 120  # seconds — cache is invalidated on upload/delete mutations anyway
+LIST_CACHE_TTL = 600  # seconds (10 min) — cache is invalidated on upload/delete mutations anyway
 
 
 def _cache_key(user_id: str, bucket: Optional[str], status: str,

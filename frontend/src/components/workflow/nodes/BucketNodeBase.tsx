@@ -205,29 +205,35 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
   const [showPicker, setShowPicker] = useState(false);
   const [pickerLoaded, setPickerLoaded] = useState(false);
 
-  // Initial load: Fetch CURRENTLY SELECTED files only (Targeted Fetching)
-  useEffect(() => {
-    const fetchSelectedFiles = async () => {
-      if (initialSelectedIds.length === 0) return;
+  // Stable key for selected IDs so effect re-runs when workflow load populates node
+  const idsKey =
+    initialSelectedIds.length > 0
+      ? initialSelectedIds.slice().sort().join(",")
+      : "";
 
+  // Fetch CURRENTLY SELECTED files for preview (runs on mount and when node gets ids from saved workflow)
+  useEffect(() => {
+    if (idsKey === "") return;
+
+    const ids = idsKey.split(",");
+    const fetchSelectedFiles = async () => {
       setIsLoadingPreview(true);
       try {
         const response = await listFiles({
-          ids: initialSelectedIds,
+          ids,
           includeUrls: bucketType === "image",
           thumbnailsOnly: bucketType === "image",
         });
         setSelectedFilesData(response.items);
       } catch (err) {
         console.error("Failed to load selected files:", err);
-        // Don't show global error, just maybe fail to show preview
       } finally {
         setIsLoadingPreview(false);
       }
     };
 
     fetchSelectedFiles();
-  }, []); // Only run once on mount
+  }, [idsKey, bucketType]);
 
   // Eagerly prefetch picker files on mount so they're ready when user clicks "Select"
   useEffect(() => {
@@ -254,7 +260,7 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
 
       fetchPickerFiles();
     }
-  }, [bucketType]); // Run on mount
+  }, [bucketType, pickerLoaded]);
 
   // Sync selected IDs to node inputs
   useEffect(() => {
@@ -370,6 +376,13 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
 
   // Render selected files preview based on bucket type
   const renderSelectedFilesPreview = (): ReactNode => {
+    if (isLoadingPreview && selectedFilesData.length === 0) {
+      return (
+        <div className="flex justify-center py-2">
+          <Loader2 size={16} className="animate-spin text-slate-400" />
+        </div>
+      );
+    }
     if (selectedFilesData.length === 0) return null;
 
     if (bucketType === "image") {
