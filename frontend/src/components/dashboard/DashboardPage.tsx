@@ -22,6 +22,7 @@ import {
 import { WorkflowRow } from "./WorkflowRow";
 import { CreateWorkflowModal } from "./CreateWorkflowModal";
 import { Button } from "@/components/ui/button";
+import { showToast } from "@/lib/stores/toastStore";
 import type { User } from "@supabase/supabase-js";
 
 type SortOption = "updated" | "created" | "name";
@@ -119,7 +120,7 @@ export function DashboardPage() {
       workflow.name,
       workflow.description || undefined
     );
-    router.push(`/?loadWorkflow=${workflow.id}`);
+    router.push(`/workflow?loadWorkflow=${workflow.id}`);
   };
 
   const handleDeleteWorkflow = async (
@@ -133,7 +134,7 @@ export function DashboardPage() {
     if (result.success) {
       setWorkflows((prev) => prev.filter((w) => w.id !== workflowId));
     } else {
-      alert(`Failed to delete: ${result.error}`);
+      showToast(`Failed to delete: ${result.error}`, "error");
     }
     setDeletingId(null);
   };
@@ -150,8 +151,9 @@ export function DashboardPage() {
       await createWorkflow(request);
       await loadDashboardData();
     } catch (err) {
-      alert(
-        `Failed to duplicate: ${err instanceof Error ? err.message : "Unknown error"}`
+      showToast(
+        `Failed to duplicate: ${err instanceof Error ? err.message : "Unknown error"}`,
+        "error"
       );
     }
   };
@@ -159,12 +161,12 @@ export function DashboardPage() {
   const handleCreateBlank = () => {
     clearWorkflowMetadata();
     setShowCreateModal(false);
-    router.push("/");
+    router.push("/workflow");
   };
 
   const handleWorkflowCreated = (workflowId: string) => {
     setShowCreateModal(false);
-    router.push(`/?loadWorkflow=${workflowId}`);
+    router.push(`/workflow?loadWorkflow=${workflowId}`);
   };
 
   const handleLogout = async () => {
@@ -225,7 +227,7 @@ export function DashboardPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-semibold text-slate-800">
-              My Workflows
+              {displayName}&apos;s Workflows
             </h1>
             {workflows.length > 0 && (
               <p className="text-sm text-slate-400 mt-0.5">

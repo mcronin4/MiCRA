@@ -8,7 +8,6 @@ interface QuoteObject {
 
 interface TextSlotProps {
   value: unknown
-  variant?: 'headline' | 'body' | 'caption'
 }
 
 function stripCodeFence(raw: string): string {
@@ -63,8 +62,8 @@ function isQuoteObject(item: unknown): item is QuoteObject {
   return typeof obj.text === 'string' && ('reason' in obj || 'source' in obj)
 }
 
-/** Extract readable text from an unknown value */
-function valueToString(value: unknown): string {
+/** Extract readable text from an unknown value (exported for EditableTextSlot) */
+export function valueToString(value: unknown): string {
   if (typeof value === 'string') {
     const parsed = tryParseJson(value)
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -119,12 +118,8 @@ function QuoteBlock({ quote }: { quote: QuoteObject }) {
   )
 }
 
-export function TextSlot({ value, variant = 'body' }: TextSlotProps) {
-  const styles = {
-    headline: 'text-base font-semibold text-slate-900 leading-snug whitespace-pre-wrap',
-    body: 'text-sm text-slate-700 leading-relaxed whitespace-pre-wrap',
-    caption: 'text-xs text-slate-500 italic whitespace-pre-wrap',
-  }
+export function TextSlot({ value }: TextSlotProps) {
+  const bodyStyles = 'text-sm text-slate-700 leading-relaxed whitespace-pre-wrap'
 
   // Single quote object
   if (isQuoteObject(value)) {
@@ -139,7 +134,7 @@ export function TextSlot({ value, variant = 'body' }: TextSlotProps) {
           isQuoteObject(item) ? (
             <QuoteBlock key={i} quote={item} />
           ) : (
-            <div key={i} className={styles[variant]}>
+            <div key={i} className={bodyStyles}>
               {normalizeText(typeof item === 'string' ? item : String(item))}
             </div>
           )
@@ -150,5 +145,5 @@ export function TextSlot({ value, variant = 'body' }: TextSlotProps) {
 
   // Default: convert to string and render
   const text = typeof value === 'string' ? value : valueToString(value)
-  return <div className={styles[variant]}>{normalizeText(text)}</div>
+  return <div className={bodyStyles}>{normalizeText(text)}</div>
 }

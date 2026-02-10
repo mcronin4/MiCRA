@@ -1,189 +1,83 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Loader2, Save, Trash2, Check } from 'lucide-react'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
-import { useWorkflowExecution } from '@/hooks/useWorkflowExecution'
-import { TONE_OPTIONS, LIVE_PREVIEW_CONTEXT_ID } from '@/types/preview'
-import {
-  getWorkflowRunOutputs,
-  listWorkflowRuns,
-  type WorkflowRunSummary,
-  type WorkflowRunOutputs,
-} from '@/lib/fastapi/workflows'
+import { usePreviewPage } from '@/hooks/usePreviewPage'
+import { TONE_OPTIONS } from '@/types/preview'
 import { OutputsSidebar } from './OutputsSidebar'
+import { DraftModeSidebar } from './DraftModeSidebar'
 import { PreviewEmptyState } from './PreviewEmptyState'
+import { PreviewPageSkeleton } from '@/components/preview/PreviewPageSkeleton'
 import { PlatformSelector } from './PlatformSelector'
-import { LinkedInMockup } from './mockups/LinkedInMockup'
+import { getMockupForPlatform } from './mockups'
 import { PreviewDndContext } from './PreviewDndContext'
-import { PreviewDataProvider, type PreviewNodeState } from './PreviewDataContext'
+import { PreviewDataProvider } from './PreviewDataContext'
 import { RunSelector } from './RunSelector'
+import { DraftSelector } from './DraftSelector'
+import { SaveDraftModal } from './SaveDraftModal'
 
 interface PreviewPageProps {
   workflowId: string
 }
 
-export function buildPersistedNodes(
-  runOutputs: WorkflowRunOutputs
-): Record<string, PreviewNodeState> {
-  const nodeTypeMap = new Map<string, string>()
-  
-  // Validate blueprint_snapshot structure before accessing nodes
-  if (runOutputs.blueprint_snapshot && runOutputs.blueprint_snapshot.nodes) {
-    const nodes = runOutputs.blueprint_snapshot.nodes
-    if (Array.isArray(nodes)) {
-      for (const node of nodes) {
-        if (node && typeof node === 'object' && node.node_id && node.type) {
-          nodeTypeMap.set(node.node_id, node.type)
-        }
-      }
-    }
-  }
-
-  const next: Record<string, PreviewNodeState> = {}
-  for (const [nodeId, outputs] of Object.entries(runOutputs.node_outputs ?? {})) {
-    next[nodeId] = {
-      id: nodeId,
-      type: nodeTypeMap.get(nodeId) ?? 'Unknown',
-      status: 'completed',
-      outputs,
-    }
-  }
-  return next
-}
-
 export function PreviewPage({ workflowId }: PreviewPageProps) {
-  const setActiveContext = usePreviewStore((s) => s.setActiveContext)
-  const config = usePreviewStore((s) => s.config)
-  const setTone = usePreviewStore((s) => s.setTone)
   const setPlatform = usePreviewStore((s) => s.setPlatform)
-  const nodes = useWorkflowStore((s) => s.nodes)
   const workflowName = useWorkflowStore((s) => s.workflowName)
   const currentWorkflowId = useWorkflowStore((s) => s.currentWorkflowId)
-  const { executeById, isExecuting } = useWorkflowExecution()
-  const [runs, setRuns] = useState<WorkflowRunSummary[]>([])
-  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null)
-  const [persistedNodes, setPersistedNodes] = useState<Record<string, PreviewNodeState>>({})
-  const [runsLoading, setRunsLoading] = useState(false)
-  const [outputsLoading, setOutputsLoading] = useState(false)
-  const [runsError, setRunsError] = useState<string | null>(null)
-  const [runNotice, setRunNotice] = useState<string | null>(null)
 
-  const refreshRuns = useCallback(async (preferLatest = false) => {
-    setRunsLoading(true)
-    try {
-      const items = await listWorkflowRuns(workflowId)
-      setRuns(items)
-      setRunsError(null)
-      setSelectedExecutionId((prev) => {
-        if (preferLatest) {
-          return items[0]?.execution_id ?? null
-        }
-        if (prev && items.some((r) => r.execution_id === prev)) {
-          return prev
-        }
-        return items[0]?.execution_id ?? null
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load run history'
-      setRunsError(msg)
-      setRuns([])
-      setSelectedExecutionId(null)
-    } finally {
-      setRunsLoading(false)
-    }
-  }, [workflowId])
+  const {
+    displayNodes,
+    hasOutputs,
+    hasAnyRuns,
+    hasAnyDrafts,
+    isInitialLoading,
+    isViewingDraft,
+    isExecuting,
+    outputsLoading,
+    runs,
+    selectedExecutionId,
+    runsLoading,
+    runsError,
+    handleRunSelect,
+    selectedRun,
+    drafts,
+    selectedDraftId,
+    draftsLoading,
+    draftSlotContent,
+    handleDraftSelect,
+    handleDraftSlotChange,
+    updatingDraft,
+    autosavedAt,
+    autosaveFadingOut,
+    saveDraftModalOpen,
+    setSaveDraftModalOpen,
+    savingDraft,
+    handleSaveAsDraft,
+    handleDeleteDraft,
+    handleToneChange,
+    handleRerun,
+    runNotice,
+    config,
+  } = usePreviewPage(workflowId)
 
-  useEffect(() => {
-    refreshRuns(true).catch(() => {})
-  }, [refreshRuns])
-
-  const selectedRun = useMemo(
-    () => runs.find((r) => r.execution_id === selectedExecutionId) ?? null,
-    [runs, selectedExecutionId]
-  )
-  const activePreviewContextId = selectedRun?.execution_id ?? LIVE_PREVIEW_CONTEXT_ID
-
-  useEffect(() => {
-    setActiveContext(workflowId, activePreviewContextId)
-  }, [workflowId, activePreviewContextId, setActiveContext])
-
-  useEffect(() => {
-    if (!selectedRun) {
-      setPersistedNodes({})
-      setRunNotice(null)
-      return
-    }
-
-    if (!selectedRun.has_persisted_outputs) {
-      setPersistedNodes({})
-      setRunNotice(
-        'This run has no persisted outputs (older run or payload exceeded persistence limit).'
-      )
-      return
-    }
-
-    setPersistedNodes({})
-    setOutputsLoading(true)
-    let cancelled = false
-    getWorkflowRunOutputs(workflowId, selectedRun.execution_id)
-      .then((outputs) => {
-        if (cancelled) return
-        setPersistedNodes(buildPersistedNodes(outputs))
-        setRunNotice(null)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        const msg = err instanceof Error ? err.message : 'Failed to load run outputs'
-        setPersistedNodes({})
-        setRunNotice(msg)
-      })
-      .finally(() => {
-        if (!cancelled) setOutputsLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [workflowId, selectedRun])
-
-  const inMemoryHasOutputs = useMemo(() => {
-    return Object.values(nodes).some((n) => n.status === 'completed' && n.outputs)
-  }, [nodes])
-
-  const persistedHasOutputs = useMemo(() => {
-    return Object.values(persistedNodes).some(
-      (n) => n.status === 'completed' && n.outputs
-    )
-  }, [persistedNodes])
-
-  const isViewingRun = selectedRun !== null
-  const displayNodes = isViewingRun ? persistedNodes : nodes
-  const hasOutputs = isViewingRun ? persistedHasOutputs : inMemoryHasOutputs
-  const hasAnyRuns = runs.length > 0
-
-  const handleToneChange = (newTone: string) => {
-    setTone(newTone)
-  }
-
-  const handleRerun = async () => {
-    try {
-      const result = await executeById(workflowId)
-      if (result?.persistence_warning) {
-        setRunNotice(result.persistence_warning)
-      }
-      await refreshRuns(true)
-    } catch {
-      // Errors already surfaced by execution hook.
-    }
-  }
+  const platformId = config?.platformId ?? 'linkedin'
+  const MockupComponent = getMockupForPlatform(platformId)
 
   const headerName =
     currentWorkflowId === workflowId ? workflowName : `Workflow ${workflowId.slice(0, 8)}`
 
-  if (!hasOutputs && !isExecuting && !hasAnyRuns) {
+  if (isInitialLoading) {
+    return (
+      <div className="h-screen flex flex-col bg-white">
+        <PreviewHeader workflowName={headerName} />
+        <PreviewPageSkeleton />
+      </div>
+    )
+  }
+
+  if (!hasOutputs && !isExecuting && !hasAnyRuns && !hasAnyDrafts) {
     return (
       <div className="h-screen flex flex-col bg-white">
         <PreviewHeader workflowName={headerName} />
@@ -196,30 +90,48 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
     <div className="h-screen flex flex-col bg-white">
       <PreviewHeader workflowName={headerName} />
 
-      <PreviewDataProvider value={{ nodes: displayNodes, outputsLoading: outputsLoading || isExecuting }}>
+      <PreviewDataProvider
+        value={{
+          nodes: displayNodes,
+          outputsLoading: outputsLoading || isExecuting,
+          slotContent: isViewingDraft ? draftSlotContent : undefined,
+          isDraftMode: isViewingDraft,
+          onDraftSlotChange: isViewingDraft ? handleDraftSlotChange : undefined,
+        }}
+      >
         <PreviewDndContext>
           <div className="flex-1 flex overflow-hidden">
-            <OutputsSidebar />
+            {isViewingDraft ? (
+              <DraftModeSidebar
+                runs={runs}
+                selectedRunId={selectedExecutionId}
+                onSelectRun={handleRunSelect}
+                runsLoading={runsLoading}
+              />
+            ) : (
+              <OutputsSidebar />
+            )}
 
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between px-6 py-3 border-b border-slate-200 bg-slate-50/50">
-                <PlatformSelector
-                  activePlatform={config?.platformId ?? 'linkedin'}
-                  onSelect={setPlatform}
-                />
+              <div className="flex items-center gap-4 px-6 py-3 border-b border-slate-200 bg-slate-50/50 min-w-0">
+                <div className="shrink-0">
+                  <PlatformSelector
+                    activePlatform={platformId}
+                    onSelect={setPlatform}
+                  />
+                </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-slate-500">Run:</label>
+                <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1 justify-end overflow-x-auto">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <label className="text-xs text-slate-500 shrink-0">Run:</label>
                     <RunSelector
                       runs={runs}
                       selectedId={selectedExecutionId}
-                      onChange={setSelectedExecutionId}
+                      onChange={handleRunSelect}
                       disabled={runsLoading}
                     />
                   </div>
-
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <label className="text-xs text-slate-500">Tone:</label>
                     <select
                       value={config?.tone ?? 'professional'}
@@ -238,7 +150,7 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
                   <button
                     onClick={handleRerun}
                     disabled={isExecuting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50 shrink-0"
                   >
                     <RefreshCw
                       size={12}
@@ -256,9 +168,74 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
               )}
 
               <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30 relative">
-                {(config?.platformId ?? 'linkedin') === 'linkedin' && (
-                  <LinkedInMockup />
-                )}
+                <MockupComponent
+                  footerContent={
+                    isViewingDraft &&
+                    selectedDraftId &&
+                    (updatingDraft || autosavedAt || autosaveFadingOut) ? (
+                      <span
+                        className={`
+                          flex items-center gap-1.5 text-xs transition-opacity duration-300
+                          ${updatingDraft ? 'text-slate-500' : 'text-emerald-600'}
+                          ${autosaveFadingOut ? 'opacity-0' : 'opacity-100'}
+                        `}
+                      >
+                        {updatingDraft ? (
+                          <>
+                            <Loader2 size={12} className="animate-spin" />
+                            Saving…
+                          </>
+                        ) : (
+                          <>
+                            <Check size={12} />
+                            Autosaved
+                          </>
+                        )}
+                      </span>
+                    ) : null
+                  }
+                  headerActions={
+                    <>
+                      <DraftSelector
+                        drafts={drafts}
+                        selectedId={selectedDraftId}
+                        onChange={handleDraftSelect}
+                        disabled={draftsLoading}
+                      />
+                      {!isViewingDraft && (
+                        <button
+                          onClick={() => setSaveDraftModalOpen(true)}
+                          disabled={
+                            isExecuting ||
+                            !selectedRun?.has_persisted_outputs ||
+                            !config?.assignments?.some((a) => a.sources.length > 0)
+                          }
+                          title={
+                            !selectedRun?.has_persisted_outputs
+                              ? 'Select a run with outputs first'
+                              : !config?.assignments?.some((a) => a.sources.length > 0)
+                                ? 'Assign content to slots first'
+                                : 'Save current preview as draft'
+                          }
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Save size={12} />
+                          Save as draft
+                        </button>
+                      )}
+                      {isViewingDraft && selectedDraftId && (
+                        <button
+                          onClick={handleDeleteDraft}
+                          disabled={updatingDraft}
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 size={12} />
+                          Delete draft
+                        </button>
+                      )}
+                    </>
+                  }
+                />
 
                 {isExecuting && (
                   <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 pointer-events-none">
@@ -273,15 +250,18 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
           </div>
         </PreviewDndContext>
       </PreviewDataProvider>
+
+      <SaveDraftModal
+        isOpen={saveDraftModalOpen}
+        onClose={() => setSaveDraftModalOpen(false)}
+        onSave={handleSaveAsDraft}
+        isSaving={savingDraft}
+      />
     </div>
   )
 }
 
-function PreviewHeader({
-  workflowName,
-}: {
-  workflowName: string
-}) {
+function PreviewHeader({ workflowName }: { workflowName: string }) {
   return (
     <div className="h-12 bg-white border-b border-slate-100 flex items-center justify-between px-4 shrink-0">
       <div className="flex items-center gap-3">

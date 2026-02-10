@@ -16,6 +16,7 @@ import {
   type WorkflowMetadata,
   type CreateWorkflowRequest,
 } from "@/lib/fastapi/workflows";
+import { showToast } from "@/lib/stores/toastStore";
 
 interface CreateWorkflowModalProps {
   isOpen: boolean;
@@ -73,8 +74,9 @@ export function CreateWorkflowModal({
       const created = await createWorkflow(request);
       onWorkflowCreated(created.id);
     } catch (err) {
-      alert(
-        `Failed to create from template: ${err instanceof Error ? err.message : "Unknown error"}`
+      showToast(
+        `Failed to create from template: ${err instanceof Error ? err.message : "Unknown error"}`,
+        "error"
       );
     } finally {
       setIsCreating(false);
@@ -94,8 +96,9 @@ export function CreateWorkflowModal({
       const created = await createWorkflow(request);
       onWorkflowCreated(created.id);
     } catch (err) {
-      alert(
-        `Failed to duplicate workflow: ${err instanceof Error ? err.message : "Unknown error"}`
+      showToast(
+        `Failed to duplicate workflow: ${err instanceof Error ? err.message : "Unknown error"}`,
+        "error"
       );
     } finally {
       setIsCreating(false);

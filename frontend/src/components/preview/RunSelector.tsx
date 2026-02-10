@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Check, Clock, AlertCircle, Package } from 'lucide-react'
 import type { WorkflowRunSummary } from '@/lib/fastapi/workflows'
 
@@ -9,6 +10,8 @@ interface RunSelectorProps {
   selectedId: string | null
   onChange: (id: string | null) => void
   disabled?: boolean
+  /** Align dropdown: 'left' = dropdown extends right (for sidebars), 'right' = extends left (default) */
+  dropdownAlign?: 'left' | 'right'
 }
 
 function timeAgo(dateStr: string): string {
@@ -43,21 +46,56 @@ function formatRunTime(dateStr: string): string {
   })
 }
 
-export function RunSelector({ runs, selectedId, onChange, disabled }: RunSelectorProps) {
+export function RunSelector({
+  runs,
+  selectedId,
+  onChange,
+  disabled,
+  dropdownAlign = 'right',
+}: RunSelectorProps) {
   const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [dropdownPosition, setDropdownPosition] = useState<{
+    top: number
+    left: number
+  } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const [focusIdx, setFocusIdx] = useState(-1)
 
   const selected = runs.find((r) => r.execution_id === selectedId) ?? null
 
-  // Close on outside click
+  // Update dropdown position when opening (for portal)
+  // Only render dropdown once we have position to avoid "fly from top-left" on first open
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || typeof document === 'undefined') {
+      if (!open) setDropdownPosition(null)
+      return
+    }
+    const rect = triggerRef.current.getBoundingClientRect()
+    const dropdownWidth = 340
+    const left =
+      dropdownAlign === 'left'
+        ? rect.left
+        : Math.min(rect.right - dropdownWidth, window.innerWidth - dropdownWidth - 8)
+    setDropdownPosition({
+      top: rect.bottom + 6,
+      left: Math.max(8, left),
+    })
+  }, [open, dropdownAlign])
+
+  // Close on outside click (portal dropdown is outside containerRef)
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
+      const target = e.target as Node
+      if (
+        triggerRef.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
+      ) {
+        return
       }
+      setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -112,10 +150,122 @@ export function RunSelector({ runs, selectedId, onChange, disabled }: RunSelecto
 
   const isEmpty = runs.length === 0
 
+  const dropdownContent =
+    open &&
+    dropdownPosition && (
+    <div
+      ref={dropdownRef}
+      role="listbox"
+      className="fixed w-[340px] max-h-[320px] bg-white rounded-xl border border-slate-200/80 shadow-lg shadow-slate-900/8 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-1 duration-150"
+      style={{
+        top: dropdownPosition.top,
+        left: dropdownPosition.left,
+      }}
+    >
+      {/* Header */}
+      <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/60">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Run History
+        </span>
+      </div>
+
+      {/* Items */}
+      <div ref={listRef} className="overflow-y-auto max-h-[268px] py-1">
+        {runs.map((run, idx) => {
+          const isSelected = run.execution_id === selectedId
+          const isFocused = idx === focusIdx
+          const hasOutputs = run.has_persisted_outputs
+
+          return (
+            <button
+              key={run.execution_id}
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              onClick={() => {
+                onChange(run.execution_id)
+                setOpen(false)
+              }}
+              onMouseEnter={() => setFocusIdx(idx)}
+              className={`
+                w-full flex items-start gap-2.5 px-3 py-2.5
+                text-left transition-colors cursor-pointer
+                ${isFocused ? 'bg-slate-50' : ''}
+                ${isSelected ? 'bg-indigo-50/60' : ''}
+              `}
+            >
+              {/* Status indicator */}
+              <div className="pt-0.5 shrink-0">
+                {run.success ? (
+                  <div className="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center">
+                    <Check size={10} className="text-emerald-600" strokeWidth={3} />
+                  </div>
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-red-50 border border-red-200 flex items-center justify-center">
+                    <AlertCircle size={10} className="text-red-500" strokeWidth={3} />
+                  </div>
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium text-slate-800 tabular-nums">
+                    {formatRunDate(run.created_at)} at {formatRunTime(run.created_at)}
+                  </span>
+                  {isSelected && (
+                    <span className="text-[9px] font-semibold uppercase tracking-wide bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full leading-none">
+                      current
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span
+                    className={`text-[11px] font-medium ${
+                      run.success ? 'text-emerald-600' : 'text-red-500'
+                    }`}
+                  >
+                    {run.success ? 'Completed' : 'Failed'}
+                  </span>
+                  {run.total_execution_time_ms > 0 && (
+                    <>
+                      <span className="text-slate-300">·</span>
+                      <span className="text-[11px] text-slate-400 flex items-center gap-0.5">
+                        <Clock size={9} />
+                        {run.total_execution_time_ms < 1000
+                          ? `${run.total_execution_time_ms}ms`
+                          : `${(run.total_execution_time_ms / 1000).toFixed(1)}s`}
+                      </span>
+                    </>
+                  )}
+                  {!hasOutputs && (
+                    <>
+                      <span className="text-slate-300">·</span>
+                      <span className="text-[11px] text-amber-500 flex items-center gap-0.5">
+                        <Package size={9} />
+                        no outputs
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Time ago */}
+              <span className="text-[10px] text-slate-400 shrink-0 pt-0.5 tabular-nums">
+                {timeAgo(run.created_at)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+
   return (
-    <div ref={containerRef} className="relative" onKeyDown={handleKeyDown}>
+    <div className="relative" onKeyDown={handleKeyDown}>
       {/* Trigger */}
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled || isEmpty}
         onClick={() => setOpen((v) => !v)}
@@ -148,8 +298,12 @@ export function RunSelector({ runs, selectedId, onChange, disabled }: RunSelecto
               {timeAgo(selected.created_at)}
             </span>
           </>
-        ) : (
+        ) : isEmpty ? (
           <span className="text-slate-400">No runs yet</span>
+        ) : (
+          <span className="text-slate-400">
+            {runs.length === 1 ? '1 run' : `${runs.length} runs`}
+          </span>
         )}
         <ChevronDown
           size={13}
@@ -159,118 +313,10 @@ export function RunSelector({ runs, selectedId, onChange, disabled }: RunSelecto
         />
       </button>
 
-      {/* Dropdown panel */}
-      {open && (
-        <div
-          className="
-            absolute right-0 top-full mt-1.5 z-50
-            w-[340px] max-h-[320px]
-            bg-white rounded-xl
-            border border-slate-200/80
-            shadow-lg shadow-slate-900/8
-            overflow-hidden
-            animate-in fade-in slide-in-from-top-1 duration-150
-          "
-          role="listbox"
-        >
-          {/* Header */}
-          <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/60">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Run History
-            </span>
-          </div>
-
-          {/* Items */}
-          <div ref={listRef} className="overflow-y-auto max-h-[268px] py-1">
-            {runs.map((run, idx) => {
-              const isSelected = run.execution_id === selectedId
-              const isFocused = idx === focusIdx
-              const hasOutputs = run.has_persisted_outputs
-
-              return (
-                <button
-                  key={run.execution_id}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    onChange(run.execution_id)
-                    setOpen(false)
-                  }}
-                  onMouseEnter={() => setFocusIdx(idx)}
-                  className={`
-                    w-full flex items-start gap-2.5 px-3 py-2.5
-                    text-left transition-colors duration-100 cursor-pointer
-                    ${isFocused ? 'bg-slate-50' : ''}
-                    ${isSelected ? 'bg-indigo-50/60' : ''}
-                  `}
-                >
-                  {/* Status indicator */}
-                  <div className="pt-0.5 shrink-0">
-                    {run.success ? (
-                      <div className="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center">
-                        <Check size={10} className="text-emerald-600" strokeWidth={3} />
-                      </div>
-                    ) : (
-                      <div className="w-5 h-5 rounded-full bg-red-50 border border-red-200 flex items-center justify-center">
-                        <AlertCircle size={10} className="text-red-500" strokeWidth={3} />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-medium text-slate-800 tabular-nums">
-                        {formatRunDate(run.created_at)} at {formatRunTime(run.created_at)}
-                      </span>
-                      {isSelected && (
-                        <span className="text-[9px] font-semibold uppercase tracking-wide bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full leading-none">
-                          current
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span
-                        className={`text-[11px] font-medium ${
-                          run.success ? 'text-emerald-600' : 'text-red-500'
-                        }`}
-                      >
-                        {run.success ? 'Completed' : 'Failed'}
-                      </span>
-                      {run.total_execution_time_ms > 0 && (
-                        <>
-                          <span className="text-slate-300">·</span>
-                          <span className="text-[11px] text-slate-400 flex items-center gap-0.5">
-                            <Clock size={9} />
-                            {run.total_execution_time_ms < 1000
-                              ? `${run.total_execution_time_ms}ms`
-                              : `${(run.total_execution_time_ms / 1000).toFixed(1)}s`}
-                          </span>
-                        </>
-                      )}
-                      {!hasOutputs && (
-                        <>
-                          <span className="text-slate-300">·</span>
-                          <span className="text-[11px] text-amber-500 flex items-center gap-0.5">
-                            <Package size={9} />
-                            no outputs
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Time ago */}
-                  <span className="text-[10px] text-slate-400 shrink-0 pt-0.5 tabular-nums">
-                    {timeAgo(run.created_at)}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {/* Dropdown panel - rendered via portal to escape overflow clipping */}
+      {typeof document !== 'undefined' &&
+        open &&
+        createPortal(dropdownContent, document.body)}
     </div>
   )
 }

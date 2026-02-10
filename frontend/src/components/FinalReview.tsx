@@ -1,14 +1,14 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ReactFlowWrapper } from "./canvas/ReactFlowWrapper";
 import { ChatPanel } from "./final-review/ChatPanel";
 import { CanvasPanel } from "./final-review/CanvasPanel";
 import { NodeSidebar } from "./workflow/NodeSidebar";
 import { TopNavBar } from "./workflow/TopNavBar";
 import { ExecutionBar } from "./workflow/ExecutionBar";
-import { ExecutionResultsModal } from "./workflow/ExecutionResultsModal";
 import { CompilationDiagnosticsModal } from "./workflow/CompilationDiagnosticsModal";
-import Toast from "./ui/Toast";
+import { showToast } from "@/lib/stores/toastStore";
 import { useSourceTexts } from "@/hooks/useSourceTexts";
 import { useTranscription } from "@/hooks/useTranscription";
 import { useChatConversation } from "@/hooks/useChatConversation";
@@ -16,7 +16,7 @@ import { useCanvasOperations } from "@/hooks/useCanvasOperations";
 import { useContextMenus } from "@/hooks/useContextMenus";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
 import { useBlueprintCompile } from "@/hooks/useBlueprintCompile";
-import { useWorkflowStore } from "@/lib/stores/workflowStore";
+import { useWorkflowStore, getParamKeysToPersist } from "@/lib/stores/workflowStore";
 import type {
   OutputNodeType,
   WorkflowNodeType,
@@ -45,9 +45,9 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [redoStack, setRedoStack] = useState<unknown[]>([]);
   // Modals and notifications
-  const [showResultsModal, setShowResultsModal] = useState(false);
   const [showCompilationModal, setShowCompilationModal] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+
+  const router = useRouter();
 
   // Custom hooks for state management
   const sourceTextsHook = useSourceTexts();
@@ -56,6 +56,7 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
   const contextMenus = useContextMenus();
   const { execute, isExecuting, executionResult, error: executionError } = useWorkflowExecution();
   const { compileRaw, diagnostics, errors: compilationErrors } = useBlueprintCompile();
+  const currentWorkflowId = useWorkflowStore((s) => s.currentWorkflowId);
   const chatHook = useChatConversation({
     sourceTexts: sourceTextsHook.sourceTexts,
     onAddNodeToCanvas: (
@@ -171,25 +172,20 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
     const { exportWorkflowForExecution, nodes: storeNodes } = useWorkflowStore.getState();
     const workflowData = exportWorkflowForExecution(nodes, edges);
 
-    // Also sync params for other node types (TextGeneration, ImageGeneration)
+    // Sync all non-connected params from store (preset_id, aspect_ratio, style, count, etc.)
     workflowData.nodes = workflowData.nodes.map((node) => {
       const storeNode = storeNodes[node.id];
       if (!storeNode) return node;
 
+      const paramKeys = getParamKeysToPersist(storeNode.type, storeNode.inputs);
       const params: Record<string, unknown> = {};
-
-      if (storeNode.type === 'TextGeneration' && storeNode.inputs.preset_id) {
-        params.preset_id = storeNode.inputs.preset_id;
-      } else if (storeNode.type === 'ImageGeneration' && storeNode.inputs.aspect_ratio) {
-        params.aspect_ratio = storeNode.inputs.aspect_ratio;
+      for (const key of paramKeys) {
+        const value = storeNode.inputs[key];
+        if (value !== undefined) params[key] = value;
       }
 
-      // Merge additional params if any
       if (Object.keys(params).length > 0) {
-        return {
-          ...node,
-          data: { ...node.data, ...params },
-        };
+        return { ...node, data: { ...node.data, ...params } };
       }
       return node;
     });
@@ -229,7 +225,7 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
     // Check if workflow is saved first
     const { currentWorkflowId } = useWorkflowStore.getState();
     if (!currentWorkflowId) {
-      setToast({ message: "Please save the workflow before executing", type: "warning" });
+      showToast("Please save the workflow before executing", "warning");
       setShowSaveDialog(true);
       return;
     }
@@ -238,9 +234,9 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
 
     if (!workflowData) {
       if (!canvasOps.reactFlowInstance) {
-        setToast({ message: "ReactFlow instance not available", type: "error" });
+        showToast("ReactFlow instance not available", "error");
       } else {
-        setToast({ message: "No nodes to execute", type: "warning" });
+        showToast("No nodes to execute", "warning");
       }
       return;
     }
@@ -248,7 +244,7 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
     // Validate bucket nodes have files selected (user-friendly check before compilation)
     const bucketValidationError = validateBucketNodes(workflowData);
     if (bucketValidationError) {
-      setToast({ message: bucketValidationError, type: "error" });
+      showToast(bucketValidationError, "error");
       return;
     }
 
@@ -270,27 +266,28 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
     try {
       const { currentWorkflowId, workflowName } = useWorkflowStore.getState();
       const result = await execute(workflowData, currentWorkflowId || undefined, workflowName || undefined);
+      const viewResultsAction =
+        currentWorkflowId
+          ? { label: "View results", onClick: () => router.push(`/preview/${currentWorkflowId}`) }
+          : undefined;
       if (result) {
-        setShowResultsModal(true);
-        setToast({
-          message: result.success
+        showToast(
+          result.success
             ? "Workflow executed successfully"
             : "Workflow execution completed with errors",
-          type: result.success ? "success" : "warning"
-        });
+          result.success ? "success" : "warning",
+          viewResultsAction
+        );
       } else {
-        setShowResultsModal(true);
-        setToast({
-          message: "Workflow execution completed but no result returned",
-          type: "warning"
-        });
+        showToast(
+          "Workflow execution completed but no result returned",
+          "warning",
+          viewResultsAction
+        );
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Workflow execution failed";
-      setToast({ message: errorMessage, type: "error" });
-      if (executionResult) {
-        setShowResultsModal(true);
-      }
+      showToast(errorMessage, "error");
     }
   };
 
@@ -298,7 +295,7 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
     // Double-check workflow is saved (should already be checked in handleExecuteWorkflow)
     const { currentWorkflowId } = useWorkflowStore.getState();
     if (!currentWorkflowId) {
-      setToast({ message: "Please save the workflow before executing", type: "warning" });
+      showToast("Please save the workflow before executing", "warning");
       setShowCompilationModal(false);
       setShowSaveDialog(true);
       return;
@@ -311,7 +308,7 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
     // Validate bucket nodes have files selected
     const bucketValidationError = validateBucketNodes(workflowData);
     if (bucketValidationError) {
-      setToast({ message: bucketValidationError, type: "error" });
+      showToast(bucketValidationError, "error");
       setShowCompilationModal(false);
       return;
     }
@@ -319,35 +316,37 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
     setShowCompilationModal(false);
 
     try {
+      const { currentWorkflowId } = useWorkflowStore.getState();
       const result = await execute(workflowData);
+      const viewResultsAction =
+        currentWorkflowId
+          ? { label: "View results", onClick: () => router.push(`/preview/${currentWorkflowId}`) }
+          : undefined;
       if (result) {
-        setShowResultsModal(true);
-        setToast({
-          message: result.success
+        showToast(
+          result.success
             ? "Workflow executed successfully"
             : "Workflow execution completed with errors",
-          type: result.success ? "success" : "warning"
-        });
+          result.success ? "success" : "warning",
+          viewResultsAction
+        );
       } else {
-        setShowResultsModal(true);
-        setToast({
-          message: "Workflow execution completed but no result returned",
-          type: "warning"
-        });
+        showToast(
+          "Workflow execution completed but no result returned",
+          "warning",
+          viewResultsAction
+        );
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Workflow execution failed";
-      setToast({ message: errorMessage, type: "error" });
-      if (executionResult) {
-        setShowResultsModal(true);
-      }
+      showToast(errorMessage, "error");
     }
   };
 
   // Show toast for execution errors
   useEffect(() => {
     if (executionError) {
-      setToast({ message: executionError, type: "error" });
+      showToast(executionError, "error");
     }
   }, [executionError]);
 
@@ -424,6 +423,11 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
             onUndo={handleUndo}
             onRedo={handleRedo}
             isExecuting={isExecuting}
+            executionJustCompleted={!!executionResult && !isExecuting}
+            currentWorkflowId={currentWorkflowId}
+            onViewResults={() => {
+              if (currentWorkflowId) router.push(`/preview/${currentWorkflowId}`);
+            }}
           />
         </div>
       </div>
@@ -441,13 +445,6 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
         />
       )}
 
-      {/* Execution Results Modal */}
-      <ExecutionResultsModal
-        isOpen={showResultsModal}
-        onClose={() => setShowResultsModal(false)}
-        result={executionResult}
-      />
-
       {/* Compilation Diagnostics Modal */}
       <CompilationDiagnosticsModal
         isOpen={showCompilationModal}
@@ -455,15 +452,6 @@ const FinalReview = ({ autoLoadWorkflowId, onAutoLoadComplete }: FinalReviewProp
         diagnostics={diagnostics}
         onProceed={handleProceedWithExecution}
       />
-
-      {/* Toast Notification */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
     </div>
   );
 };

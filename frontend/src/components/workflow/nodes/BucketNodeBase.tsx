@@ -231,16 +231,13 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
       }
     };
 
-    // Fetch on mount or when picker opens
-    if (showPicker || files.length === 0) {
-      fetchFiles(true);
-    }
-
-    // Poll for new files while picker is open (every 2 seconds)
+    // Only fetch when user opens the picker (avoids hitting API for every bucket on canvas when idle)
     if (showPicker) {
+      fetchFiles(true);
+      // Poll for new files while picker is open (every 5 seconds)
       intervalId = setInterval(() => {
         fetchFiles(false); // Don't show loading spinner for background refreshes
-      }, 2000);
+      }, 5000);
     }
 
     return () => {

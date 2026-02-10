@@ -23,6 +23,9 @@ import {
 } from 'lucide-react'
 import { usePreviewData } from './PreviewDataContext'
 
+/** Input bucket node types - excluded from preview as they are seed info, not workflow outputs */
+const BUCKET_NODE_TYPES = ['ImageBucket', 'AudioBucket', 'VideoBucket', 'TextBucket']
+
 const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
   ImageBucket: Image,
   AudioBucket: Music,
@@ -124,6 +127,7 @@ export function useNodeOutputs(): NodeGroup[] {
     )
 
     for (const [nodeId, node] of Object.entries(nodes)) {
+      if (BUCKET_NODE_TYPES.includes(node.type)) continue
       if (node.status !== 'completed' || !node.outputs) continue
 
       // Skip ImageExtraction when ImageMatching consolidates its images

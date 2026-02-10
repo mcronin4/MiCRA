@@ -174,6 +174,44 @@ export interface WorkflowRunOutputs {
   created_at: string
 }
 
+// Preview drafts
+export interface PreviewDraft {
+  id: string
+  workflow_id: string
+  user_id: string
+  execution_id: string | null
+  name: string
+  platform_id: string
+  tone: string
+  slot_content: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface PreviewDraftListItem {
+  id: string
+  name: string
+  execution_id: string | null
+  platform_id: string
+  tone: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateDraftRequest {
+  name: string
+  execution_id?: string | null
+  platform_id?: string
+  tone?: string
+  slot_content?: Record<string, unknown>
+}
+
+export interface UpdateDraftRequest {
+  name?: string
+  tone?: string
+  slot_content?: Record<string, unknown>
+}
+
 /**
  * List all workflows accessible to the user (user workflows + system templates).
  * Returns only metadata (no payload) for efficient listing.
@@ -234,6 +272,79 @@ export async function getWorkflowRunOutputs(
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     }
+  )
+}
+
+/**
+ * List preview drafts for a workflow.
+ */
+export async function listPreviewDrafts(
+  workflowId: string
+): Promise<PreviewDraftListItem[]> {
+  return apiClient.request<PreviewDraftListItem[]>(
+    `/v1/workflows/${workflowId}/drafts`,
+    { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+  )
+}
+
+/**
+ * Create a preview draft.
+ */
+export async function createPreviewDraft(
+  workflowId: string,
+  body: CreateDraftRequest
+): Promise<PreviewDraft> {
+  return apiClient.request<PreviewDraft>(
+    `/v1/workflows/${workflowId}/drafts`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
+/**
+ * Get a single preview draft.
+ */
+export async function getPreviewDraft(
+  workflowId: string,
+  draftId: string
+): Promise<PreviewDraft> {
+  return apiClient.request<PreviewDraft>(
+    `/v1/workflows/${workflowId}/drafts/${draftId}`,
+    { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+  )
+}
+
+/**
+ * Update a preview draft.
+ */
+export async function updatePreviewDraft(
+  workflowId: string,
+  draftId: string,
+  body: UpdateDraftRequest
+): Promise<PreviewDraft> {
+  return apiClient.request<PreviewDraft>(
+    `/v1/workflows/${workflowId}/drafts/${draftId}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
+/**
+ * Delete a preview draft.
+ */
+export async function deletePreviewDraft(
+  workflowId: string,
+  draftId: string
+): Promise<void> {
+  return apiClient.request<void>(
+    `/v1/workflows/${workflowId}/drafts/${draftId}`,
+    { method: 'DELETE' }
   )
 }
 

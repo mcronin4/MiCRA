@@ -1,4 +1,4 @@
-import { buildPersistedNodes } from '../PreviewPage'
+import { buildPersistedNodes } from '@/lib/preview-utils'
 import type { WorkflowRunOutputs } from '@/lib/fastapi/workflows'
 import type { PreviewNodeState } from '../PreviewDataContext'
 
@@ -108,6 +108,11 @@ describe('buildPersistedNodes', () => {
 
     it('should handle nodes with null node_id or type', () => {
       const runOutputs = createMockRunOutputs({
+        node_outputs: {
+          'node-1': { output: 'value1' },
+          'node-2': { output: 'value2' },
+          'node-3': { output: 'value3' },
+        },
         blueprint_snapshot: {
           nodes: [
             { node_id: null, type: 'TextGeneration' },

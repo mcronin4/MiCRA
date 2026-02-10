@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Save, LayoutDashboard, Eye } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
@@ -27,10 +28,14 @@ function displayNameFromUser(user: User | null): string | null {
   );
 }
 
+const PREVIEW_BTN_CLASS =
+  "flex items-center gap-1.5 px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200";
+
 export const TopNavBar: React.FC<TopNavBarProps> = ({
   onSave,
   canSave = true,
 }) => {
+  const router = useRouter();
   const workflowName = useWorkflowStore((state) => state.workflowName);
   const setWorkflowName = useWorkflowStore((state) => state.setWorkflowName);
   const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
@@ -84,14 +89,26 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 
       {/* Right - Preview + Save/Load Actions */}
       <div className="flex items-center gap-2">
-        {currentWorkflowId && (
-          <Link
-            href={`/preview/${currentWorkflowId}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
+        {currentWorkflowId ? (
+          <button
+            type="button"
+            onClick={() => router.push(`/preview/${currentWorkflowId}`)}
+            className={PREVIEW_BTN_CLASS}
+            title="Open preview"
           >
             <Eye size={14} />
             Preview
-          </Link>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSave?.()}
+            className={`${PREVIEW_BTN_CLASS} opacity-80`}
+            title="Save workflow first to preview"
+          >
+            <Eye size={14} />
+            Preview
+          </button>
         )}
         <button
           onClick={onSave}
@@ -110,7 +127,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
         >
           <LayoutDashboard size={14} />
-          Dashboard
+          Return to Dashboard
         </Link>
       </div>
     </div>

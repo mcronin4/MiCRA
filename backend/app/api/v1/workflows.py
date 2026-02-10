@@ -1337,3 +1337,265 @@ async def get_execution_log(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get execution log: {str(e)}")
+
+
+# --- Preview Drafts ---
+
+class DraftCreate(BaseModel):
+    name: str
+    execution_id: Optional[str] = None
+    platform_id: str = "linkedin"
+    tone: str = "professional"
+    slot_content: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DraftUpdate(BaseModel):
+    name: Optional[str] = None
+    tone: Optional[str] = None
+    slot_content: Optional[Dict[str, Any]] = None
+
+
+class DraftResponse(BaseModel):
+    id: str
+    workflow_id: str
+    user_id: str
+    execution_id: Optional[str]
+    name: str
+    platform_id: str
+    tone: str
+    slot_content: Dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class DraftListItem(BaseModel):
+    id: str
+    name: str
+    execution_id: Optional[str]
+    platform_id: str
+    tone: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@router.get("/{workflow_id}/drafts", response_model=List[DraftListItem])
+async def list_preview_drafts(
+    workflow_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """List preview drafts for a workflow."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        result = supabase.table("preview_drafts")\
+            .select("id, name, execution_id, platform_id, tone, created_at, updated_at")\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .order("updated_at", desc=True)\
+            .execute()
+
+        return [
+            DraftListItem(
+                id=str(row["id"]),
+                name=row["name"],
+                execution_id=str(row["execution_id"]) if row.get("execution_id") else None,
+                platform_id=row.get("platform_id", "linkedin"),
+                tone=row.get("tone", "professional"),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+            for row in (result.data or [])
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list drafts: {str(e)}")
+
+
+@router.post("/{workflow_id}/drafts", response_model=DraftResponse, status_code=201)
+async def create_preview_draft(
+    workflow_id: str,
+    body: DraftCreate,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Create a new preview draft."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        row = {
+            "workflow_id": workflow_id,
+            "user_id": user.sub,
+            "name": body.name,
+            "platform_id": body.platform_id,
+            "tone": body.tone,
+            "slot_content": body.slot_content or {},
+        }
+        if body.execution_id:
+            row["execution_id"] = body.execution_id
+
+        result = supabase.table("preview_drafts").insert(row).execute()
+
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to create draft")
+
+        r = result.data[0]
+        return DraftResponse(
+            id=str(r["id"]),
+            workflow_id=str(r["workflow_id"]),
+            user_id=str(r["user_id"]),
+            execution_id=str(r["execution_id"]) if r.get("execution_id") else None,
+            name=r["name"],
+            platform_id=r.get("platform_id", "linkedin"),
+            tone=r.get("tone", "professional"),
+            slot_content=r.get("slot_content") or {},
+            created_at=r["created_at"],
+            updated_at=r["updated_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create draft: {str(e)}")
+
+
+@router.get("/{workflow_id}/drafts/{draft_id}", response_model=DraftResponse)
+async def get_preview_draft(
+    workflow_id: str,
+    draft_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Get a single preview draft."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        result = supabase.table("preview_drafts")\
+            .select("*")\
+            .eq("id", draft_id)\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .execute()
+
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(status_code=404, detail="Draft not found")
+
+        r = result.data[0]
+        return DraftResponse(
+            id=str(r["id"]),
+            workflow_id=str(r["workflow_id"]),
+            user_id=str(r["user_id"]),
+            execution_id=str(r["execution_id"]) if r.get("execution_id") else None,
+            name=r["name"],
+            platform_id=r.get("platform_id", "linkedin"),
+            tone=r.get("tone", "professional"),
+            slot_content=r.get("slot_content") or {},
+            created_at=r["created_at"],
+            updated_at=r["updated_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get draft: {str(e)}")
+
+
+@router.patch("/{workflow_id}/drafts/{draft_id}", response_model=DraftResponse)
+async def update_preview_draft(
+    workflow_id: str,
+    draft_id: str,
+    body: DraftUpdate,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Update a preview draft."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        updates: Dict[str, Any] = {}
+        if body.name is not None:
+            updates["name"] = body.name
+        if body.tone is not None:
+            updates["tone"] = body.tone
+        if body.slot_content is not None:
+            updates["slot_content"] = body.slot_content
+
+        if not updates:
+            # Fetch and return current state
+            result = supabase.table("preview_drafts")\
+                .select("*")\
+                .eq("id", draft_id)\
+                .eq("workflow_id", workflow_id)\
+                .eq("user_id", user.sub)\
+                .execute()
+            if not result.data:
+                raise HTTPException(status_code=404, detail="Draft not found")
+            r = result.data[0]
+            return DraftResponse(
+                id=str(r["id"]),
+                workflow_id=str(r["workflow_id"]),
+                user_id=str(r["user_id"]),
+                execution_id=str(r["execution_id"]) if r.get("execution_id") else None,
+                name=r["name"],
+                platform_id=r.get("platform_id", "linkedin"),
+                tone=r.get("tone", "professional"),
+                slot_content=r.get("slot_content") or {},
+                created_at=r["created_at"],
+                updated_at=r["updated_at"],
+            )
+
+        result = supabase.table("preview_drafts")\
+            .update(updates)\
+            .eq("id", draft_id)\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .execute()
+
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(status_code=404, detail="Draft not found")
+
+        r = result.data[0]
+        return DraftResponse(
+            id=str(r["id"]),
+            workflow_id=str(r["workflow_id"]),
+            user_id=str(r["user_id"]),
+            execution_id=str(r["execution_id"]) if r.get("execution_id") else None,
+            name=r["name"],
+            platform_id=r.get("platform_id", "linkedin"),
+            tone=r.get("tone", "professional"),
+            slot_content=r.get("slot_content") or {},
+            created_at=r["created_at"],
+            updated_at=r["updated_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update draft: {str(e)}")
+
+
+@router.delete("/{workflow_id}/drafts/{draft_id}", status_code=204)
+async def delete_preview_draft(
+    workflow_id: str,
+    draft_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Delete a preview draft."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        result = supabase.table("preview_drafts")\
+            .delete()\
+            .eq("id", draft_id)\
+            .eq("workflow_id", workflow_id)\
+            .eq("user_id", user.sub)\
+            .execute()
+
+        # Supabase delete returns the deleted rows; empty means nothing was deleted
+        if result.data is not None and len(result.data) > 0:
+            return
+        # If no rows returned, the draft may not have existed - still return 204 for idempotency
+        return
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete draft: {str(e)}")

@@ -1,29 +1,29 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import FinalReview from "@/components/FinalReview";
 import AuthModal from "@/components/auth/AuthModal";
 import { Loader2 } from "lucide-react";
+import { useState } from "react";
 
 function HomeContent() {
   const { user, loading } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const loadWorkflowId = searchParams.get("loadWorkflow");
 
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [autoLoadId, setAutoLoadId] = useState<string | null>(loadWorkflowId);
 
-  // Sync autoLoadId when searchParams change
+  // Redirect authenticated users to dashboard (or workflow if loadWorkflow param)
   useEffect(() => {
-    setAutoLoadId(loadWorkflowId);
-  }, [loadWorkflowId]);
-
-
-  const handleAutoLoadComplete = useCallback(() => {
-    setAutoLoadId(null);
-  }, []);
+    if (loading || !user) return;
+    if (loadWorkflowId) {
+      router.replace(`/workflow?loadWorkflow=${loadWorkflowId}`);
+    } else {
+      router.replace("/dashboard");
+    }
+  }, [user, loading, router, loadWorkflowId]);
 
   // Loading state while auth resolves
   if (loading) {
@@ -62,23 +62,11 @@ function HomeContent() {
     );
   }
 
-  // Authenticated with loadWorkflow param: show editor with auto-load
-  if (loadWorkflowId) {
-    return (
-      <main>
-        <FinalReview
-          autoLoadWorkflowId={autoLoadId}
-          onAutoLoadComplete={handleAutoLoadComplete}
-        />
-      </main>
-    );
-  }
-
-  // Authenticated without loadWorkflow: blank editor
+  // Authenticated: show loading while redirect happens
   return (
-    <main>
-      <FinalReview />
-    </main>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <Loader2 size={24} className="animate-spin text-indigo-500" />
+    </div>
   );
 }
 

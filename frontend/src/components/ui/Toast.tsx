@@ -10,6 +10,7 @@ interface ToastProps {
   type?: ToastType;
   duration?: number;
   onClose: () => void;
+  action?: { label: string; onClick: () => void };
 }
 
 export default function Toast({
@@ -17,6 +18,7 @@ export default function Toast({
   type = 'info',
   duration = 5000,
   onClose,
+  action,
 }: ToastProps) {
   const [isExiting, setIsExiting] = useState(false);
 
@@ -92,6 +94,19 @@ export default function Toast({
       <p className={`flex-1 text-[13px] font-medium ${s.text} py-2.5 pr-1 leading-snug`}>
         {message}
       </p>
+
+      {action && (
+        <button
+          type="button"
+          onClick={() => {
+            action.onClick();
+            handleClose();
+          }}
+          className="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white transition-colors"
+        >
+          {action.label}
+        </button>
+      )}
 
       <button
         onClick={handleClose}

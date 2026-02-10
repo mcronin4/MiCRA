@@ -490,7 +490,10 @@ async def _exec_text_generation(params: dict, inputs: dict) -> dict[str, Any]:
 
     preset_id = params.get("preset_id", "")
     if not preset_id:
-        raise ValueError("TextGeneration node requires 'preset_id' in params")
+        raise ValueError(
+            "TextGeneration node requires 'preset_id' in params. "
+            "Open the workflow in the editor, select a preset for this node, and save to persist it."
+        )
 
     result = generate_text(input_text=text, preset_id=preset_id)
 

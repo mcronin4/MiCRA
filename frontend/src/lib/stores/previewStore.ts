@@ -7,6 +7,7 @@ import type {
 } from '@/types/preview'
 import {
   LINKEDIN_TEMPLATE,
+  PLATFORM_TEMPLATES,
   migrateAssignment,
   LIVE_PREVIEW_CONTEXT_ID,
 } from '@/types/preview'
@@ -104,6 +105,9 @@ interface PreviewStore {
 
   /** Reset config */
   resetConfig: () => void
+
+  /** Set config from a draft (tone, platform) - does not persist, used when viewing draft */
+  setConfigFromDraft: (workflowId: string, platformId: string, tone: string) => void
 }
 
 export const usePreviewStore = create<PreviewStore>((set, get) => ({
@@ -192,5 +196,21 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
     const fresh = defaultConfig(config.workflowId)
     saveConfig(fresh, activeContextId)
     set({ config: fresh })
+  },
+
+  setConfigFromDraft: (workflowId, platformId, tone) => {
+    const template = PLATFORM_TEMPLATES[platformId] ?? LINKEDIN_TEMPLATE
+    set({
+      config: {
+        workflowId,
+        platformId,
+        tone,
+        assignments: template.slots.map((slot) => ({
+          slotId: slot.slotId,
+          sources: [],
+        })),
+        updatedAt: Date.now(),
+      },
+    })
   },
 }))

@@ -21,13 +21,19 @@ export interface PreviewNodeState {
   outputs: Record<string, unknown> | null
 }
 
-interface PreviewDataContextValue {
+export interface PreviewDataContextValue {
   nodes: Record<string, PreviewNodeState>
   outputsLoading?: boolean
+  /** When viewing a draft: raw slot content (body, media). Keys = slotId. */
+  slotContent?: Record<string, unknown>
+  isDraftMode?: boolean
+  onDraftSlotChange?: (slotId: string, value: unknown) => void
 }
 
 const PreviewDataContext = createContext<PreviewDataContextValue>({
   nodes: {},
+  slotContent: undefined,
+  isDraftMode: false,
 })
 
 export function PreviewDataProvider({
