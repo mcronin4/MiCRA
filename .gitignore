@@ -48,3 +48,9 @@ outputs/
 
 CLAUDE*
 .claude/
+
+*.json
+
+# Dev-local video generation assets and artifacts
+local_test_assets/
+.artifacts/

@@ -899,6 +899,155 @@ async def _exec_quote_extraction(params: dict, inputs: dict) -> dict[str, Any]:
     return {"quotes": quotes}
 
 
+@executor("VideoGeneration")
+async def _exec_video_generation(params: dict, inputs: dict) -> dict[str, Any]:
+    """
+    Generate a short MP4 video via Veo 3.1 (google-genai SDK).
+
+    Params:
+        duration_seconds (str): "4", "6", or "8" (default "8")
+        aspect_ratio (str): "9:16" or "16:9" (default "9:16")
+        resolution (str): "720p", "1080p", or "4k" (default "720p")
+        negative_prompt (str): optional unwanted-content description
+        user_prompt (str): optional text prompt
+        image_artifact_ids (list[str]): optional local artifact IDs for reference images
+
+    Inputs (from upstream connections):
+        images (list[ImageRef]): optional reference images (signed URLs or data URLs)
+        text (str): optional transcript/context text
+
+    Outputs:
+        generated_video: local artifact path or data URL for the MP4
+        prompt_bundle: JSON dict with generation metadata
+    """
+    import base64
+    import hashlib
+    import uuid
+    import httpx
+    from datetime import datetime, timezone
+
+    from app.agents.video_generation.generator import generate_video_with_veo
+    from app.storage.local_artifacts import is_local_backend, write_artifact
+
+    duration_seconds = str(params.get("duration_seconds", "8"))
+    aspect_ratio = params.get("aspect_ratio", "9:16")
+    resolution = params.get("resolution", "720p")
+    negative_prompt = params.get("negative_prompt", "")
+    user_prompt = params.get("user_prompt", "")
+
+    # Gather reference images from inputs or params
+    image_bytes_list: list[bytes] = []
+    input_images = inputs.get("images", [])
+    if not isinstance(input_images, list):
+        input_images = [input_images] if input_images else []
+
+    for img_ref in input_images:
+        if not img_ref:
+            continue
+        try:
+            if isinstance(img_ref, str) and img_ref.startswith("data:"):
+                _, encoded = img_ref.split(",", 1)
+                image_bytes_list.append(base64.b64decode(encoded))
+            elif isinstance(img_ref, str) and img_ref.startswith("http"):
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.get(img_ref)
+                    resp.raise_for_status()
+                    image_bytes_list.append(resp.content)
+        except Exception as e:
+            logger.warning("Failed to fetch reference image: %s", e)
+
+    # Also try image_artifact_ids from params (local artifact backend)
+    artifact_ids = params.get("image_artifact_ids", [])
+    if artifact_ids and is_local_backend():
+        from app.storage.local_artifacts import read_artifact
+        for aid in artifact_ids:
+            try:
+                data, _meta = read_artifact(aid)
+                image_bytes_list.append(data)
+            except FileNotFoundError:
+                logger.warning("Artifact %s not found", aid)
+
+    # Build the prompt
+    text_input = inputs.get("text", "")
+    if isinstance(text_input, list):
+        text_input = "\n\n".join(str(t) for t in text_input if t)
+
+    if user_prompt:
+        final_prompt = user_prompt
+        if text_input:
+            final_prompt += f"\n\nContext:\n{text_input}"
+    elif text_input:
+        final_prompt = f"Create a short video based on: {text_input}"
+    else:
+        final_prompt = "Create a visually compelling short video with smooth motion and cinematic lighting."
+
+    # Build prompt bundle
+    input_artifact_meta = []
+    for i, img_bytes in enumerate(image_bytes_list):
+        input_artifact_meta.append({
+            "index": i,
+            "mime": "image/jpeg",
+            "sha256": hashlib.sha256(img_bytes).hexdigest(),
+            "size": len(img_bytes),
+        })
+
+    veo_params = {
+        "duration_seconds": duration_seconds,
+        "aspect_ratio": aspect_ratio,
+        "resolution": resolution,
+    }
+    if negative_prompt:
+        veo_params["negative_prompt"] = negative_prompt
+
+    prompt_bundle = {
+        "workflow_run_id": str(uuid.uuid4()),
+        "node_params": {
+            "duration_seconds": duration_seconds,
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
+            "negative_prompt": negative_prompt,
+            "user_prompt": user_prompt,
+        },
+        "input_artifacts": input_artifact_meta,
+        "final_veo_prompt": final_prompt,
+        "veo_model": "veo-3.1-generate-preview",
+        "veo_generation_params": veo_params,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Call Veo (will raise if VEO_ENABLE_LIVE_CALLS is not true)
+    import asyncio
+    video_bytes = await asyncio.to_thread(
+        generate_video_with_veo,
+        prompt=final_prompt,
+        images=image_bytes_list if image_bytes_list else None,
+        params=veo_params,
+    )
+
+    # Store the video artifact
+    if is_local_backend():
+        video_meta = write_artifact(
+            data=video_bytes, mime="video/mp4", name="generated_video.mp4"
+        )
+        bundle_meta = write_artifact(
+            data=json.dumps(prompt_bundle, indent=2).encode(),
+            mime="application/json",
+            name="video_prompt_bundle.json",
+        )
+        video_ref = video_meta["path"]
+        prompt_bundle["video_artifact_id"] = video_meta["id"]
+        prompt_bundle["bundle_artifact_id"] = bundle_meta["id"]
+    else:
+        # Return as data URL for inline storage in workflow outputs
+        video_b64 = base64.b64encode(video_bytes).decode("ascii")
+        video_ref = f"data:video/mp4;base64,{video_b64}"
+
+    return {
+        "generated_video": video_ref,
+        "prompt_bundle": prompt_bundle,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Main execution function (parallel)
 # ---------------------------------------------------------------------------
