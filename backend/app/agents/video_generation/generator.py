@@ -81,8 +81,8 @@ def generate_video_with_veo(
 
     Args:
         prompt: Text prompt describing the video to generate.
-        images: Optional list of image bytes. If provided, the first image
-                is used as a reference frame for image-to-video generation.
+        images: Optional list of image bytes (up to 3). Each image is sent
+                as a reference image (type "asset") to guide the video content.
         params: Optional dict with keys:
             - duration_seconds (str): "4", "6", or "8" (default "8")
             - aspect_ratio (str): "16:9" or "9:16" (default "9:16")
@@ -120,6 +120,25 @@ def generate_video_with_veo(
 
     negative_prompt = params.get("negative_prompt")
 
+    # Build reference images (up to 3)
+    reference_images = []
+    if images:
+        for i, img_bytes in enumerate(images[:3]):
+            ref = types.VideoGenerationReferenceImage(
+                image=types.Image(image_bytes=img_bytes, mime_type="image/jpeg"),
+                reference_type="asset",
+            )
+            reference_images.append(ref)
+        logger.info("Attached %d reference image(s)", len(reference_images))
+
+        # Veo 3.1 only supports 8-second videos when using reference images
+        if duration != "8":
+            logger.warning(
+                "Overriding duration %ss -> 8s (required when using reference images)",
+                duration,
+            )
+            duration = "8"
+
     # Build config
     config_kwargs: dict[str, Any] = {
         "aspect_ratio": aspect_ratio,
@@ -128,6 +147,8 @@ def generate_video_with_veo(
     }
     if negative_prompt:
         config_kwargs["negative_prompt"] = negative_prompt
+    if reference_images:
+        config_kwargs["reference_images"] = reference_images
 
     config = types.GenerateVideosConfig(**config_kwargs)
 
@@ -140,14 +161,9 @@ def generate_video_with_veo(
         "config": config,
     }
 
-    # Image-to-video: attach reference image
-    if images and len(images) > 0:
-        image_part = types.Image(image_bytes=images[0], mime_type="image/jpeg")
-        call_kwargs["image"] = image_part
-
     logger.info(
-        "Submitting Veo generation (duration=%ss, ar=%s, res=%s)",
-        duration, aspect_ratio, resolution,
+        "Submitting Veo generation (duration=%ss, ar=%s, res=%s, ref_images=%d)",
+        duration, aspect_ratio, resolution, len(reference_images),
     )
 
     operation = client.models.generate_videos(**call_kwargs)
@@ -164,6 +180,29 @@ def generate_video_with_veo(
         operation = client.operations.get(operation)
 
     logger.info("Veo generation complete! (%.0fs elapsed)", elapsed)
+
+    # Check for API-side errors
+    op_error = getattr(operation, "error", None)
+    if op_error:
+        logger.error("Veo operation error: %s", op_error)
+        raise RuntimeError(f"Veo generation failed: {op_error}")
+
+    if operation.response is None:
+        # Log everything available on the operation for debugging
+        logger.error(
+            "Veo operation finished but response is None. "
+            "operation.done=%s, operation.name=%s, operation attrs=%s",
+            operation.done,
+            getattr(operation, "name", "?"),
+            [a for a in dir(operation) if not a.startswith("_")],
+        )
+        raise RuntimeError(
+            "Veo generation returned no response. This typically means the "
+            "API rejected the request silently (e.g. unsupported feature, "
+            "content policy violation, or invalid reference images). "
+            "Check the logs above and try with fewer/different images or "
+            "a different prompt."
+        )
 
     # Extract video
     generated_videos = operation.response.generated_videos
