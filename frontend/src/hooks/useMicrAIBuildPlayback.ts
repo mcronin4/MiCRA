@@ -175,8 +175,9 @@ function resolveRuntimeTypeForStep(
   step: CopilotBuildStep,
   nodesById: Map<string, SavedWorkflowNode>
 ): NonNullable<CopilotBuildStep["runtime_type"]> | null {
-  if (isPrimitiveRuntimeType(step.runtime_type ?? null)) {
-    return step.runtime_type;
+  const providedRuntimeType = step.runtime_type ?? null;
+  if (isPrimitiveRuntimeType(providedRuntimeType)) {
+    return providedRuntimeType;
   }
   const sourceNodeId = String(step.source_node_id || "").trim();
   if (!sourceNodeId) return null;
