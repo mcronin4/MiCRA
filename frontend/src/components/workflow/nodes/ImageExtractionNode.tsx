@@ -7,13 +7,19 @@ import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import {
   extractKeyframesFromFile,
   extractKeyframesFromUrl,
-  ExtractedImage,
+  type ExtractedImage,
+  type FrameSelectionMode,
 } from "@/lib/fastapi/image-extraction";
-import { NodeConfig } from "@/types/workflow";
+import type { NodeConfig } from "@/types/workflow";
 import { Upload, Link, X, Image as ImageIcon } from "lucide-react";
 import Image from "next/image";
 
 type SourceType = "file" | "url";
+
+const clampFrameCount = (value: number) => {
+  if (Number.isNaN(value)) return 10;
+  return Math.max(1, Math.min(value, 200));
+};
 
 const config: NodeConfig = {
   type: "image-extraction",
@@ -23,10 +29,7 @@ const config: NodeConfig = {
     // Workflow mode input (from VideoBucket / upstream)
     { id: "source", label: "Video", type: "file" },
   ],
-  outputs: [
-    { id: "images", label: "Selected Images", type: "image[]" },
-    { id: "metadata", label: "Metadata", type: "json" },
-  ],
+  outputs: [{ id: "images", label: "Selected Images", type: "image[]" }],
 };
 
 export function ImageExtractionNode({ id }: NodeProps) {
@@ -36,43 +39,37 @@ export function ImageExtractionNode({ id }: NodeProps) {
 
   const showManualInputs = node?.manualInputEnabled ?? false;
 
-  const nodeOutputs =
-    node?.outputs && typeof node.outputs === "object"
-      ? (node.outputs as Record<string, unknown>)
-      : {};
-
   const initialSourceType: SourceType =
     node?.inputs?.source_type === "url" ? "url" : "file";
+  const initialSelectionMode: FrameSelectionMode =
+    node?.inputs?.selection_mode === "manual" ? "manual" : "auto";
+  const initialMaxFrames =
+    typeof node?.inputs?.max_frames === "number"
+      ? clampFrameCount(node.inputs.max_frames)
+      : typeof node?.inputs?.frame_count === "number"
+        ? clampFrameCount(node.inputs.frame_count)
+        : 10;
   const initialUrl =
     typeof node?.inputs?.url === "string" ? node.inputs.url : "";
   const initialFileName =
     typeof node?.inputs?.file_name === "string" ? node.inputs.file_name : "";
-  const initialImages = Array.isArray(nodeOutputs.images)
-    ? (nodeOutputs.images as ExtractedImage[])
-    : [];
-  const initialMetadata = Array.isArray(nodeOutputs.metadata)
-    ? (nodeOutputs.metadata as Record<string, unknown>[])
-    : [];
-  const initialStats =
-    nodeOutputs.stats &&
-    typeof nodeOutputs.stats === "object" &&
-    !Array.isArray(nodeOutputs.stats)
-      ? (nodeOutputs.stats as Record<string, number>)
-      : null;
+  const initialImages =
+    node?.outputs && Array.isArray(node.outputs.images)
+      ? (node.outputs.images as ExtractedImage[])
+      : [];
 
   const [sourceType, setSourceType] = useState<SourceType>(initialSourceType);
+  const [selectionMode, setSelectionMode] =
+    useState<FrameSelectionMode>(initialSelectionMode);
+  const [maxFrames, setMaxFrames] = useState<number>(initialMaxFrames);
   const [videoUrl, setVideoUrl] = useState<string>(initialUrl);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>(initialFileName);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedImages, setSelectedImages] =
     useState<ExtractedImage[]>(initialImages);
-  const [metadata, setMetadata] = useState<Record<string, unknown>[]>(
-    initialMetadata,
-  );
-  const [stats, setStats] = useState<Record<string, number> | null>(
-    initialStats,
-  );
+  const [metadata, setMetadata] = useState<Record<string, unknown>[]>([]);
+  const [stats, setStats] = useState<Record<string, number> | null>(null);
   const [showGallery, setShowGallery] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -118,10 +115,13 @@ export function ImageExtractionNode({ id }: NodeProps) {
 
   useEffect(() => {
     if (!node) return;
+    const normalizedMaxFrames = clampFrameCount(maxFrames);
     if (
       node.inputs.source_type !== sourceType ||
       node.inputs.url !== videoUrl ||
-      node.inputs.file_name !== fileName
+      node.inputs.file_name !== fileName ||
+      node.inputs.selection_mode !== selectionMode ||
+      node.inputs.max_frames !== normalizedMaxFrames
     ) {
       updateNode(id, {
         inputs: {
@@ -129,10 +129,12 @@ export function ImageExtractionNode({ id }: NodeProps) {
           source_type: sourceType,
           url: videoUrl,
           file_name: fileName,
+          selection_mode: selectionMode,
+          max_frames: normalizedMaxFrames,
         },
       });
     }
-  }, [sourceType, videoUrl, fileName, id, updateNode, node]);
+  }, [sourceType, videoUrl, fileName, selectionMode, maxFrames, id, updateNode, node]);
 
   // Clear outputs when test mode is disabled
   useEffect(() => {
@@ -209,11 +211,19 @@ export function ImageExtractionNode({ id }: NodeProps) {
     setStats(null);
 
     try {
+      const manualMaxFrames =
+        selectionMode === "manual" ? clampFrameCount(maxFrames) : undefined;
+
       if (sourceType === "url") {
         if (!videoUrl.trim()) {
           throw new Error("Please enter a YouTube URL");
         }
-        const response = await extractKeyframesFromUrl(videoUrl.trim());
+        const response = await extractKeyframesFromUrl(
+          videoUrl.trim(),
+          false,
+          selectionMode,
+          manualMaxFrames,
+        );
         if (!response.success) {
           throw new Error(response.error || "Image extraction failed");
         }
@@ -224,17 +234,13 @@ export function ImageExtractionNode({ id }: NodeProps) {
         pushImagesToBucket(nextImages);
         updateNode(id, {
           status: "completed",
-          outputs: {
-            images: nextImages,
-            metadata: response.selected_frames || [],
-            stats: response.stats || null,
-            output_dir: response.output_dir || "",
-            selected_json_path: response.selected_json_path || "",
-          },
+          outputs: { images: nextImages },
           inputs: {
             source_type: sourceType,
             url: videoUrl,
             file_name: "",
+            selection_mode: selectionMode,
+            max_frames: manualMaxFrames ?? clampFrameCount(maxFrames),
           },
         });
       } else {
@@ -247,7 +253,11 @@ export function ImageExtractionNode({ id }: NodeProps) {
         if (!isMp4) {
           throw new Error("Please upload an MP4 file");
         }
-        const response = await extractKeyframesFromFile(selectedFile);
+        const response = await extractKeyframesFromFile(
+          selectedFile,
+          selectionMode,
+          manualMaxFrames,
+        );
         if (!response.success) {
           throw new Error(response.error || "Image extraction failed");
         }
@@ -258,17 +268,13 @@ export function ImageExtractionNode({ id }: NodeProps) {
         pushImagesToBucket(nextImages);
         updateNode(id, {
           status: "completed",
-          outputs: {
-            images: nextImages,
-            metadata: response.selected_frames || [],
-            stats: response.stats || null,
-            output_dir: response.output_dir || "",
-            selected_json_path: response.selected_json_path || "",
-          },
+          outputs: { images: nextImages },
           inputs: {
             source_type: sourceType,
             url: "",
             file_name: selectedFile.name,
+            selection_mode: selectionMode,
+            max_frames: manualMaxFrames ?? clampFrameCount(maxFrames),
           },
         });
       }
@@ -285,8 +291,46 @@ export function ImageExtractionNode({ id }: NodeProps) {
       config={config}
       onExecute={handleExecute}
       theme={nodeThemes.sky}
+      getOutputDataType={(outputId, defaultType) =>
+        outputId === "images" ? "images" : defaultType
+      }
     >
       <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Frame Count
+            </label>
+            <select
+              value={selectionMode}
+              onChange={(event) =>
+                setSelectionMode(event.target.value as FrameSelectionMode)
+              }
+              disabled={isRunning}
+              className="nodrag w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 transition-all"
+            >
+              <option value="auto">Auto</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Max Frames
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={maxFrames}
+              onChange={(event) =>
+                setMaxFrames(clampFrameCount(Number(event.target.value)))
+              }
+              disabled={isRunning || selectionMode !== "manual"}
+              className="nodrag w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 transition-all disabled:opacity-60"
+            />
+          </div>
+        </div>
+
         {showManualInputs && (
         <div className="flex gap-2">
           <button

@@ -29,9 +29,12 @@ NODE_REGISTRY: dict[str, NodeTypeSpec] = {
     # ---- Flow nodes ----
     "End": NodeTypeSpec(
         inputs=[
-            PortSchema(key="end-input", runtime_type="JSON", shape="single"),
+            PortSchema(key="end-input", runtime_type="Text", shape="single"),
         ],
         outputs=[],
+        default_params={
+            "output_key": "",
+        },
     ),
 
     # ---- Input bucket nodes ----
@@ -85,8 +88,12 @@ NODE_REGISTRY: dict[str, NodeTypeSpec] = {
             PortSchema(key="text", runtime_type="Text", shape="single"),
         ],
         outputs=[
-            PortSchema(key="matches", runtime_type="JSON", shape="single"),
+            PortSchema(key="images", runtime_type="ImageRef", shape="list"),
         ],
+        default_params={
+            "match_count_mode": "all",
+            "max_matches": 5,
+        },
     ),
     "Transcription": NodeTypeSpec(
         inputs=[
@@ -104,16 +111,20 @@ NODE_REGISTRY: dict[str, NodeTypeSpec] = {
         outputs=[
             PortSchema(key="images", runtime_type="ImageRef", shape="list"),
         ],
+        default_params={
+            "selection_mode": "auto",
+            "max_frames": 10,
+        },
     ),
     "QuoteExtraction": NodeTypeSpec(
         inputs=[
             PortSchema(key="text", runtime_type="Text", shape="single"),
         ],
         outputs=[
-            PortSchema(key="quotes", runtime_type="JSON", shape="single"),
+            PortSchema(key="quotes", runtime_type="Text", shape="single"),
         ],
         default_params={
-            "style": "punchy",
+            "style": "general",
             "count": 10,
         },
     ),

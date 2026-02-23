@@ -23,7 +23,14 @@ function storageKey(workflowId: string, contextId: PreviewContextId) {
 function loadConfig(workflowId: string, contextId: PreviewContextId): PreviewConfig | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = localStorage.getItem(storageKey(workflowId, contextId))
+    let raw = localStorage.getItem(storageKey(workflowId, contextId))
+
+    // Backward compatibility: pre-output-tab contexts were stored without "::output_key".
+    if (!raw && contextId.includes('::')) {
+      const legacyContextId = contextId.split('::')[0]
+      raw = localStorage.getItem(storageKey(workflowId, legacyContextId))
+    }
+
     if (!raw) return null
     const parsed = JSON.parse(raw) as PreviewConfig
     // Migrate legacy single-source assignments to multi-source

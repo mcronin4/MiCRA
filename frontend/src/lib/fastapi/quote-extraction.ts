@@ -14,7 +14,7 @@ export interface QuoteExtractionResponse {
 
 export interface QuoteExtractionRequest {
   transcript: string;
-  style: "punchy" | "insightful" | "contrarian" | "emotional";
+  style: "general" | "punchy" | "insightful" | "contrarian" | "emotional";
   count: number;
 }
 

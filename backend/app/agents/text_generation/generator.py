@@ -26,7 +26,8 @@ def build_prompt(
     preset_prompt: str,
     input_text: str,
     source_context: str,
-    tone_guidance: Optional[str] = None
+    tone_guidance: Optional[str] = None,
+    structure_template: Optional[str] = None,
 ) -> str:
     """
     Build the final prompt by combining preset template with input text and context.
@@ -36,6 +37,7 @@ def build_prompt(
         input_text: User-provided input text
         source_context: Formatted source context string
         tone_guidance: Optional tone guidance from preset
+        structure_template: Optional output structure instructions
     
     Returns:
         Complete prompt string ready for LLM
@@ -62,6 +64,13 @@ def build_prompt(
     tone_text = tone_guidance or "Use a professional yet conversational tone"
     if "{tone_guidance}" in prompt:
         prompt = prompt.replace("{tone_guidance}", tone_text)
+
+    if structure_template:
+        prompt = (
+            f"{prompt}\n\nOUTPUT STRUCTURE REQUIREMENTS:\n"
+            f"{structure_template}\n"
+            "Follow this structure exactly unless user input explicitly conflicts."
+        )
     
     return prompt
 
@@ -69,7 +78,12 @@ def build_prompt(
 def generate_text(
     input_text: str,
     preset_id: str,
-    source_texts: Optional[List[Dict[str, Any]]] = None
+    source_texts: Optional[List[Dict[str, Any]]] = None,
+    tone_guidance_override: Optional[str] = None,
+    max_length_override: Optional[int] = None,
+    structure_template_override: Optional[str] = None,
+    prompt_template_override: Optional[str] = None,
+    output_format_override: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Generate text using a preset from Supabase.
@@ -78,6 +92,11 @@ def generate_text(
         input_text: The input text to generate from
         preset_id: UUID of the preset to use
         source_texts: Optional list of source texts with 'title' and 'content' keys
+        tone_guidance_override: Optional runtime override for tone guidance
+        max_length_override: Optional runtime override for max output length
+        structure_template_override: Optional runtime override for output structure
+        prompt_template_override: Optional runtime override for full prompt template
+        output_format_override: Optional runtime override JSON schema
     
     Returns:
         Dictionary containing generated text in the format specified by the preset's output_format
@@ -100,12 +119,31 @@ def generate_text(
     output_format = preset.get("output_format")
     tone_guidance = preset.get("tone_guidance")
     max_length = preset.get("max_length")
+    structure_template = preset.get("structure_template")
+
+    # Apply runtime overrides when provided
+    if isinstance(tone_guidance_override, str) and tone_guidance_override.strip():
+        tone_guidance = tone_guidance_override.strip()
+    if isinstance(structure_template_override, str) and structure_template_override.strip():
+        structure_template = structure_template_override.strip()
+    if isinstance(prompt_template_override, str) and prompt_template_override.strip():
+        prompt_template = prompt_template_override.strip()
+    if isinstance(max_length_override, int) and max_length_override > 0:
+        max_length = max_length_override
+    if isinstance(output_format_override, dict):
+        output_format = output_format_override
     
     # Build source context
     source_context = build_source_context(source_texts)
     
     # Build final prompt
-    final_prompt = build_prompt(prompt_template, input_text, source_context, tone_guidance)
+    final_prompt = build_prompt(
+        prompt_template,
+        input_text,
+        source_context,
+        tone_guidance,
+        structure_template,
+    )
     
     # Add max length constraint to prompt if specified
     if max_length:

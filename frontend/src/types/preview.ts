@@ -6,7 +6,7 @@ export interface NodeOutputRef {
   arrayIndex?: number  // undefined = whole output, number = specific item
 }
 
-export type SlotContentType = 'text' | 'image' | 'audio' | 'video' | 'json'
+export type SlotContentType = 'text' | 'image' | 'audio' | 'video'
 
 export interface TemplateSlot {
   slotId: string
@@ -62,7 +62,7 @@ export const LINKEDIN_TEMPLATE: PlatformTemplate = {
     {
       slotId: 'body',
       label: 'Body',
-      acceptsTypes: ['text', 'json'],
+      acceptsTypes: ['text'],
       required: true,
       maxChars: 3000,
     },
@@ -75,9 +75,57 @@ export const LINKEDIN_TEMPLATE: PlatformTemplate = {
   ],
 }
 
+export const X_TEMPLATE: PlatformTemplate = {
+  platformId: 'x',
+  platformLabel: 'X',
+  slots: [
+    {
+      slotId: 'body',
+      label: 'Post',
+      acceptsTypes: ['text'],
+      required: true,
+      maxChars: 280,
+    },
+    {
+      slotId: 'media',
+      label: 'Media',
+      acceptsTypes: ['image', 'video'],
+      required: false,
+    },
+  ],
+}
+
+export const EMAIL_TEMPLATE: PlatformTemplate = {
+  platformId: 'email',
+  platformLabel: 'Email',
+  slots: [
+    {
+      slotId: 'subject',
+      label: 'Subject',
+      acceptsTypes: ['text'],
+      required: true,
+      maxChars: 120,
+    },
+    {
+      slotId: 'body',
+      label: 'Body',
+      acceptsTypes: ['text'],
+      required: true,
+    },
+    {
+      slotId: 'media',
+      label: 'Media',
+      acceptsTypes: ['image'],
+      required: false,
+    },
+  ],
+}
+
 /** Registry of platform templates for slot resolution and draft building */
 export const PLATFORM_TEMPLATES: Record<string, PlatformTemplate> = {
   linkedin: LINKEDIN_TEMPLATE,
+  x: X_TEMPLATE,
+  email: EMAIL_TEMPLATE,
 }
 
 export const TONE_OPTIONS = [
@@ -98,8 +146,9 @@ export function runtimeTypeToSlotContentType(runtimeType: string): SlotContentTy
       return 'audio'
     case 'VideoRef':
       return 'video'
+    // Legacy guard for persisted runs produced before primitive-only rollout.
     case 'JSON':
-      return 'json'
+      return 'text'
     default:
       return 'text'
   }

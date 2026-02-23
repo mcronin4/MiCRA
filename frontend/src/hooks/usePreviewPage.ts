@@ -19,11 +19,15 @@ import {
 import {
   buildPersistedNodes,
   buildSlotContentForDraft,
+  parseDraftSlotContentByOutput,
+  buildDraftSlotContentPayload,
+  type DraftSlotContentByOutput,
 } from '@/lib/preview-utils'
 import type { PreviewNodeState } from '@/components/preview/PreviewDataContext'
 
 const AUTOSAVE_DEBOUNCE_MS = 800
 const AUTOSAVED_DISPLAY_MS = 2500
+const DEFAULT_OUTPUT_KEY = 'output_1'
 
 export function usePreviewPage(workflowId: string) {
   const setActiveContext = usePreviewStore((s) => s.setActiveContext)
@@ -45,10 +49,16 @@ export function usePreviewPage(workflowId: string) {
   const [draftsLoading, setDraftsLoading] = useState(false)
 
   // Outputs / content
-  const [draftSlotContent, setDraftSlotContent] = useState<Record<string, unknown>>({})
+  const [draftSlotContentByOutput, setDraftSlotContentByOutput] =
+    useState<DraftSlotContentByOutput>({})
   const [persistedNodes, setPersistedNodes] = useState<Record<string, PreviewNodeState>>({})
+  const [runWorkflowOutputs, setRunWorkflowOutputs] =
+    useState<Record<string, unknown>>({})
   const [outputsLoading, setOutputsLoading] = useState(false)
   const [runNotice, setRunNotice] = useState<string | null>(null)
+
+  // Output tabs
+  const [activeOutputKey, setActiveOutputKey] = useState<string>(DEFAULT_OUTPUT_KEY)
 
   // Draft modal & save
   const [saveDraftModalOpen, setSaveDraftModalOpen] = useState(false)
@@ -107,9 +117,10 @@ export function usePreviewPage(workflowId: string) {
   )
 
   const isViewingDraft = selectedDraftId !== null
-  const activePreviewContextId = isViewingDraft
+  const activePreviewContextBase = isViewingDraft
     ? `draft_${selectedDraftId}`
     : selectedRun?.execution_id ?? LIVE_PREVIEW_CONTEXT_ID
+  const activePreviewContextId = `${activePreviewContextBase}::${activeOutputKey}`
 
   useEffect(() => {
     if (!isViewingDraft) {
@@ -119,61 +130,116 @@ export function usePreviewPage(workflowId: string) {
 
   // Load draft content when draft selected
   useEffect(() => {
-    if (!selectedDraftId) return
+    if (!selectedDraftId) {
+      setDraftSlotContentByOutput({})
+      return
+    }
+
     setOutputsLoading(true)
     let cancelled = false
     getPreviewDraft(workflowId, selectedDraftId)
       .then((draft) => {
         if (cancelled) return
-        setDraftSlotContent(draft.slot_content ?? {})
+
+        const rawDefaultKey =
+          draft.slot_content && typeof draft.slot_content.default_output_key === 'string'
+            ? draft.slot_content.default_output_key
+            : null
+        const fallbackKey = rawDefaultKey || activeOutputKey || DEFAULT_OUTPUT_KEY
+        const parsedByOutput = parseDraftSlotContentByOutput(
+          draft.slot_content ?? {},
+          fallbackKey
+        )
+
+        setDraftSlotContentByOutput(parsedByOutput)
+        const availableKeys = Object.keys(parsedByOutput)
+        if (rawDefaultKey) {
+          setActiveOutputKey(rawDefaultKey)
+        } else if (availableKeys.length > 0 && !availableKeys.includes(activeOutputKey)) {
+          setActiveOutputKey(availableKeys[0])
+        }
+
         setConfigFromDraft(workflowId, draft.platform_id, draft.tone)
       })
       .catch(() => {
         if (cancelled) return
-        setDraftSlotContent({})
+        setDraftSlotContentByOutput({})
       })
       .finally(() => {
         if (!cancelled) setOutputsLoading(false)
       })
+
     return () => {
       cancelled = true
     }
-  }, [workflowId, selectedDraftId, setConfigFromDraft])
+  }, [workflowId, selectedDraftId, setConfigFromDraft, activeOutputKey])
 
   // Load run outputs when run selected
   useEffect(() => {
     if (!selectedRun) {
       setPersistedNodes({})
+      setRunWorkflowOutputs({})
       setRunNotice(null)
       return
     }
+
     if (!selectedRun.has_persisted_outputs) {
       setPersistedNodes({})
-      setRunNotice('This run has no persisted outputs (older run or payload exceeded persistence limit).')
+      setRunWorkflowOutputs({})
+      setRunNotice(null)
       return
     }
 
     setPersistedNodes({})
+    setRunWorkflowOutputs({})
     setOutputsLoading(true)
     let cancelled = false
+
     getWorkflowRunOutputs(workflowId, selectedRun.execution_id)
       .then((outputs) => {
         if (cancelled) return
         setPersistedNodes(buildPersistedNodes(outputs))
+        setRunWorkflowOutputs(outputs.workflow_outputs ?? {})
         setRunNotice(null)
       })
       .catch((err) => {
         if (cancelled) return
         setRunNotice(err instanceof Error ? err.message : 'Failed to load run outputs')
         setPersistedNodes({})
+        setRunWorkflowOutputs({})
       })
       .finally(() => {
         if (!cancelled) setOutputsLoading(false)
       })
+
     return () => {
       cancelled = true
     }
   }, [workflowId, selectedRun])
+
+  const runOutputKeys = useMemo(() => {
+    const keys = Object.keys(runWorkflowOutputs)
+    return keys.length > 0 ? keys : []
+  }, [runWorkflowOutputs])
+
+  const draftOutputKeys = useMemo(() => {
+    const keys = Object.keys(draftSlotContentByOutput)
+    return keys.length > 0 ? keys : []
+  }, [draftSlotContentByOutput])
+
+  const outputTabs = useMemo(() => {
+    const keys = isViewingDraft ? draftOutputKeys : runOutputKeys
+    if (keys.length > 0) return keys
+    if (isViewingDraft && runOutputKeys.length > 0) return runOutputKeys
+    return [DEFAULT_OUTPUT_KEY]
+  }, [isViewingDraft, draftOutputKeys, runOutputKeys])
+
+  useEffect(() => {
+    if (outputTabs.length === 0) return
+    if (!outputTabs.includes(activeOutputKey)) {
+      setActiveOutputKey(outputTabs[0])
+    }
+  }, [outputTabs, activeOutputKey])
 
   const handleRunSelect = useCallback((id: string | null) => {
     setSelectedExecutionId(id)
@@ -185,25 +251,39 @@ export function usePreviewPage(workflowId: string) {
     setSelectedExecutionId(null)
   }, [])
 
-  const draftSlotContentRef = useRef(draftSlotContent)
-  draftSlotContentRef.current = draftSlotContent
+  const draftSlotContentByOutputRef = useRef(draftSlotContentByOutput)
+  draftSlotContentByOutputRef.current = draftSlotContentByOutput
+
+  const activeDraftSlotContent = useMemo(() => {
+    return draftSlotContentByOutput[activeOutputKey] ?? {}
+  }, [draftSlotContentByOutput, activeOutputKey])
 
   const handleDraftSlotChange = useCallback(
     (slotId: string, value: unknown) => {
       if (!selectedDraftId) return
-      const next = { ...draftSlotContentRef.current, [slotId]: value }
-      setDraftSlotContent(next)
+
+      const currentForOutput = draftSlotContentByOutputRef.current[activeOutputKey] ?? {}
+      const nextForOutput = { ...currentForOutput, [slotId]: value }
+      const nextByOutput = {
+        ...draftSlotContentByOutputRef.current,
+        [activeOutputKey]: nextForOutput,
+      }
+      setDraftSlotContentByOutput(nextByOutput)
 
       if (updateDraftTimeoutRef.current) clearTimeout(updateDraftTimeoutRef.current)
       updateDraftTimeoutRef.current = setTimeout(() => {
         setUpdatingDraft(true)
         setAutosavedAt(null)
         setAutosaveFadingOut(false)
+
         if (autosavedClearRef.current) {
           clearTimeout(autosavedClearRef.current)
           autosavedClearRef.current = null
         }
-        updatePreviewDraft(workflowId, selectedDraftId, { slot_content: next })
+
+        updatePreviewDraft(workflowId, selectedDraftId, {
+          slot_content: buildDraftSlotContentPayload(nextByOutput, activeOutputKey),
+        })
           .then(() => refreshDrafts())
           .finally(() => {
             setUpdatingDraft(false)
@@ -217,7 +297,7 @@ export function usePreviewPage(workflowId: string) {
           })
       }, AUTOSAVE_DEBOUNCE_MS)
     },
-    [workflowId, selectedDraftId, refreshDrafts]
+    [workflowId, selectedDraftId, refreshDrafts, activeOutputKey]
   )
 
   useEffect(() => {
@@ -239,21 +319,29 @@ export function usePreviewPage(workflowId: string) {
 
   const handleSaveAsDraft = useCallback(async (name: string) => {
     if (!selectedRun?.has_persisted_outputs) return
+
     setSavingDraft(true)
     try {
       const outputs = await getWorkflowRunOutputs(workflowId, selectedRun.execution_id)
       const nodesForResolve = buildPersistedNodes(outputs)
       const assignments = usePreviewStore.getState().config?.assignments ?? []
-      const slotContent = buildSlotContentForDraft(assignments, nodesForResolve, template)
+      const slotContentForOutput = buildSlotContentForDraft(assignments, nodesForResolve, template)
+      const slotContentPayload = buildDraftSlotContentPayload(
+        { [activeOutputKey]: slotContentForOutput },
+        activeOutputKey
+      )
+
       const draft = await createPreviewDraft(workflowId, {
         name,
         execution_id: selectedRun.execution_id,
         platform_id: platformId,
         tone: config?.tone ?? 'professional',
-        slot_content: slotContent,
+        slot_content: slotContentPayload,
       })
+
       setSaveDraftModalOpen(false)
-      setDraftSlotContent(draft.slot_content ?? {})
+      const parsed = parseDraftSlotContentByOutput(draft.slot_content ?? {}, activeOutputKey)
+      setDraftSlotContentByOutput(parsed)
       setSelectedDraftId(draft.id)
       setSelectedExecutionId(null)
       setConfigFromDraft(workflowId, draft.platform_id, draft.tone)
@@ -263,14 +351,15 @@ export function usePreviewPage(workflowId: string) {
     } finally {
       setSavingDraft(false)
     }
-  }, [workflowId, selectedRun, config?.tone, platformId, template, setConfigFromDraft, refreshDrafts])
+  }, [workflowId, selectedRun, config?.tone, platformId, template, setConfigFromDraft, refreshDrafts, activeOutputKey])
 
   const handleDeleteDraft = useCallback(async () => {
     if (!selectedDraftId) return
+
     try {
       await deletePreviewDraft(workflowId, selectedDraftId)
       setSelectedDraftId(null)
-      setDraftSlotContent({})
+      setDraftSlotContentByOutput({})
       await refreshDrafts()
       if (runs.length > 0 && runs[0]?.execution_id) {
         setSelectedExecutionId(runs[0].execution_id)
@@ -296,9 +385,10 @@ export function usePreviewPage(workflowId: string) {
 
   const handleRerun = useCallback(async () => {
     setPersistedNodes({})
+    setRunWorkflowOutputs({})
+    setRunNotice(null)
     try {
-      const result = await executeById(workflowId)
-      if (result?.persistence_warning) setRunNotice(result.persistence_warning)
+      await executeById(workflowId)
       await refreshRuns(true)
     } catch {
       // Errors surfaced by execution hook
@@ -315,11 +405,14 @@ export function usePreviewPage(workflowId: string) {
   )
 
   const isViewingRun = selectedRun !== null
-  const displayNodes = isViewingRun ? persistedNodes : nodes
+  const shouldUsePersistedRunData = !!selectedRun?.has_persisted_outputs
+  const displayNodes = isViewingRun
+    ? (shouldUsePersistedRunData ? persistedNodes : nodes)
+    : nodes
   const hasOutputs = isViewingDraft
     ? true
     : isViewingRun
-      ? persistedHasOutputs
+      ? (shouldUsePersistedRunData ? persistedHasOutputs : inMemoryHasOutputs)
       : inMemoryHasOutputs
   const hasAnyRuns = runs.length > 0
   const hasAnyDrafts = drafts.length > 0
@@ -327,8 +420,8 @@ export function usePreviewPage(workflowId: string) {
   const isInitialLoading =
     runsLoading ||
     (outputsLoading &&
-      ((selectedRun !== null && Object.keys(persistedNodes).length === 0) ||
-        (selectedDraftId !== null && Object.keys(draftSlotContent).length === 0)))
+      ((shouldUsePersistedRunData && Object.keys(persistedNodes).length === 0) ||
+        (selectedDraftId !== null && Object.keys(draftSlotContentByOutput).length === 0)))
 
   return {
     // Display
@@ -340,6 +433,11 @@ export function usePreviewPage(workflowId: string) {
     isViewingDraft,
     isExecuting,
     outputsLoading,
+
+    // Output tabs
+    outputTabs,
+    activeOutputKey,
+    setActiveOutputKey,
 
     // Runs
     runs,
@@ -354,10 +452,12 @@ export function usePreviewPage(workflowId: string) {
     drafts,
     selectedDraftId,
     draftsLoading,
-    draftSlotContent,
+    draftSlotContent: activeDraftSlotContent,
     refreshDrafts,
     handleDraftSelect,
     handleDraftSlotChange,
+
+    // Draft autosave status
     updatingDraft,
     autosavedAt,
     autosaveFadingOut,

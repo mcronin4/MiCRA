@@ -103,8 +103,7 @@ export function PlatformMockupBase({
                 onClick={(e) => handleSlotClick(slot.slotId, e)}
                 isDraftMode={isDraftMode}
                 isTextSlot={
-                  slot.acceptsTypes.includes('text') ||
-                  slot.acceptsTypes.includes('json')
+                  slot.acceptsTypes.includes('text')
                 }
                 onDraftSlotChange={
                   isDraftMode && onDraftSlotChange ? onDraftSlotChange : undefined

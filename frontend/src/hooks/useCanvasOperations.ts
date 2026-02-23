@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Node, Edge, ReactFlowInstance } from '@xyflow/react';
-import type { NodeType, NodeContent, WorkflowNodeType, BucketNodeType } from '@/components/workflow/types';
-import { WORKFLOW_NODES, BUCKET_NODES } from '@/components/workflow/types';
+import type { NodeType, NodeContent, WorkflowNodeType, BucketNodeType, FlowNodeType } from '@/components/workflow/types';
+import { WORKFLOW_NODES, BUCKET_NODES, FLOW_NODES } from '@/components/workflow/types';
 import { useWorkflowStore } from '@/lib/stores/workflowStore';
 
 export const useCanvasOperations = () => {
@@ -9,6 +9,7 @@ export const useCanvasOperations = () => {
   const [isLocked, setIsLocked] = useState(false);
   const nextId = useRef(0);
   const setNodesRef = useRef<React.Dispatch<React.SetStateAction<Node[]>> | null>(null);
+  const setEdgesRef = useRef<React.Dispatch<React.SetStateAction<Edge[]>> | null>(null);
 
   const addNodeToCanvas = useCallback((nodeType: NodeType, content?: string | NodeContent, position?: { x: number, y: number}): string | undefined => {
     if (!setNodesRef.current || !reactFlowInstance) return undefined;
@@ -28,8 +29,12 @@ export const useCanvasOperations = () => {
 
     const newNodeId = `${nodeType}-${nextId.current++}`;
 
-    // For workflow nodes and bucket nodes, initialize in Zustand store
-    if (WORKFLOW_NODES.includes(nodeType as WorkflowNodeType) || BUCKET_NODES.includes(nodeType as BucketNodeType)) {
+    // For workflow, bucket, and flow nodes, initialize in Zustand store
+    if (
+      WORKFLOW_NODES.includes(nodeType as WorkflowNodeType) ||
+      BUCKET_NODES.includes(nodeType as BucketNodeType) ||
+      FLOW_NODES.includes(nodeType as FlowNodeType)
+    ) {
       useWorkflowStore.getState().addNode({
         id: newNodeId,
         type: nodeType,
@@ -114,6 +119,7 @@ export const useCanvasOperations = () => {
     isLocked,
     setIsLocked,
     setNodesRef,
+    setEdgesRef,
     addNodeToCanvas,
     handleDeletePart,
     handleDuplicatePart,

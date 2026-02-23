@@ -365,9 +365,9 @@ export function WorkflowManager({
                 />
               </div>
               <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-                <strong>Note:</strong> Only workflow structure (nodes,
-                connections, positions) is saved. Node inputs/outputs,
-                attachments, and execution state are not persisted.
+                <strong>Note:</strong> Saved workflows include structure plus node configuration
+                params (for example presets, selected file IDs, and output keys).
+                Runtime outputs and manual test data are not persisted.
               </div>
               <div className="flex gap-2 justify-end">
                 <Button

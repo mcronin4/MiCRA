@@ -16,7 +16,10 @@ class VLMConfig:
     
     # Fireworks API settings
     FIREWORK_API_KEY: Optional[str] = os.getenv("FIREWORK_API_KEY")
-    FIREWORKS_MODEL: str = "accounts/fireworks/models/qwen2p5-vl-32b-instruct"
+    FIREWORKS_MODEL: str = (
+        os.getenv("FIREWORKS_VLM_MODEL")
+        or os.getenv("FIREWORKS_MODEL")
+    )
     
     # Image processing settings
     MAX_IMAGE_DIMENSION: Optional[int] = None  # No downsampling by default
@@ -52,7 +55,7 @@ class VLMConfig:
                 "Please set it in your environment or .env file."
             )
         return api_key
-    
+
     @classmethod
     def validate_weights(cls, semantic_weight: float, detail_weight: float) -> None:
         """

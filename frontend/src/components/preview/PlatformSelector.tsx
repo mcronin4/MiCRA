@@ -1,6 +1,6 @@
 'use client'
 
-import { Linkedin, Instagram, Twitter } from 'lucide-react'
+import { Linkedin, Instagram, Twitter, Mail } from 'lucide-react'
 
 interface PlatformOption {
   id: string
@@ -11,8 +11,9 @@ interface PlatformOption {
 
 const PLATFORMS: PlatformOption[] = [
   { id: 'linkedin', label: 'LinkedIn', icon: Linkedin, enabled: true },
+  { id: 'x', label: 'X', icon: Twitter, enabled: true },
+  { id: 'email', label: 'Email', icon: Mail, enabled: true },
   { id: 'instagram', label: 'Instagram', icon: Instagram, enabled: false },
-  { id: 'x', label: 'X', icon: Twitter, enabled: false },
 ]
 
 interface PlatformSelectorProps {
