@@ -15,7 +15,7 @@ import json
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from uuid import UUID
 from datetime import datetime
 from app.auth.dependencies import User, get_current_user, get_supabase_client
@@ -144,6 +144,42 @@ class WorkflowVersionResponse(BaseModel):
     workflow_id: str
     workflow_data: WorkflowData
     created_at: datetime
+
+
+class CopilotPlanRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=8000)
+    mode: Literal["create", "edit"] = "edit"
+    workflow_data: Optional[WorkflowData] = None
+    preferences: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CopilotBuildStep(BaseModel):
+    step_id: str
+    kind: Literal["node_intro", "connect", "backtrack"]
+    node_id: Optional[str] = None
+    node_type: Optional[str] = None
+    source_node_id: Optional[str] = None
+    source_handle: Optional[str] = None
+    target_node_id: Optional[str] = None
+    target_handle: Optional[str] = None
+    runtime_type: Optional[Literal["Text", "ImageRef", "AudioRef", "VideoRef"]] = None
+    narration: Optional[str] = None
+    is_new_node: bool = False
+    order_index: int = 0
+
+
+class CopilotPlanResponse(BaseModel):
+    status: Literal["ready", "clarify", "error"]
+    summary: str
+    workflow_data: Optional[WorkflowData] = None
+    operations: List[Dict[str, Any]] = Field(default_factory=list)
+    diagnostics: List[Dict[str, Any]] = Field(default_factory=list)
+    auto_repair_attempts: int = 0
+    touched_node_ids: List[str] = Field(default_factory=list)
+    build_steps: List[CopilotBuildStep] = Field(default_factory=list)
+    closing_narration: Optional[str] = None
+    requires_replace_confirmation: bool = False
+    clarification_question: Optional[str] = None
 
 
 def get_latest_version(supabase: Client, workflow_id: str) -> Optional[Dict[str, Any]]:
@@ -305,6 +341,42 @@ async def list_templates(
         import traceback
         error_detail = f"Failed to list templates: {str(e)}\n{traceback.format_exc()}"
         raise HTTPException(status_code=500, detail=error_detail)
+
+
+@router.post("/copilot/plan", response_model=CopilotPlanResponse)
+async def copilot_plan_workflow(
+    request: CopilotPlanRequest,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Plan a workflow create/edit patch from natural language (MicrAI).
+
+    Returns a full proposed workflow graph plus operation summary so the frontend
+    can preview and apply in one step.
+    """
+    try:
+        from app.services.workflow_copilot import plan_workflow_with_copilot
+
+        result = plan_workflow_with_copilot(
+            message=request.message,
+            mode=request.mode,
+            workflow_data=request.workflow_data.model_dump() if request.workflow_data else None,
+            user_id=user.sub,
+            supabase_client=supabase,
+            preferences=request.preferences,
+        )
+        payload = result.model_dump()
+        if payload.get("workflow_data") is None:
+            return CopilotPlanResponse(**payload)
+        return CopilotPlanResponse(
+            **{
+                **payload,
+                "workflow_data": WorkflowData(**payload["workflow_data"]),
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to plan workflow: {str(e)}")
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse)

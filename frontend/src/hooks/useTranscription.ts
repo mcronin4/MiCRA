@@ -23,7 +23,7 @@ export const useTranscription = (onTranscriptionComplete?: (fullText: string) =>
       if (mediaInputType === 'url') {
         response = await transcribeUrl(mediaUrl.trim());
       } else {
-        response = await transcribeFile(selectedFile!);
+        response = await transcribeFile(selectedFile!);p
       }
       
       if (response.success && response.segments) {

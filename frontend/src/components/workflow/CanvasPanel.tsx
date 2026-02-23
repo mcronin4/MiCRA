@@ -24,11 +24,10 @@ import type { NodeType } from "./types";
 import type { RuntimeType } from "@/types/blueprint";
 
 const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
-  Text: "#10b981", // emerald-500
+  Text: "#22c55e", // green-500
   ImageRef: "#3b82f6", // blue-500
-  AudioRef: "#8b5cf6", // violet-500
-  VideoRef: "#ec4899", // pink-500
-  JSON: "#f59e0b", // amber-500
+  AudioRef: "#a855f7", // purple-500
+  VideoRef: "#eab308", // yellow-500
 };
 
 const nodeTypes = {
@@ -101,10 +100,14 @@ interface CanvasPanelProps {
   setNodesRef: React.MutableRefObject<React.Dispatch<
     React.SetStateAction<Node[]>
   > | null>;
+  setEdgesRef: React.MutableRefObject<React.Dispatch<
+    React.SetStateAction<Edge[]>
+  > | null>;
   showSaveDialog?: boolean;
   showLoadDialog?: boolean;
   onDialogClose?: () => void;
   interactionMode?: "select" | "pan";
+  isMicrAIPlaybackActive?: boolean;
   autoLoadWorkflowId?: string | null;
   onAutoLoadComplete?: () => void;
 }
@@ -137,10 +140,12 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setIsLocked,
   setNodesRef,
+  setEdgesRef,
   showSaveDialog,
   showLoadDialog,
   onDialogClose,
   interactionMode = "select",
+  isMicrAIPlaybackActive = false,
   autoLoadWorkflowId,
   onAutoLoadComplete,
 }) => {
@@ -203,6 +208,12 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       setNodesRef.current = setNodes;
     }
   }, [setNodesRef, setNodes]);
+
+  useEffect(() => {
+    if (setEdgesRef) {
+      setEdgesRef.current = setEdges;
+    }
+  }, [setEdgesRef, setEdges]);
 
   // Sync ReactFlow nodes/edges to Zustand store so canvas state survives page navigation
   useEffect(() => {
@@ -299,10 +310,10 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
           node: Node,
         ) => handlePartContextMenu(event, node.id)}
         fitView
-        nodesDraggable={!isLocked && interactionMode === "select"}
-        nodesConnectable={!isLocked && interactionMode === "select"}
+        nodesDraggable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
+        nodesConnectable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         panOnDrag={interactionMode === "pan" ? true : [1, 2]}
-        selectionOnDrag={!isLocked && interactionMode === "select"}
+        selectionOnDrag={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         zoomOnScroll={true}
         zoomOnDoubleClick={!isLocked}
         panOnScroll={true}

@@ -13,6 +13,7 @@ import {
   Play,
   Loader2,
   Eye,
+  Square,
 } from "lucide-react";
 import type { ReactFlowInstance } from "@xyflow/react";
 
@@ -20,8 +21,9 @@ type InteractionMode = "select" | "pan";
 
 interface ExecutionBarProps {
   reactFlowInstance: ReactFlowInstance | null;
-  onChatToggle: () => void;
-  isChatOpen: boolean;
+  onChatToggle?: () => void;
+  isChatOpen?: boolean;
+  showChatToggle?: boolean;
   onExecuteWorkflow?: () => void;
   interactionMode: InteractionMode;
   onInteractionModeChange: (mode: InteractionMode) => void;
@@ -33,12 +35,14 @@ interface ExecutionBarProps {
   executionJustCompleted?: boolean;
   currentWorkflowId?: string;
   onViewResults?: () => void;
+  onCancelExecution?: () => void;
 }
 
 export const ExecutionBar: React.FC<ExecutionBarProps> = ({
   reactFlowInstance,
   onChatToggle,
-  isChatOpen,
+  isChatOpen = false,
+  showChatToggle = true,
   onExecuteWorkflow,
   interactionMode,
   onInteractionModeChange,
@@ -50,6 +54,7 @@ export const ExecutionBar: React.FC<ExecutionBarProps> = ({
   executionJustCompleted = false,
   currentWorkflowId,
   onViewResults,
+  onCancelExecution,
 }) => {
   const showViewResults =
     executionJustCompleted && currentWorkflowId && onViewResults;
@@ -133,18 +138,22 @@ export const ExecutionBar: React.FC<ExecutionBarProps> = ({
 
       {/* Right Controls */}
       <div className="flex items-center gap-2">
-        <button
-          onClick={onChatToggle}
-          className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-            isChatOpen
-              ? "bg-gray-100 text-gray-800"
-              : "hover:bg-gray-100 text-gray-600"
-          }`}
-          title="AI Chat"
-        >
-          <MessageCircle size={18} />
-        </button>
-        <div className="w-px h-6 bg-gray-200 mx-1" />
+        {showChatToggle && (
+          <>
+            <button
+              onClick={onChatToggle}
+              className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
+                isChatOpen
+                  ? "bg-gray-100 text-gray-800"
+                  : "hover:bg-gray-100 text-gray-600"
+              }`}
+              title="AI Chat"
+            >
+              <MessageCircle size={18} />
+            </button>
+            <div className="w-px h-6 bg-gray-200 mx-1" />
+          </>
+        )}
         {showViewResults && (
           <button
             onClick={onViewResults}
@@ -154,27 +163,25 @@ export const ExecutionBar: React.FC<ExecutionBarProps> = ({
             <span>View Results</span>
           </button>
         )}
-        <button
-          onClick={onExecuteWorkflow}
-          disabled={isExecuting}
-          className={`h-9 px-4 flex items-center gap-2 rounded-lg font-medium text-sm transition-all ${
-            isExecuting
-              ? "bg-emerald-100 text-emerald-700 cursor-wait"
-              : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm hover:shadow-md"
-          }`}
-        >
-          {isExecuting ? (
-            <>
-              <Loader2 size={14} className="animate-spin" />
-              <span>Running...</span>
-            </>
-          ) : (
-            <>
-              <Play size={14} fill="currentColor" />
-              <span>Execute</span>
-            </>
-          )}
-        </button>
+        {isExecuting ? (
+          <button
+            onClick={onCancelExecution}
+            className="h-9 px-4 flex items-center gap-2 rounded-lg font-medium text-sm transition-all bg-rose-500 hover:bg-rose-600 text-white shadow-sm hover:shadow-md"
+          >
+            <Loader2 size={14} className="animate-spin" />
+            <span>Running...</span>
+            <Square size={12} fill="currentColor" />
+            <span>Stop</span>
+          </button>
+        ) : (
+          <button
+            onClick={onExecuteWorkflow}
+            className="h-9 px-4 flex items-center gap-2 rounded-lg font-medium text-sm transition-all bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm hover:shadow-md"
+          >
+            <Play size={14} fill="currentColor" />
+            <span>Execute</span>
+          </button>
+        )}
       </div>
     </div>
   );
