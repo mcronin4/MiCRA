@@ -214,6 +214,21 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
     [setEdges, addEdge],
   );
 
+  // Right-click on an edge to remove it (simple confirm flow)
+  const handleEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Keep the UX minimal for now: browser confirm before deleting
+      const shouldDelete = window.confirm("Delete this connection?");
+      if (!shouldDelete) return;
+
+      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+    },
+    [setEdges],
+  );
+
   const TEST_MODE_COLOR = '#94a3b8'; // slate-400 (gray)
 
   // Style edges based on data type and test mode
@@ -291,6 +306,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onEdgeContextMenu={handleEdgeContextMenu}
         onInit={setReactFlowInstance}
         nodeTypes={nodeTypesWithFallback}
         onPaneContextMenu={handleCanvasContextMenu}
