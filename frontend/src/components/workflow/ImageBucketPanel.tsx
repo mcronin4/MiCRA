@@ -15,6 +15,7 @@ import { useWorkflowStore, ImageBucketItem } from "@/lib/stores/workflowStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { initUpload, completeUpload, checkHash, signDownload } from "@/lib/fastapi/files";
 import { uploadToPresignedUrl, calculateFileHash } from "@/lib/storage/r2";
+import { isHeicFile, getHeicErrorMessage } from "@/lib/storage/heicConvert";
 
 export function ImageBucketPanel() {
   const imageBucket = useWorkflowStore((state) => state.imageBucket);
@@ -79,10 +80,18 @@ export function ImageBucketPanel() {
 
     const newImages: Omit<ImageBucketItem, "addedAt">[] = [];
 
-    for (const file of fileArray) {
+    for (const rawFile of fileArray) {
       try {
-        console.log("Processing file:", file.name);
-        // Step 1: Calculate hash
+        // HEIC validation - block upload with helpful message
+        if (isHeicFile(rawFile)) {
+          setUploadError(getHeicErrorMessage(rawFile.name));
+          setTimeout(() => setUploadError(null), 10000); // Show longer (10s)
+          continue; // Skip this file, continue with others
+        }
+
+        console.log("Processing file:", rawFile.name);
+        const file = rawFile;
+        // Step 1: Calculate hash (uses the converted file so dedup works correctly)
         let contentHash: string;
         try {
           contentHash = await calculateFileHash(file);
@@ -140,12 +149,12 @@ export function ImageBucketPanel() {
 
           fileId = initResponse.file.id;
 
-          // Step 4: Upload to R2
+          // Step 4: Upload to R2 (use the same contentType that was signed)
           try {
             await uploadToPresignedUrl(
               initResponse.upload.signedUrl,
               file,
-              file.type
+              contentType
             );
           } catch (error) {
             console.error("Error uploading to R2:", error);
