@@ -74,24 +74,24 @@ const BUCKET_THEMES: Record<BucketType, BucketNodeTheme> = {
     handleColor: "#a855f7",
   },
   video: {
-    gradient: "from-red-50 to-red-100",
-    shadow: "rgba(239,68,68,0.15)",
-    shadowHover: "rgba(239,68,68,0.25)",
-    border: "border-red-300",
-    borderHover: "hover:border-red-400",
-    iconBg: "bg-red-100",
-    iconBgCompleted: "bg-red-500",
-    ring: "ring-red-200/50",
-    iconColor: "text-red-600",
-    titleColor: "text-red-900",
-    subtitleColor: "text-red-600",
-    buttonBorder: "border-red-200",
-    buttonText: "text-red-700",
-    pickerBorder: "border-red-200",
-    selectedBg: "bg-red-100",
-    selectedBorder: "border-red-400",
-    selectedLabel: "text-red-700",
-    handleColor: "#ef4444",
+    gradient: "from-amber-50 to-amber-100",
+    shadow: "rgba(234,179,8,0.15)",
+    shadowHover: "rgba(234,179,8,0.25)",
+    border: "border-amber-300",
+    borderHover: "hover:border-amber-400",
+    iconBg: "bg-amber-100",
+    iconBgCompleted: "bg-amber-500",
+    ring: "ring-amber-200/50",
+    iconColor: "text-amber-600",
+    titleColor: "text-amber-900",
+    subtitleColor: "text-amber-600",
+    buttonBorder: "border-amber-200",
+    buttonText: "text-amber-700",
+    pickerBorder: "border-amber-200",
+    selectedBg: "bg-amber-100",
+    selectedBorder: "border-amber-400",
+    selectedLabel: "text-amber-700",
+    handleColor: "#eab308",
   },
   text: {
     gradient: "from-green-50 to-green-100",
@@ -444,7 +444,7 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
   const containerClasses = {
     image: "bg-gradient-to-br from-blue-50 via-blue-50/50 to-blue-100/80 border-blue-300 shadow-[0_4px_16px_-4px_rgba(59,130,246,0.2)] hover:shadow-[0_12px_40px_-8px_rgba(59,130,246,0.3)] hover:border-blue-400",
     audio: "bg-gradient-to-br from-purple-50 via-purple-50/50 to-purple-100/80 border-purple-300 shadow-[0_4px_16px_-4px_rgba(168,85,247,0.2)] hover:shadow-[0_12px_40px_-8px_rgba(168,85,247,0.3)] hover:border-purple-400",
-    video: "bg-gradient-to-br from-red-50 via-red-50/50 to-red-100/80 border-red-300 shadow-[0_4px_16px_-4px_rgba(239,68,68,0.2)] hover:shadow-[0_12px_40px_-8px_rgba(239,68,68,0.3)] hover:border-red-400",
+    video: "bg-gradient-to-br from-amber-50 via-amber-50/50 to-amber-100/80 border-amber-300 shadow-[0_4px_16px_-4px_rgba(234,179,8,0.2)] hover:shadow-[0_12px_40px_-8px_rgba(234,179,8,0.3)] hover:border-amber-400",
     text: "bg-gradient-to-br from-green-50 via-green-50/50 to-green-100/80 border-green-300 shadow-[0_4px_16px_-4px_rgba(34,197,94,0.2)] hover:shadow-[0_12px_40px_-8px_rgba(34,197,94,0.3)] hover:border-green-400",
   };
 
@@ -539,11 +539,10 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
 
         // Color mapping for data types (matches edge colors)
         const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
-          Text: '#10b981', // emerald-500
+          Text: '#22c55e', // green-500
           ImageRef: '#3b82f6', // blue-500
-          AudioRef: '#8b5cf6', // violet-500
-          VideoRef: '#ec4899', // pink-500
-          JSON: '#f59e0b', // amber-500
+          AudioRef: '#a855f7', // purple-500
+          VideoRef: '#eab308', // yellow-500
         };
 
         const handleColor = runtimeType && DATA_TYPE_COLORS[runtimeType]

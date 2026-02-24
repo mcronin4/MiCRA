@@ -90,6 +90,16 @@ function isQuoteList(value: unknown): value is Array<{ text: string }> {
   );
 }
 
+// QuoteExtraction now outputs a single string with quotes joined by "\n\n".
+// Split that into an array of strings for display (one item per quote).
+function asQuoteLines(value: unknown, outputKey: string): string[] | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  // Treat as quote lines if key is "quotes" or string clearly contains multiple blocks
+  if (outputKey !== 'quotes' && !value.includes('\n\n')) return null
+  const lines = value.split(/\n\n+/).map((s) => s.trim()).filter(Boolean)
+  return lines.length > 0 ? lines : null
+}
+
 // Render a list of text items (like quotes) in a nice format
 function TextListDisplay({ items, label }: { items: string[]; label: string }) {
   return (
@@ -264,22 +274,27 @@ export function ExecutionResultsModal({
               Workflow Outputs
             </div>
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 max-h-96 overflow-auto">
-              {Object.entries(result.workflow_outputs).map(([key, value]) => (
-                <div key={key} className="mb-3 last:mb-0">
-                  {isQuoteList(value) ? (
-                    <QuoteListDisplay quotes={value} label={key} />
-                  ) : isTextList(value) ? (
-                    <TextListDisplay items={value} label={key} />
-                  ) : (
-                    <>
-                      <div className="text-xs font-medium text-emerald-700 mb-1">{key}:</div>
-                      <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono bg-white/50 p-2 rounded">
-                        {formatOutputValue(value)}
-                      </pre>
-                    </>
-                  )}
-                </div>
-              ))}
+              {Object.entries(result.workflow_outputs).map(([key, value]) => {
+                const quoteLines = asQuoteLines(value, key)
+                return (
+                  <div key={key} className="mb-3 last:mb-0">
+                    {isQuoteList(value) ? (
+                      <QuoteListDisplay quotes={value} label={key} />
+                    ) : isTextList(value) ? (
+                      <TextListDisplay items={value} label={key} />
+                    ) : quoteLines ? (
+                      <TextListDisplay items={quoteLines} label={key} />
+                    ) : (
+                      <>
+                        <div className="text-xs font-medium text-emerald-700 mb-1">{key}:</div>
+                        <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono bg-white/50 p-2 rounded">
+                          {formatOutputValue(value)}
+                        </pre>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -326,13 +341,25 @@ export function ExecutionResultsModal({
                   {nr.outputs && Object.keys(nr.outputs).length > 0 && (
                     <div className="mt-2 pt-2 border-t border-gray-100">
                       {/* Special handling for Image Matching results */}
-                      {nr.node_id.includes('ImageMatching') && nr.outputs.matches && Array.isArray(nr.outputs.matches) ? (
+                      {nr.node_id.includes('ImageMatching') &&
+                        ((Array.isArray(nr.outputs.images) && nr.outputs.images.length > 0) ||
+                          (Array.isArray(nr.outputs.matches) && nr.outputs.matches.length > 0)) ? (
                         <div className="space-y-3">
                           <div className="text-xs font-medium text-gray-700 mb-2">
-                            Matches ({nr.outputs.matches.length}):
+                            Matches (
+                            {Array.isArray(nr.outputs.images)
+                              ? nr.outputs.images.length
+                              : Array.isArray(nr.outputs.matches)
+                                ? nr.outputs.matches.length
+                                : 0}
+                            ):
                           </div>
                           <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                            {(nr.outputs.matches as ImageMatchingMatch[]).map((match, idx) => (
+                            {(
+                              (Array.isArray(nr.outputs.images)
+                                ? nr.outputs.images
+                                : nr.outputs.matches) as ImageMatchingMatch[]
+                            ).map((match, idx) => (
                               <div
                                 key={idx}
                                 className="border border-gray-200 rounded-lg overflow-hidden bg-white"
@@ -385,20 +412,25 @@ export function ExecutionResultsModal({
                         </div>
                       ) : (
                         /* Default output display for other node types */
-                        Object.entries(nr.outputs).map(([key, value]) => (
-                          <div key={key} className="text-xs">
-                            {isQuoteList(value) ? (
-                              <QuoteListDisplay quotes={value} label={key} />
-                            ) : isTextList(value) ? (
-                              <TextListDisplay items={value} label={key} />
-                            ) : (
-                              <>
-                                <span className="text-gray-500">{key}:</span>{' '}
-                                <span className="text-gray-700 font-mono">{formatOutputValue(value)}</span>
-                              </>
-                            )}
-                          </div>
-                        ))
+                        Object.entries(nr.outputs).map(([key, value]) => {
+                          const quoteLines = asQuoteLines(value, key)
+                          return (
+                            <div key={key} className="text-xs">
+                              {isQuoteList(value) ? (
+                                <QuoteListDisplay quotes={value} label={key} />
+                              ) : isTextList(value) ? (
+                                <TextListDisplay items={value} label={key} />
+                              ) : quoteLines ? (
+                                <TextListDisplay items={quoteLines} label={key} />
+                              ) : (
+                                <>
+                                  <span className="text-gray-500">{key}:</span>{' '}
+                                  <span className="text-gray-700 font-mono">{formatOutputValue(value)}</span>
+                                </>
+                              )}
+                            </div>
+                          )
+                        })
                       )}
                     </div>
                   )}

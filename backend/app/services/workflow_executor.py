@@ -187,6 +187,69 @@ def _build_dependency_graph(
     return in_degree, adjacency, reverse_adj
 
 
+def _normalize_text_segment(value: Any) -> str:
+    """Normalize an arbitrary value into a text segment for fan-in merge."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "\n\n".join(str(item) for item in value if item is not None and str(item).strip())
+    return str(value)
+
+
+def _merge_text_input_values(existing: Any, incoming: Any) -> str:
+    """Merge two text values into one deterministic blank-line separated string."""
+    parts: list[str] = []
+    existing_text = _normalize_text_segment(existing).strip()
+    incoming_text = _normalize_text_segment(incoming).strip()
+    if existing_text:
+        parts.append(existing_text)
+    if incoming_text:
+        parts.append(incoming_text)
+    return "\n\n".join(parts)
+
+
+def _as_list(value: Any) -> list[Any]:
+    """Normalize any value to list form for generic fan-in merging."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [item for item in value if item is not None]
+    return [value]
+
+
+def _merge_input_values(
+    existing: Any,
+    incoming: Any,
+    *,
+    runtime_type: str,
+    target_shape: str,
+    input_key: str,
+    node_type: str,
+) -> Any:
+    """
+    Merge two values for the same input key with deterministic fan-in rules.
+
+    Rules:
+    - Text: blank-line join.
+    - Non-text values: always normalize to concatenated list.
+      This preserves full fan-in for all media/runtime types, including
+      single-shaped target ports. Node executors can then decide how to
+      consume one-or-many values deterministically.
+    """
+    if runtime_type == "Text":
+        return _merge_text_input_values(existing, incoming)
+
+    merged = _as_list(existing) + _as_list(incoming)
+    if target_shape == "single" and len(merged) > 1:
+        logger.info(
+            "Fan-in on single input '%s' for node type '%s': merged %d values",
+            input_key,
+            node_type,
+            len(merged),
+        )
+    return merged
+
+
 def resolve_node_inputs(
     node_id: str,
     node_type: str,
@@ -196,18 +259,17 @@ def resolve_node_inputs(
 ) -> dict[str, Any]:
     """
     Resolve inputs for a node from upstream outputs via connections.
-    
-    Performs automatic shape conversion (list ↔ single) according to conversion rules.
-    
-    Conversion rules:
-    - list → single: 
-      * For Text: join with "\n\n"
-      * For other types: take first item (warns if multiple items)
-    - single → list: wrap in list
-    - same shape: pass through
+
+    Performs automatic shape conversion and fan-in merging.
+
+    Fan-in behavior:
+    - Text inputs: deterministic blank-line join.
+    - list inputs: concatenation.
+    - AudioRef/VideoRef single inputs: keep merged list for node-level processing.
+    - other single inputs: deterministic first-item fallback when multiple values are present.
     """
     from app.models.node_registry import get_node_spec
-    
+
     # Bucket nodes have no inputs (they're sources)
     if node_type in ("ImageBucket", "AudioBucket", "VideoBucket", "TextBucket"):
         return {}
@@ -219,70 +281,87 @@ def resolve_node_inputs(
 
     resolved: dict[str, Any] = {}
     for conn in connections:
-        if conn.to_node == node_id:
-            upstream = node_outputs.get(conn.from_node)
-            if upstream is None:
-                raise ValueError(
-                    f"Missing outputs from upstream node {conn.from_node}"
+        if conn.to_node != node_id:
+            continue
+
+        upstream = node_outputs.get(conn.from_node)
+        if upstream is None:
+            raise ValueError(
+                f"Missing outputs from upstream node {conn.from_node}"
+            )
+        if conn.from_output not in upstream:
+            raise ValueError(
+                f"Upstream node {conn.from_node} missing output key "
+                f"'{conn.from_output}'"
+            )
+
+        raw_value = upstream[conn.from_output]
+
+        # Get source and target port specs for shape conversion
+        target_runtime_type: str | None = None
+        target_shape: str | None = None
+        if target_spec:
+            target_port = next(
+                (p for p in target_spec.inputs if p.key == conn.to_input),
+                None,
+            )
+
+            if target_port:
+                target_runtime_type = target_port.runtime_type
+                target_shape = target_port.shape
+                source_shape = None
+
+                # Try to get source port spec from blueprint if available
+                if blueprint:
+                    source_node = next(
+                        (n for n in blueprint.nodes if n.node_id == conn.from_node),
+                        None,
+                    )
+                    if source_node:
+                        source_spec = get_node_spec(source_node.type)
+                        if source_spec:
+                            source_port = next(
+                                (p for p in source_spec.outputs if p.key == conn.from_output),
+                                None,
+                            )
+                            if source_port:
+                                source_shape = source_port.shape
+
+                # If we couldn't get source shape from blueprint, infer from value type
+                if source_shape is None:
+                    source_shape = "list" if isinstance(raw_value, list) else "single"
+
+                runtime_type = target_port.runtime_type
+                # Preserve list fan-in only for non-text single ports.
+                # Text single ports should still normalize to a single string.
+                preserve_single_fanin = (
+                    target_shape == "single" and runtime_type != "Text"
                 )
-            if conn.from_output not in upstream:
-                raise ValueError(
-                    f"Upstream node {conn.from_node} missing output key "
-                    f"'{conn.from_output}'"
-                )
-            
-            raw_value = upstream[conn.from_output]
-            
-            # Get source and target port specs for shape conversion
-            # If blueprint is None, we can still do shape conversion using target_spec and value inference
-            if target_spec:
-                # Find target port spec
-                target_port = next(
-                    (p for p in target_spec.inputs if p.key == conn.to_input),
-                    None
-                )
-                
-                if target_port:
-                    source_shape = None
-                    source_port = None
-                    
-                    # Try to get source port spec from blueprint if available
-                    if blueprint:
-                        source_node = next(
-                            (n for n in blueprint.nodes if n.node_id == conn.from_node),
-                            None
-                        )
-                        if source_node:
-                            source_spec = get_node_spec(source_node.type)
-                            if source_spec:
-                                source_port = next(
-                                    (p for p in source_spec.outputs if p.key == conn.from_output),
-                                    None
-                                )
-                                if source_port:
-                                    source_shape = source_port.shape
-                    
-                    # If we couldn't get source shape from blueprint, infer from value type
-                    if source_shape is None:
-                        source_shape = "list" if isinstance(raw_value, list) else "single"
-                    
-                    target_shape = target_port.shape
-                    runtime_type = target_port.runtime_type
-                    
-                    # Convert shape if needed
-                    if source_shape != target_shape:
-                        logger.debug(
-                            f"Converting {conn.to_input} from {source_shape} to {target_shape} "
-                            f"(type: {runtime_type}, node: {node_id})"
-                        )
-                        raw_value = _convert_shape(
-                            raw_value,
-                            source_shape,
-                            target_shape,
-                            runtime_type,
-                            conn.to_input,
-                        )
-            
+
+                # Convert shape if needed (except single fan-in where we keep list)
+                if source_shape != target_shape and not preserve_single_fanin:
+                    logger.debug(
+                        f"Converting {conn.to_input} from {source_shape} to {target_shape} "
+                        f"(type: {runtime_type}, node: {node_id})"
+                    )
+                    raw_value = _convert_shape(
+                        raw_value,
+                        source_shape,
+                        target_shape,
+                        runtime_type,
+                        conn.to_input,
+                    )
+
+        if conn.to_input in resolved:
+            resolved[conn.to_input] = _merge_input_values(
+                resolved[conn.to_input],
+                raw_value,
+                runtime_type=target_runtime_type or "Text",
+                target_shape=target_shape or "list",
+                input_key=conn.to_input,
+                node_type=node_type,
+            )
+        else:
             resolved[conn.to_input] = raw_value
 
     return resolved
@@ -477,6 +556,20 @@ async def _exec_text_generation(params: dict, inputs: dict) -> dict[str, Any]:
     Expected inputs (after shape conversion in resolve_node_inputs):
     - text: str (single text string, automatically converted from TextBucket list if needed)
 
+    Optional params:
+    - preset_variant: "summary" | "action_items"
+      Applies light task steering when a shared preset powers multiple preset labels.
+    - tone_guidance_override: string
+      Optional runtime override for preset tone guidance.
+    - max_length_override: integer
+      Optional runtime override for max output length (characters).
+    - structure_template_override: string
+      Optional runtime override for output structure instructions.
+    - prompt_template_override: string
+      Optional runtime override for full prompt template.
+    - output_format_override: object
+      Optional runtime override JSON schema for structured output.
+
     Returns:
     - generated_text: str (the generated text content)
     """
@@ -484,9 +577,11 @@ async def _exec_text_generation(params: dict, inputs: dict) -> dict[str, Any]:
 
     text = inputs.get("text", "")
 
-    # Validate input (shape conversion should have already happened)
-    if not isinstance(text, str):
-        raise ValueError(f"Expected text to be a string (shape conversion should have handled list→single), got {type(text).__name__}")
+    # Defensive normalization: accept list fan-in and convert to string.
+    if isinstance(text, list):
+        text = "\n\n".join(str(item) for item in text if item is not None and str(item).strip())
+    elif not isinstance(text, str):
+        text = _normalize_text_segment(text)
 
     preset_id = params.get("preset_id", "")
     if not preset_id:
@@ -495,7 +590,63 @@ async def _exec_text_generation(params: dict, inputs: dict) -> dict[str, Any]:
             "Open the workflow in the editor, select a preset for this node, and save to persist it."
         )
 
-    result = generate_text(input_text=text, preset_id=preset_id)
+    preset_variant = str(params.get("preset_variant") or "").strip().lower()
+    if preset_variant == "summary":
+        text = (
+            "Task: Provide only a concise summary of the content. "
+            "Do not include action items.\n\n"
+            f"Source content:\n{text}"
+        )
+    elif preset_variant == "action_items":
+        text = (
+            "Task: Extract only actionable next steps as bullet points. "
+            "Do not include a narrative summary.\n\n"
+            f"Source content:\n{text}"
+        )
+
+    max_length_override = params.get("max_length_override")
+    if max_length_override is not None:
+        try:
+            max_length_override = int(max_length_override)
+        except Exception:
+            logger.warning(
+                "Ignoring invalid max_length_override for %s: %r",
+                params.get("node_id", "TextGeneration"),
+                max_length_override,
+            )
+            max_length_override = None
+
+    tone_guidance_override = params.get("tone_guidance_override")
+    if not isinstance(tone_guidance_override, str) or not tone_guidance_override.strip():
+        tone_guidance_override = None
+    else:
+        tone_guidance_override = tone_guidance_override.strip()
+
+    structure_template_override = params.get("structure_template_override")
+    if not isinstance(structure_template_override, str) or not structure_template_override.strip():
+        structure_template_override = None
+    else:
+        structure_template_override = structure_template_override.strip()
+
+    prompt_template_override = params.get("prompt_template_override")
+    if not isinstance(prompt_template_override, str) or not prompt_template_override.strip():
+        prompt_template_override = None
+    else:
+        prompt_template_override = prompt_template_override.strip()
+
+    output_format_override = params.get("output_format_override")
+    if output_format_override is not None and not isinstance(output_format_override, dict):
+        output_format_override = None
+
+    result = generate_text(
+        input_text=text,
+        preset_id=preset_id,
+        tone_guidance_override=tone_guidance_override,
+        max_length_override=max_length_override,
+        structure_template_override=structure_template_override,
+        prompt_template_override=prompt_template_override,
+        output_format_override=output_format_override,
+    )
 
     # Extract text content from result
     # Result is either {"content": "..."} or a structured JSON object
@@ -523,14 +674,59 @@ async def _exec_image_generation(params: dict, inputs: dict) -> dict[str, Any]:
         generate_image_from_text,
         generate_image_from_image,
     )
+    import base64
+    import mimetypes
+    from pathlib import Path
+    import httpx
 
-    prompt = inputs.get("prompt", "")
-    image = inputs.get("image")
+    prompt_input = inputs.get("prompt", "")
+    prompt = prompt_input if isinstance(prompt_input, str) else _normalize_text_segment(prompt_input)
+    image_input = inputs.get("image")
     aspect_ratio = params.get("aspect_ratio", "1:1")
 
-    if image:
+    def _extract_image_ref(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        if isinstance(value, dict):
+            for key in ("image_url", "url", "src", "base64", "data_url"):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+        return None
+
+    async def _to_data_url(image_ref: str) -> str:
+        if image_ref.startswith("data:"):
+            return image_ref
+
+        if image_ref.startswith("http://") or image_ref.startswith("https://"):
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.get(image_ref)
+                resp.raise_for_status()
+                content_type = resp.headers.get("content-type", "").split(";")[0].strip()
+                mime_type = content_type or "image/jpeg"
+                encoded = base64.b64encode(resp.content).decode("ascii")
+                return f"data:{mime_type};base64,{encoded}"
+
+        path = Path(image_ref)
+        if path.exists() and path.is_file():
+            mime_type = mimetypes.guess_type(str(path))[0] or "image/jpeg"
+            encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+            return f"data:{mime_type};base64,{encoded}"
+
+        raise ValueError("Unsupported image input for ImageGeneration")
+
+    image_candidates = _as_list(image_input)
+    image_ref: str | None = None
+    for candidate in image_candidates:
+        image_ref = _extract_image_ref(candidate)
+        if image_ref:
+            break
+
+    if image_ref:
+        normalized_image = await _to_data_url(image_ref)
         base64_data, error = generate_image_from_image(
-            prompt=prompt, input_image_base64=image, aspect_ratio=aspect_ratio
+            prompt=prompt, input_image_base64=normalized_image, aspect_ratio=aspect_ratio
         )
     else:
         base64_data, error = generate_image_from_text(
@@ -548,134 +744,166 @@ async def _exec_transcription(params: dict, inputs: dict) -> dict[str, Any]:
     """
     Transcribe audio/video to text.
 
-    Expected inputs (after shape conversion in resolve_node_inputs):
-    - audio: str (optional, single AudioRef signed URL)
-    - video: str (optional, single VideoRef signed URL)
+    Expected inputs:
+    - audio: AudioRef URL or list[AudioRef URL]
+    - video: VideoRef URL or list[VideoRef URL]
 
-    At least one of audio or video must be provided.
+    Fan-in is supported. Multiple media inputs are transcribed in order and
+    concatenated with blank lines.
     """
     import tempfile
     import httpx
     import os
+    import asyncio
 
     from audio_transcription.audio_transcription import transcribe_audio_or_video_file
 
-    audio = inputs.get("audio", "")
-    video = inputs.get("video", "")
+    def _normalize_media_inputs(value: Any, key: str) -> list[str]:
+        if value is None or value == "":
+            return []
+        if isinstance(value, list):
+            out: list[str] = []
+            for idx, item in enumerate(value):
+                if not isinstance(item, str):
+                    raise ValueError(
+                        f"Expected {key}[{idx}] to be a string URL, got {type(item).__name__}"
+                    )
+                if item.strip():
+                    out.append(item.strip())
+            return out
+        if isinstance(value, str):
+            return [value.strip()] if value.strip() else []
+        raise ValueError(
+            f"Expected {key} to be a string or list of strings, got {type(value).__name__}"
+        )
 
-    # Use audio if provided, otherwise use video
-    media_url = audio if audio else video
+    audio_inputs = _normalize_media_inputs(inputs.get("audio"), "audio")
+    video_inputs = _normalize_media_inputs(inputs.get("video"), "video")
+    media_inputs = audio_inputs + video_inputs
 
-    if not media_url:
+    if not media_inputs:
         raise ValueError("Transcription requires either audio or video input")
 
-    # Validate input type
-    if not isinstance(media_url, str):
-        raise ValueError(f"Expected media URL to be a string, got {type(media_url).__name__}")
+    transcriptions: list[str] = []
 
-    # If media is a URL, download to a temp file
-    media_path = None
-    if media_url.startswith("http://") or media_url.startswith("https://"):
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.get(media_url)
-            resp.raise_for_status()
-            suffix = os.path.splitext(media_url.split("?")[0])[-1] or ".mp4"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-                f.write(resp.content)
-                media_path = f.name
-    else:
-        media_path = media_url
+    for media_url in media_inputs:
+        media_path = None
+        try:
+            # If media is a URL, download to a temp file
+            if media_url.startswith("http://") or media_url.startswith("https://"):
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    resp = await client.get(media_url)
+                    resp.raise_for_status()
+                    suffix = os.path.splitext(media_url.split("?")[0])[-1] or ".mp4"
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                        f.write(resp.content)
+                        media_path = f.name
+            else:
+                media_path = media_url
 
-    try:
-        segments = transcribe_audio_or_video_file(media_path)
+            segments = await asyncio.to_thread(transcribe_audio_or_video_file, media_path)
+            if segments is None:
+                raise RuntimeError("Transcription failed: provider returned no segments")
 
-        if segments is None:
-            raise RuntimeError("Transcription failed")
+            transcriptions.append(" ".join(seg["text"] for seg in segments))
+        finally:
+            # Clean up temp file if we downloaded one
+            if media_path and media_path != media_url and os.path.exists(media_path):
+                os.unlink(media_path)
 
-        joined = " ".join(seg["text"] for seg in segments)
-        return {"transcription": joined}
-    finally:
-        # Clean up temp file if we downloaded one
-        if media_path and media_path != media_url and os.path.exists(media_path):
-            os.unlink(media_path)
+    return {"transcription": "\n\n".join(t for t in transcriptions if t)}
 
 
 @executor("ImageMatching")
 async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
     """
-    Match images with text using VLM.
-
-    Expected inputs (after shape conversion in resolve_node_inputs):
-    - images: list[ImageRef] (list of signed URLs from ImageBucket)
-    - text: str (single text string, automatically converted from TextBucket list if needed)
+    Match images with text using VLM and emit image outputs enriched with scores.
 
     Returns:
-    - matches: list of dicts with image_url, similarity_score, caption, and ocr_text
+    - images: list of objects with `image_url`, `similarity_score`, and `caption`
     """
     import base64
     import io
     import httpx
     from PIL import Image as PILImage
 
-    images = inputs.get("images", [])
-    text = inputs.get("text", "")
+    images_input = _as_list(inputs.get("images"))
+    text_input = inputs.get("text", "")
+    text = text_input if isinstance(text_input, str) else _normalize_text_segment(text_input)
 
-    # Validate inputs (shape conversion should have already happened)
-    if not images:
+    def _extract_image_ref(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        if isinstance(value, dict):
+            for key in ("image_url", "url", "src", "base64", "data_url"):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+        return None
+
+    prepared_images: list[tuple[str, dict[str, Any]]] = []
+    for raw in images_input:
+        image_ref = _extract_image_ref(raw)
+        if not image_ref:
+            continue
+        base_payload = dict(raw) if isinstance(raw, dict) else {}
+        base_payload["image_url"] = image_ref
+        prepared_images.append((image_ref, base_payload))
+
+    if not prepared_images:
         raise ValueError("No images provided to ImageMatching node")
-    if not isinstance(images, list):
-        raise ValueError(f"Expected images to be a list, got {type(images).__name__}")
     if not text:
         raise ValueError("No text provided to ImageMatching node")
-    if not isinstance(text, str):
-        raise ValueError(f"Expected text to be a string (shape conversion should have handled list→single), got {type(text).__name__}")
 
-    logger.info("ImageMatching processing %d images with text: %s...", len(images), text[:100])
+    logger.info(
+        "ImageMatching processing %d images with text: %s...",
+        len(prepared_images),
+        text[:100],
+    )
 
-    # Import VLM components
     try:
         from app.agents.image_text_matching.config_vlm_v2 import VLMConfig
         from app.agents.image_text_matching.utils_vlm_v2 import (
             parse_numeric_response,
-            format_image_content
+            format_image_content,
         )
         from fireworks.client import AsyncFireworks
     except ImportError as e:
         logger.error("Failed to import VLM components: %s", e)
         raise RuntimeError(f"VLM components not available: {e}")
 
-    # Use AsyncFireworks as context manager to ensure proper cleanup
     api_key = VLMConfig.get_api_key()
-    matches = []
+    matches: list[dict[str, Any]] = []
 
     async with AsyncFireworks(api_key=api_key) as client:
-        for idx, image_url in enumerate(images):
+        for idx, (image_ref, base_payload) in enumerate(prepared_images):
             try:
-                logger.info("Processing image %d/%d: %s", idx + 1, len(images), image_url[:80] if len(image_url) > 80 else image_url)
+                logger.info(
+                    "Processing image %d/%d: %s",
+                    idx + 1,
+                    len(prepared_images),
+                    image_ref[:80] if len(image_ref) > 80 else image_ref,
+                )
 
-                # Handle both HTTP URLs and base64 data URLs
-                if image_url.startswith("data:"):
-                    # Already a base64 data URL - decode it
+                if image_ref.startswith("data:"):
                     try:
-                        # Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
-                        header, encoded = image_url.split(",", 1)
+                        _, encoded = image_ref.split(",", 1)
                         image_bytes = base64.b64decode(encoded)
                         img = PILImage.open(io.BytesIO(image_bytes))
                     except Exception as e:
                         logger.error("Failed to decode base64 image: %s", e)
                         raise ValueError(f"Invalid base64 image data: {e}")
-                elif image_url.startswith("http://") or image_url.startswith("https://"):
-                    # Download image from HTTP URL
-                    resp = httpx.get(image_url, timeout=30)
+                elif image_ref.startswith("http://") or image_ref.startswith("https://"):
+                    resp = httpx.get(image_ref, timeout=30)
                     resp.raise_for_status()
                     img = PILImage.open(io.BytesIO(resp.content))
                 else:
-                    raise ValueError(f"Unsupported image source: {image_url[:50]}...")
+                    raise ValueError(f"Unsupported image source: {image_ref[:50]}...")
 
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
 
-                # Optionally resize large images
                 max_dim = 1024
                 if img.width > max_dim or img.height > max_dim:
                     ratio = max_dim / max(img.width, img.height)
@@ -683,12 +911,11 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
                     img = img.resize(new_size, PILImage.Resampling.LANCZOS)
 
                 buffer = io.BytesIO()
-                img.save(buffer, format='JPEG', quality=85)
+                img.save(buffer, format="JPEG", quality=85)
                 image_bytes = buffer.getvalue()
-                base64_str = base64.b64encode(image_bytes).decode('utf-8')
+                base64_str = base64.b64encode(image_bytes).decode("utf-8")
                 image_base64 = f"data:image/jpeg;base64,{base64_str}"
 
-                # Generate caption
                 caption_prompt = (
                     "Describe this image in 1-2 sentences. "
                     "Focus on: main subjects, activities, visible objects, text/graphics, and setting. "
@@ -698,33 +925,13 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
                     model=VLMConfig.FIREWORKS_MODEL,
                     messages=[{
                         "role": "user",
-                        "content": format_image_content(image_base64, caption_prompt)
+                        "content": format_image_content(image_base64, caption_prompt),
                     }],
                     max_tokens=150,
-                    temperature=0.3
+                    temperature=0.3,
                 )
                 caption = caption_response.choices[0].message.content.strip()
 
-                # Extract OCR text
-                ocr_prompt = (
-                    "Extract all visible text from this image. "
-                    "Return only the text you see, with no additional commentary. "
-                    "If no text is visible, respond with 'NONE'."
-                )
-                ocr_response = client.chat.completions.create(
-                    model=VLMConfig.FIREWORKS_MODEL,
-                    messages=[{
-                        "role": "user",
-                        "content": format_image_content(image_base64, ocr_prompt)
-                    }],
-                    max_tokens=500,
-                    temperature=0.1
-                )
-                ocr_text = ocr_response.choices[0].message.content.strip()
-                if ocr_text.upper() == "NONE":
-                    ocr_text = ""
-
-                # Compute similarity score
                 similarity_prompt = (
                     f"Rate how well this image matches the following text on a scale from 0 to 100, where:\n"
                     f"- 0 = completely unrelated\n"
@@ -737,10 +944,10 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
                     model=VLMConfig.FIREWORKS_MODEL,
                     messages=[{
                         "role": "user",
-                        "content": format_image_content(image_base64, similarity_prompt)
+                        "content": format_image_content(image_base64, similarity_prompt),
                     }],
                     max_tokens=10,
-                    temperature=0.1
+                    temperature=0.1,
                 )
                 similarity_text = similarity_response.choices[0].message.content.strip()
 
@@ -751,31 +958,41 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
                     logger.warning("Could not parse similarity score: %s", similarity_text)
                     similarity_score = 0.5
 
-                matches.append({
-                    "image_url": image_url,
-                    "similarity_score": similarity_score,
-                    "caption": caption,
-                    "ocr_text": ocr_text,
-                })
-
+                matches.append(
+                    {
+                        **base_payload,
+                        "image_url": image_ref,
+                        "similarity_score": similarity_score,
+                        "caption": caption,
+                    }
+                )
                 logger.info("Image %d matched with score %.2f", idx + 1, similarity_score)
 
             except Exception as e:
                 logger.error("Error processing image %d: %s", idx + 1, e)
-                matches.append({
-                    "image_url": image_url,
-                    "similarity_score": 0.0,
-                    "caption": "",
-                    "ocr_text": "",
-                    "error": str(e),
-                })
+                matches.append(
+                    {
+                        **base_payload,
+                        "image_url": image_ref,
+                        "similarity_score": 0.0,
+                        "caption": "",
+                        "error": str(e),
+                    }
+                )
 
-    # Sort by similarity score descending
     matches.sort(key=lambda x: x.get("similarity_score", 0), reverse=True)
 
-    logger.info("ImageMatching completed: %d images processed", len(matches))
+    match_count_mode = str(params.get("match_count_mode") or "all").strip().lower()
+    max_matches_raw = params.get("max_matches")
+    if match_count_mode == "manual":
+        try:
+            max_matches = max(1, min(int(max_matches_raw), 200))
+            matches = matches[:max_matches]
+        except Exception:
+            pass
 
-    return {"matches": matches}
+    logger.info("ImageMatching completed: %d images emitted", len(matches))
+    return {"images": matches}
 
 
 @executor("ImageExtraction")
@@ -783,92 +1000,128 @@ async def _exec_image_extraction(params: dict, inputs: dict) -> dict[str, Any]:
     """
     Extract keyframes from video.
 
-    Expected inputs (after shape conversion in resolve_node_inputs):
-    - source: str (single VideoRef signed URL, automatically converted from VideoBucket list if needed)
+    Expected inputs:
+    - source: VideoRef URL or list[VideoRef URL]
 
-    Returns:
-    - images: list of base64 data URLs for extracted keyframes
+    Fan-in is supported. Multiple source videos are processed in order and
+    extracted keyframes are concatenated into one image list.
     """
     import tempfile
     import httpx
     import os
     import asyncio
     from pathlib import Path
+    import base64
 
-    source = inputs.get("source", "")
+    source_input = inputs.get("source", "")
 
-    # Validate input (shape conversion should have already happened)
-    if not source:
+    def _extract_video_ref(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        if isinstance(value, dict):
+            for key in ("video_url", "url", "src", "data_url"):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+        return None
+
+    sources: list[str] = []
+    for idx, item in enumerate(_as_list(source_input)):
+        source_ref = _extract_video_ref(item)
+        if source_ref:
+            sources.append(source_ref)
+            continue
+        if item is not None:
+            raise ValueError(
+                f"Expected source[{idx}] to be a video reference string/object, got {type(item).__name__}"
+            )
+
+    if not sources:
         raise ValueError("No video source provided to ImageExtraction node")
-    if not isinstance(source, str):
-        raise ValueError(f"Expected source to be a string (shape conversion should have handled list→single), got {type(source).__name__}")
 
-    logger.info("ImageExtraction processing video: %s...", source[:80])
+    selection_mode = str(params.get("selection_mode") or "auto").strip().lower()
+    max_frames_raw = (
+        params.get("max_frames")
+        if params.get("max_frames") is not None
+        else params.get("frame_count")
+    )
+    max_frames: int | None = None
+    if selection_mode == "manual":
+        try:
+            max_frames = max(1, min(int(max_frames_raw), 200))
+        except Exception as exc:
+            raise ValueError("ImageExtraction manual mode requires a valid max_frames value") from exc
 
-    # If source is a URL, download to a temp file
-    video_path = None
-    temp_dir = None
-    try:
-        if source.startswith("http://") or source.startswith("https://"):
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.get(source)
-                resp.raise_for_status()
-                # Determine file extension from URL or default to .mp4
-                suffix = os.path.splitext(source.split("?")[0])[-1] or ".mp4"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-                    f.write(resp.content)
-                    video_path = f.name
-        else:
-            video_path = source
+    from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
 
-        # Run the keyframe extraction pipeline
-        from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
+    app_root = Path(__file__).resolve().parent.parent
+    output_dir = app_root / "agents" / "image_extraction" / "outputs" / "keyframes"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create output directory for extracted frames
-        app_root = Path(__file__).resolve().parent.parent
-        output_dir = app_root / "agents" / "image_extraction" / "outputs" / "keyframes"
-        output_dir.mkdir(parents=True, exist_ok=True)
+    all_image_refs: list[str] = []
+    per_source_limits: list[int | None] = [None] * len(sources)
+    if max_frames is not None:
+        base = max_frames // len(sources)
+        remainder = max_frames % len(sources)
+        per_source_limits = [
+            base + (1 if i < remainder else 0)
+            for i in range(len(sources))
+        ]
 
-        config = {"output_dir": str(output_dir)}
-        result = await asyncio.to_thread(run_keyframe_pipeline, video_path, config)
-
-        # Convert extracted frames to base64 data URLs
-        import base64
-
-        selected_frames = result.get("selected_frames", [])
-        image_refs = []
-
-        for frame in selected_frames:
-            image_path = frame.get("selected_path") or frame.get("frame_path")
-            if not image_path or not os.path.exists(image_path):
-                continue
-
-            # Determine MIME type
-            suffix = Path(image_path).suffix.lower().lstrip(".")
-            if suffix in ("jpg", "jpeg"):
-                mime = "image/jpeg"
-            elif suffix in ("png", "webp"):
-                mime = f"image/{suffix}"
+    for source_index, source in enumerate(sources):
+        source_limit = per_source_limits[source_index]
+        if source_limit is not None and source_limit <= 0:
+            continue
+        logger.info("ImageExtraction processing video: %s...", source[:80])
+        video_path = None
+        try:
+            if source.startswith("http://") or source.startswith("https://"):
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    resp = await client.get(source)
+                    resp.raise_for_status()
+                    suffix = os.path.splitext(source.split("?")[0])[-1] or ".mp4"
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                        f.write(resp.content)
+                        video_path = f.name
             else:
-                mime = "image/jpeg"
+                video_path = source
 
-            # Read and encode to base64
-            with open(image_path, "rb") as img_file:
-                encoded = base64.b64encode(img_file.read()).decode("ascii")
-            data_url = f"data:{mime};base64,{encoded}"
-            image_refs.append(data_url)
+            config: dict[str, Any] = {"output_dir": str(output_dir)}
+            if source_limit is not None:
+                config["max_total_frames"] = source_limit
+            result = await asyncio.to_thread(run_keyframe_pipeline, video_path, config)
 
-        logger.info("ImageExtraction completed: extracted %d keyframes", len(image_refs))
-        return {"images": image_refs}
+            selected_frames = result.get("selected_frames", [])
+            for frame in selected_frames:
+                image_path = frame.get("selected_path") or frame.get("frame_path")
+                if not image_path or not os.path.exists(image_path):
+                    continue
 
-    finally:
-        # Clean up temp file if we downloaded one
-        if video_path and video_path != source and os.path.exists(video_path):
-            try:
-                os.unlink(video_path)
-            except Exception:
-                pass
+                suffix = Path(image_path).suffix.lower().lstrip(".")
+                if suffix in ("jpg", "jpeg"):
+                    mime = "image/jpeg"
+                elif suffix in ("png", "webp"):
+                    mime = f"image/{suffix}"
+                else:
+                    mime = "image/jpeg"
 
+                with open(image_path, "rb") as img_file:
+                    encoded = base64.b64encode(img_file.read()).decode("ascii")
+                all_image_refs.append(f"data:{mime};base64,{encoded}")
+        finally:
+            if video_path and video_path != source and os.path.exists(video_path):
+                try:
+                    os.unlink(video_path)
+                except Exception:
+                    pass
+
+    logger.info(
+        "ImageExtraction completed: extracted %d keyframes from %d source videos",
+        len(all_image_refs),
+        len(sources),
+    )
+    return {"images": all_image_refs}
 
 @executor("QuoteExtraction")
 async def _exec_quote_extraction(params: dict, inputs: dict) -> dict[str, Any]:
@@ -879,16 +1132,17 @@ async def _exec_quote_extraction(params: dict, inputs: dict) -> dict[str, Any]:
     - text: str
 
     Params:
-    - style: "punchy" | "insightful" | "contrarian" | "emotional" (default: punchy)
+    - style: "general" | "punchy" | "insightful" | "contrarian" | "emotional" (default: general)
     - count: int (default: 10)
     """
     from app.agents.quote_extraction.extractor import extract_quotes
 
-    text = inputs.get("text", "")
-    if not text or not isinstance(text, str):
+    text_input = inputs.get("text", "")
+    text = text_input if isinstance(text_input, str) else _normalize_text_segment(text_input)
+    if not text:
         raise ValueError("No text provided to QuoteExtraction node")
 
-    style = params.get("style") or "punchy"
+    style = params.get("style") or "general"
     count = params.get("count") or 10
     try:
         count = int(count)
@@ -896,7 +1150,17 @@ async def _exec_quote_extraction(params: dict, inputs: dict) -> dict[str, Any]:
         count = 10
 
     quotes = await extract_quotes(transcript=text, style=str(style), count=count)
-    return {"quotes": quotes}
+
+    quote_lines: list[str] = []
+    for quote in quotes:
+        if isinstance(quote, dict):
+            quote_text = quote.get("text")
+            if isinstance(quote_text, str) and quote_text.strip():
+                quote_lines.append(quote_text.strip())
+        elif isinstance(quote, str) and quote.strip():
+            quote_lines.append(quote.strip())
+
+    return {"quotes": "\n\n".join(quote_lines)}
 
 
 # ---------------------------------------------------------------------------
@@ -1393,6 +1657,66 @@ def _max_persisted_output_bytes() -> int:
         return 5000000
 
 
+def _persist_run_outputs_enabled() -> bool:
+    """
+    Runtime switch for run output persistence.
+
+    Default is disabled so workflow execution does not depend on output-persistence writes.
+    Set WORKFLOW_PERSIST_RUN_OUTPUTS=1 to re-enable persisted run outputs.
+    """
+    raw = os.getenv("WORKFLOW_PERSIST_RUN_OUTPUTS", "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _serialized_payload_bytes(
+    node_outputs: dict[str, Any],
+    workflow_outputs: dict[str, Any],
+    blueprint_snapshot: dict[str, Any] | None,
+) -> int:
+    payload = {
+        "node_outputs": node_outputs,
+        "workflow_outputs": workflow_outputs,
+        "blueprint_snapshot": blueprint_snapshot,
+    }
+    return len(json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8"))
+
+
+def _build_terminal_node_outputs(
+    node_outputs: dict[str, Any],
+    blueprint: Blueprint | None,
+) -> dict[str, dict[str, Any]]:
+    """
+    Build a minimized node_outputs map containing only workflow terminal outputs.
+
+    This reduces duplication while preserving enough node-level data for Preview.
+    """
+    if not blueprint or not blueprint.workflow_outputs:
+        return {}
+
+    terminal: dict[str, dict[str, Any]] = {}
+    for wf_output in blueprint.workflow_outputs:
+        upstream = node_outputs.get(wf_output.from_node)
+        if not isinstance(upstream, dict):
+            continue
+        if wf_output.from_output not in upstream:
+            continue
+        terminal.setdefault(wf_output.from_node, {})[wf_output.from_output] = upstream[
+            wf_output.from_output
+        ]
+    return terminal
+
+
+def _trim_list_values(value: Any, max_items: int) -> Any:
+    """
+    Recursively trim list payloads to reduce persisted run output size.
+    """
+    if isinstance(value, list):
+        return [_trim_list_values(item, max_items) for item in value[:max_items]]
+    if isinstance(value, dict):
+        return {k: _trim_list_values(v, max_items) for k, v in value.items()}
+    return value
+
+
 def save_execution_log(
     result: WorkflowExecutionResult,
     workflow_id: str | None,
@@ -1454,26 +1778,85 @@ def save_execution_log(
     # Persist full outputs only for saved workflows
     if not workflow_id:
         return execution_id, None
+    if not _persist_run_outputs_enabled():
+        return execution_id, None
 
     node_outputs = {
         nr.node_id: nr.outputs
         for nr in result.node_results
         if nr.outputs is not None
     }
-    output_payload = {
-        "node_outputs": node_outputs,
-        "workflow_outputs": result.workflow_outputs,
-        "blueprint_snapshot": blueprint_snapshot,
-    }
-    payload_bytes = len(json.dumps(output_payload, separators=(",", ":"), default=str).encode("utf-8"))
+    persisted_node_outputs = node_outputs
+    persisted_workflow_outputs = result.workflow_outputs
+    payload_bytes = _serialized_payload_bytes(
+        node_outputs=persisted_node_outputs,
+        workflow_outputs=persisted_workflow_outputs,
+        blueprint_snapshot=blueprint_snapshot,
+    )
     max_bytes = _max_persisted_output_bytes()
 
     if payload_bytes > max_bytes:
-        warning = (
-            f"Run outputs were too large to persist ({payload_bytes} bytes exceeds "
-            f"limit of {max_bytes} bytes)."
+        full_payload_bytes = payload_bytes
+
+        terminal_node_outputs = _build_terminal_node_outputs(node_outputs, blueprint)
+        terminal_workflow_outputs = result.workflow_outputs
+        payload_bytes = _serialized_payload_bytes(
+            node_outputs=terminal_node_outputs,
+            workflow_outputs=terminal_workflow_outputs,
+            blueprint_snapshot=blueprint_snapshot,
         )
-        return execution_id, warning
+        if payload_bytes <= max_bytes:
+            persisted_node_outputs = terminal_node_outputs
+            persisted_workflow_outputs = terminal_workflow_outputs
+            warning = (
+                f"Run outputs were too large to persist in full ({full_payload_bytes} bytes exceeds "
+                f"limit of {max_bytes} bytes). Persisted terminal outputs only."
+            )
+        else:
+            keyed_workflow_outputs = {key: None for key in result.workflow_outputs.keys()}
+            payload_bytes = _serialized_payload_bytes(
+                node_outputs=terminal_node_outputs,
+                workflow_outputs=keyed_workflow_outputs,
+                blueprint_snapshot=blueprint_snapshot,
+            )
+            if payload_bytes <= max_bytes:
+                persisted_node_outputs = terminal_node_outputs
+                persisted_workflow_outputs = keyed_workflow_outputs
+                warning = (
+                    f"Run outputs were too large to persist in full ({full_payload_bytes} bytes exceeds "
+                    f"limit of {max_bytes} bytes). Persisted reduced outputs for preview."
+                )
+            else:
+                trimmed_outputs = terminal_node_outputs
+                trimmed_payload_bytes = payload_bytes
+                for max_items in (12, 8, 5, 3, 2, 1):
+                    candidate_node_outputs = _trim_list_values(terminal_node_outputs, max_items)
+                    candidate_payload_bytes = _serialized_payload_bytes(
+                        node_outputs=candidate_node_outputs,
+                        workflow_outputs=keyed_workflow_outputs,
+                        blueprint_snapshot=blueprint_snapshot,
+                    )
+                    if candidate_payload_bytes <= max_bytes:
+                        trimmed_outputs = candidate_node_outputs
+                        trimmed_payload_bytes = candidate_payload_bytes
+                        break
+                    trimmed_outputs = candidate_node_outputs
+                    trimmed_payload_bytes = candidate_payload_bytes
+
+                if trimmed_payload_bytes <= max_bytes:
+                    persisted_node_outputs = trimmed_outputs
+                    persisted_workflow_outputs = keyed_workflow_outputs
+                    payload_bytes = trimmed_payload_bytes
+                    warning = (
+                        f"Run outputs were too large to persist in full ({full_payload_bytes} bytes exceeds "
+                        f"limit of {max_bytes} bytes). Persisted reduced outputs with trimmed lists."
+                    )
+                else:
+                    warning = (
+                        f"Run outputs were too large to persist ({full_payload_bytes} bytes exceeds "
+                        f"limit of {max_bytes} bytes)."
+                    )
+                    return execution_id, warning
 
     try:
         supabase = get_supabase().client
@@ -1482,8 +1865,8 @@ def save_execution_log(
                 "execution_id": execution_id,
                 "workflow_id": workflow_id,
                 "user_id": user_id,
-                "node_outputs": node_outputs,
-                "workflow_outputs": result.workflow_outputs,
+                "node_outputs": persisted_node_outputs,
+                "workflow_outputs": persisted_workflow_outputs,
                 "blueprint_snapshot": blueprint_snapshot,
                 "payload_bytes": payload_bytes,
             }

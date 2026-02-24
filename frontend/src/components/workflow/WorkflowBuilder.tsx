@@ -1,25 +1,32 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { ReactFlowWrapper } from "./ReactFlowWrapper";
-import { ChatPanel } from "./ChatPanel";
 import { CanvasPanel } from "./CanvasPanel";
+import { MicrAIDock } from "./MicrAIDock";
+import { MicrAIBuildOverlay } from "./MicrAIBuildOverlay";
 import { NodeSidebar } from "./NodeSidebar";
 import { TopNavBar } from "./TopNavBar";
 import { ExecutionBar } from "./ExecutionBar";
 import { CompilationDiagnosticsModal } from "./CompilationDiagnosticsModal";
 import { showToast } from "@/lib/stores/toastStore";
-import { useSourceTexts } from "@/hooks/useSourceTexts";
-import { useTranscription } from "@/hooks/useTranscription";
-import { useChatConversation } from "@/hooks/useChatConversation";
+import { useWorkflowCopilot } from "@/hooks/useWorkflowCopilot";
+import { useMicrAIBuildPlayback } from "@/hooks/useMicrAIBuildPlayback";
+import { useMicrAIVoiceInput } from "@/hooks/useMicrAIVoiceInput";
 import { useCanvasOperations } from "@/hooks/useCanvasOperations";
 import { useContextMenus } from "@/hooks/useContextMenus";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
 import { useBlueprintCompile } from "@/hooks/useBlueprintCompile";
-import { useWorkflowStore, getParamKeysToPersist } from "@/lib/stores/workflowStore";
+import type { SavedWorkflowData } from "@/lib/fastapi/workflows";
+import { layoutWorkflowData } from "@/lib/workflowLayout";
+import {
+  useWorkflowStore,
+  getParamKeysToPersist,
+  sanitizeWorkflowEdgesAgainstRegistry,
+} from "@/lib/stores/workflowStore";
 import { listFiles } from "@/lib/fastapi/files";
 import type {
-  OutputNodeType,
   WorkflowNodeType,
   BucketNodeType,
   FlowNodeType,
@@ -27,16 +34,21 @@ import type {
 } from "./types";
 import { WORKFLOW_NODES, FLOW_NODES, BUCKET_NODES } from "./types";
 
+const LEGACY_OUTPUT_NODE_TYPES = new Set(["LinkedIn", "TikTok", "Email"]);
+const MICRAI_GUIDED_BUILD_ENABLED =
+  process.env.NEXT_PUBLIC_MICRAI_GUIDED_BUILD_ENABLED !== "false";
+const MICRAI_RELEASE_TAIL_LISTEN_MS = 380;
+
 interface WorkflowBuilderProps {
   autoLoadWorkflowId?: string | null;
   onAutoLoadComplete?: () => void;
 }
 
 const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBuilderProps = {}) => {
-  const [isChatOpen, setIsChatOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<"select" | "pan">(
     "select",
   );
+  const [isMicrAIOpen, setIsMicrAIOpen] = useState(false);
   // Dialog control for WorkflowManager
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
@@ -47,29 +59,25 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
   const [redoStack, setRedoStack] = useState<unknown[]>([]);
   // Modals and notifications
   const [showCompilationModal, setShowCompilationModal] = useState(false);
+  const legacyCleanupToastShownRef = useRef(false);
+  const [lastMicrAIPatchSnapshot, setLastMicrAIPatchSnapshot] = useState<SavedWorkflowData | null>(null);
+  const launcherHoldTimerRef = useRef<number | null>(null);
+  const launcherReleaseTailTimerRef = useRef<number | null>(null);
+  const launcherStartRecordingPromiseRef = useRef<Promise<boolean> | null>(null);
+  const launcherHoldActiveRef = useRef(false);
+  const launcherPointerDownRef = useRef(false);
 
   const router = useRouter();
 
   // Custom hooks for state management
-  const sourceTextsHook = useSourceTexts();
-  useTranscription(sourceTextsHook.addSourceFromTranscription);
+  const copilot = useWorkflowCopilot();
+  const playback = useMicrAIBuildPlayback();
+  const voice = useMicrAIVoiceInput();
   const canvasOps = useCanvasOperations();
   const contextMenus = useContextMenus();
-  const { execute, isExecuting, executionResult, error: executionError } = useWorkflowExecution();
+  const { execute, isExecuting, executionResult, error: executionError, cancelExecution } = useWorkflowExecution();
   const { compileRaw, diagnostics, errors: compilationErrors } = useBlueprintCompile();
   const currentWorkflowId = useWorkflowStore((s) => s.currentWorkflowId);
-  const chatHook = useChatConversation({
-    sourceTexts: sourceTextsHook.sourceTexts,
-    onAddNodeToCanvas: (
-      nodeType: string,
-      content?: string | Record<string, unknown>,
-    ) => {
-      canvasOps.addNodeToCanvas(
-        nodeType as OutputNodeType | WorkflowNodeType,
-        content,
-      );
-    },
-  });
 
   // Prefetch all file types on mount so backend cache is warm before any bucket is created
   useEffect(() => {
@@ -86,7 +94,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
   }, []);
 
   const handleAddPart = (partType: NodeType) => {
-    // Check if it's a workflow node, bucket node, or flow node - if so, just add it directly to canvas
+    // Add workflow/bucket/flow nodes directly to canvas.
     if (
       WORKFLOW_NODES.includes(partType as WorkflowNodeType) ||
       BUCKET_NODES.includes(partType as BucketNodeType) ||
@@ -97,74 +105,14 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       return;
     }
 
-    // For output nodes, trigger chat-based generation
+    // Legacy output nodes are deprecated in builder flow.
+    if (LEGACY_OUTPUT_NODE_TYPES.has(partType)) {
+      showToast("Legacy output nodes are deprecated. Use End node + Preview.", "warning");
+      contextMenus.setMenuPosition(null);
+      return;
+    }
+
     contextMenus.setMenuPosition(null);
-
-    // Ensure chat is visible
-    if (!isChatOpen) {
-      setIsChatOpen(true);
-    }
-
-    // Map part type to content type string
-    const contentTypeMap: Record<OutputNodeType, string> = {
-      LinkedIn: "linkedin",
-      TikTok: "tiktok",
-      Email: "email",
-    };
-    const contentType = contentTypeMap[partType as OutputNodeType];
-
-    // Check if we have source text
-    const hasSource = sourceTextsHook.sourceTexts.length > 0;
-
-    if (hasSource) {
-      const botMessage = {
-        user: "MICRAi",
-        text: `I'll create a ${partType} ${contentType === "linkedin" ? "post" : contentType === "email" ? "draft" : "script"} using your source material. What tone or style would you like?`,
-        showToneOptions: true,
-      };
-      chatHook.setChatHistory(
-        (
-          prev: Array<{
-            user: string;
-            text: string;
-            showToneOptions?: boolean;
-          }>,
-        ) => [...prev, botMessage],
-      );
-
-      chatHook.setConversationState({
-        waiting_for_tone: true,
-        content_type: contentType,
-        user_instruction: "Create content from source material",
-        from_canvas: true,
-      });
-    } else {
-      const contentName =
-        contentType === "linkedin"
-          ? "LinkedIn post"
-          : contentType === "email"
-            ? "email"
-            : "TikTok script";
-      const botMessage = {
-        user: "MICRAi",
-        text: `I'll help you create a ${contentName}! What topic or message would you like to ${contentType === "email" ? "communicate" : "share"}?`,
-      };
-      chatHook.setChatHistory(
-        (
-          prev: Array<{
-            user: string;
-            text: string;
-            showToneOptions?: boolean;
-          }>,
-        ) => [...prev, botMessage],
-      );
-
-      chatHook.setConversationState({
-        waiting_for_context: true,
-        content_type: contentType,
-        from_canvas: true,
-      });
-    }
   };
 
   const handleAddNodeFromSidebar = (nodeType: NodeType) => {
@@ -183,7 +131,40 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
 
     if (nodes.length === 0) return null;
 
-    // Use the store's exportWorkflowForExecution which handles bucket nodes
+    const executableCanvasNodes = nodes.filter(
+      (node) => !LEGACY_OUTPUT_NODE_TYPES.has(node.type || "")
+    );
+    const executableCanvasNodeIds = new Set(
+      executableCanvasNodes.map((node) => node.id)
+    );
+    const candidateExecutionEdges = edges
+      .filter(
+        (edge) =>
+          executableCanvasNodeIds.has(edge.source) &&
+          executableCanvasNodeIds.has(edge.target)
+      )
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle ?? undefined,
+        targetHandle: edge.targetHandle ?? undefined,
+      }));
+    const { removedCount: removedLegacyEdges } =
+      sanitizeWorkflowEdgesAgainstRegistry(
+        executableCanvasNodes.map((node) => ({
+          id: node.id,
+          type: node.type || "default",
+        })),
+        candidateExecutionEdges
+      );
+
+    if (removedLegacyEdges > 0 && !legacyCleanupToastShownRef.current) {
+      showToast("Removed legacy invalid connections from this workflow.", "warning");
+      legacyCleanupToastShownRef.current = true;
+    }
+
+    // Use the store's exportWorkflowForExecution which handles bucket nodes + edge sanitization
     const { exportWorkflowForExecution, nodes: storeNodes } = useWorkflowStore.getState();
     const workflowData = exportWorkflowForExecution(nodes, edges);
 
@@ -204,6 +185,20 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       }
       return node;
     });
+
+    const executableNodeIds = new Set(
+      workflowData.nodes
+        .filter((node) => !LEGACY_OUTPUT_NODE_TYPES.has(node.type))
+        .map((node) => node.id)
+    );
+
+    workflowData.nodes = workflowData.nodes.filter((node) =>
+      executableNodeIds.has(node.id)
+    );
+    workflowData.edges = workflowData.edges.filter(
+      (edge) =>
+        executableNodeIds.has(edge.source) && executableNodeIds.has(edge.target)
+    );
 
     return workflowData;
   };
@@ -234,6 +229,245 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     }
 
     return null;
+  };
+
+  const exportCurrentWorkflowForPlanning = (): SavedWorkflowData => {
+    const store = useWorkflowStore.getState();
+    const nodes = canvasOps.reactFlowInstance?.getNodes() ?? store.reactFlowNodes;
+    const edges = canvasOps.reactFlowInstance?.getEdges() ?? store.reactFlowEdges;
+    return store.exportWorkflowStructure(nodes, edges);
+  };
+
+  const applyWorkflowToCanvas = (
+    workflowData: SavedWorkflowData,
+    options?: { fitView?: boolean }
+  ) => {
+    const store = useWorkflowStore.getState();
+    const imported = store.importWorkflowStructure(workflowData);
+    canvasOps.setNodesRef.current?.(() => imported.reactFlowNodes);
+    canvasOps.setEdgesRef.current?.(() => imported.reactFlowEdges);
+    if (options?.fitView ?? true) {
+      setTimeout(() => {
+        canvasOps.reactFlowInstance?.fitView({ padding: 0.2 });
+      }, 0);
+    }
+  };
+
+  const handleMicrAIPlan = async () => {
+    const message = copilot.prompt.trim();
+    if (!message) {
+      showToast("Enter a MicrAI request first.", "warning");
+      return;
+    }
+    await requestMicrAIPlan(message);
+  };
+
+  const requestMicrAIPlan = async (message: string) => {
+    if (!message) {
+      showToast("Enter a MicrAI request first.", "warning");
+      return;
+    }
+
+    const current = exportCurrentWorkflowForPlanning();
+    try {
+      const response = await copilot.requestPlan({
+        message,
+        mode: copilot.mode,
+        workflowData: current,
+      });
+      if (response.status === "clarify") {
+        showToast("MicrAI needs clarification before applying changes.", "warning");
+      } else if (response.status === "error") {
+        showToast("MicrAI could not produce a valid plan.", "error");
+      }
+    } catch {
+      showToast("MicrAI planning failed. Check logs and retry.", "error");
+    }
+  };
+
+  const clearLauncherHoldTimer = () => {
+    if (launcherHoldTimerRef.current !== null) {
+      window.clearTimeout(launcherHoldTimerRef.current);
+      launcherHoldTimerRef.current = null;
+    }
+  };
+
+  const clearLauncherReleaseTailTimer = () => {
+    if (launcherReleaseTailTimerRef.current !== null) {
+      window.clearTimeout(launcherReleaseTailTimerRef.current);
+      launcherReleaseTailTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearLauncherHoldTimer();
+      clearLauncherReleaseTailTimer();
+      launcherStartRecordingPromiseRef.current = null;
+      void voice.cancelRecording();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleLauncherPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (playback.isActive || voice.isTranscribing || copilot.isPlanning) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.currentTarget.setPointerCapture) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // ignore capture failures
+      }
+    }
+    launcherPointerDownRef.current = true;
+    launcherHoldActiveRef.current = false;
+    clearLauncherHoldTimer();
+    launcherHoldTimerRef.current = window.setTimeout(() => {
+      if (!launcherPointerDownRef.current) return;
+      launcherHoldActiveRef.current = true;
+      setIsMicrAIOpen(true);
+      const startPromise = voice.startRecording();
+      launcherStartRecordingPromiseRef.current = startPromise;
+      void startPromise.then((started) => {
+        if (launcherStartRecordingPromiseRef.current !== startPromise) return;
+        launcherStartRecordingPromiseRef.current = null;
+        if (!started) {
+          launcherHoldActiveRef.current = false;
+          showToast("Could not start microphone.", "error");
+        }
+      });
+    }, 240);
+  };
+
+  const finishLauncherPress = () => {
+    launcherPointerDownRef.current = false;
+    clearLauncherHoldTimer();
+
+    if (launcherHoldActiveRef.current) {
+      launcherHoldActiveRef.current = false;
+      clearLauncherReleaseTailTimer();
+      launcherReleaseTailTimerRef.current = window.setTimeout(() => {
+        void (async () => {
+          const pendingStart = launcherStartRecordingPromiseRef.current;
+          if (pendingStart) {
+            try {
+              await pendingStart;
+            } catch {
+              // ignore start errors; handled by start flow toast
+            } finally {
+              if (launcherStartRecordingPromiseRef.current === pendingStart) {
+                launcherStartRecordingPromiseRef.current = null;
+              }
+            }
+          }
+          const transcript = await voice.stopRecordingAndTranscribe();
+          if (!transcript) {
+            showToast("No speech detected.", "warning");
+            return;
+          }
+          copilot.setPrompt(transcript);
+          await requestMicrAIPlan(transcript);
+        })();
+        launcherReleaseTailTimerRef.current = null;
+      }, MICRAI_RELEASE_TAIL_LISTEN_MS);
+      return;
+    }
+
+    if (voice.isRecording) return;
+    setIsMicrAIOpen((prev) => !prev);
+  };
+
+  const handleDockVoiceToggle = () => {
+    if (playback.isActive || voice.isTranscribing || copilot.isPlanning) return;
+    if (voice.isRecording) {
+      void (async () => {
+        const transcript = await voice.stopRecordingAndTranscribe();
+        if (!transcript) {
+          showToast("No speech detected.", "warning");
+          return;
+        }
+        copilot.setPrompt(transcript);
+      })();
+      return;
+    }
+    setIsMicrAIOpen(true);
+    void voice.startRecording().then((started) => {
+      if (!started) {
+        showToast("Could not start microphone.", "error");
+      }
+    });
+  };
+
+  const handleMicrAIApply = () => {
+    if (playback.isActive) return;
+    const plan = copilot.pendingPlan;
+    if (!plan || plan.status !== "ready" || !plan.workflow_data) {
+      return;
+    }
+
+    const current = exportCurrentWorkflowForPlanning();
+    const isCreateReplace = copilot.mode === "create" && current.nodes.length > 0;
+    if (isCreateReplace && plan.requires_replace_confirmation) {
+      const confirmed = window.confirm(
+        "Apply MicrAI create plan and replace the current canvas?"
+      );
+      if (!confirmed) return;
+    }
+
+    const layoutMode = copilot.mode === "edit" ? "touched" : "full";
+    const laidOut = layoutWorkflowData(plan.workflow_data, {
+      mode: layoutMode,
+      touchedNodeIds: plan.touched_node_ids,
+    });
+    const hasGuidedSteps = (plan.build_steps?.length ?? 0) > 0;
+    copilot.clearPlan();
+
+    setLastMicrAIPatchSnapshot(current);
+    if (MICRAI_GUIDED_BUILD_ENABLED && hasGuidedSteps) {
+      setIsMicrAIOpen(true);
+      void playback.startPlayback({
+        mode: copilot.mode,
+        steps: plan.build_steps ?? [],
+        closingNarration: plan.closing_narration,
+        currentWorkflow: current,
+        finalWorkflow: laidOut,
+        canvasContainerRef: contextMenus.canvasContainerRef,
+        getViewport: () => canvasOps.reactFlowInstance?.getViewport() ?? null,
+        applyWorkflow: (workflowData) =>
+          applyWorkflowToCanvas(workflowData, { fitView: false }),
+        onComplete: () => {
+          applyWorkflowToCanvas(laidOut, { fitView: true });
+          showToast("MicrAI patch applied.", "success");
+        },
+        onError: (error) => {
+          applyWorkflowToCanvas(current, { fitView: true });
+          showToast(
+            `MicrAI guided build failed: ${error.message}`,
+            "error"
+          );
+        },
+      });
+      return;
+    }
+    if (MICRAI_GUIDED_BUILD_ENABLED && !hasGuidedSteps) {
+      showToast(
+        "MicrAI guided steps were missing for this plan, so it was applied instantly.",
+        "warning"
+      );
+    }
+
+    applyWorkflowToCanvas(laidOut, { fitView: true });
+    showToast("MicrAI patch applied.", "success");
+  };
+
+  const handleMicrAIUndoPatch = () => {
+    if (!lastMicrAIPatchSnapshot) {
+      showToast("No MicrAI patch to undo.", "warning");
+      return;
+    }
+    applyWorkflowToCanvas(lastMicrAIPatchSnapshot);
+    setLastMicrAIPatchSnapshot(null);
+    showToast("Reverted last MicrAI patch.", "success");
   };
 
   const handleExecuteWorkflow = async () => {
@@ -294,11 +528,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
           viewResultsAction
         );
       } else {
-        showToast(
-          "Workflow execution completed but no result returned",
-          "warning",
-          viewResultsAction
-        );
+        showToast("Workflow execution canceled", "warning");
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Workflow execution failed";
@@ -346,11 +576,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
           viewResultsAction
         );
       } else {
-        showToast(
-          "Workflow execution completed but no result returned",
-          "warning",
-          viewResultsAction
-        );
+        showToast("Workflow execution canceled", "warning");
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Workflow execution failed";
@@ -389,13 +615,13 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
         <NodeSidebar onAddNode={handleAddNodeFromSidebar} />
 
         {/* Canvas Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden relative">
           <ReactFlowWrapper>
             {(flowProps) => (
               <CanvasPanel
                 {...flowProps}
-                isChatOpen={isChatOpen}
-                setIsChatOpen={setIsChatOpen}
+                isChatOpen={false}
+                setIsChatOpen={() => {}}
                 menuPosition={contextMenus.menuPosition}
                 setMenuPosition={contextMenus.setMenuPosition}
                 partContextMenu={contextMenus.partContextMenu}
@@ -412,6 +638,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
                 isLocked={canvasOps.isLocked}
                 setIsLocked={canvasOps.setIsLocked}
                 setNodesRef={canvasOps.setNodesRef}
+                setEdgesRef={canvasOps.setEdgesRef}
                 showSaveDialog={showSaveDialog}
                 showLoadDialog={showLoadDialog}
                 onDialogClose={() => {
@@ -419,17 +646,23 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
                   setShowLoadDialog(false);
                 }}
                 interactionMode={interactionMode}
+                isMicrAIPlaybackActive={playback.isActive}
                 autoLoadWorkflowId={autoLoadWorkflowId}
                 onAutoLoadComplete={onAutoLoadComplete}
               />
             )}
           </ReactFlowWrapper>
 
+          <MicrAIBuildOverlay
+            robot={playback.robot}
+            speech={playback.speech}
+            trail={playback.trail}
+          />
+
           {/* Bottom Execution Bar */}
           <ExecutionBar
             reactFlowInstance={canvasOps.reactFlowInstance}
-            onChatToggle={() => setIsChatOpen(!isChatOpen)}
-            isChatOpen={isChatOpen}
+            showChatToggle={false}
             onExecuteWorkflow={handleExecuteWorkflow}
             interactionMode={interactionMode}
             onInteractionModeChange={setInteractionMode}
@@ -440,25 +673,79 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
             isExecuting={isExecuting}
             executionJustCompleted={!!executionResult && !isExecuting}
             currentWorkflowId={currentWorkflowId}
+            onCancelExecution={cancelExecution}
             onViewResults={() => {
               if (currentWorkflowId) router.push(`/preview/${currentWorkflowId}`);
             }}
           />
+
+          {!playback.isActive && (
+            <button
+              type="button"
+              onPointerDown={handleLauncherPointerDown}
+              onPointerUp={finishLauncherPress}
+              onPointerCancel={finishLauncherPress}
+              onDragStart={(event) => event.preventDefault()}
+              draggable={false}
+              className="absolute right-6 bottom-24 z-50 p-0 bg-transparent border-0 shadow-none transition-transform hover:scale-[1.03]"
+              title={isMicrAIOpen ? "Hide MicrAI" : "Open MicrAI"}
+            >
+              {voice.isRecording && (
+                <div className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-xl border border-violet-200 bg-white/90 px-2 py-1 shadow-sm">
+                  <div className="flex items-end gap-[3px] h-6">
+                    {[0, 1, 2, 3, 4].map((idx) => {
+                      const spread = Math.max(0.25, 1 - Math.abs(idx - 2) * 0.22);
+                      const h = 4 + voice.level * 18 * spread;
+                      return (
+                        <span
+                          key={idx}
+                          className="w-[4px] rounded-full bg-violet-500"
+                          style={{ height: `${h}px` }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <Image
+                src="/robot-full-body.png"
+                alt="MicrAI"
+                width={112}
+                height={112}
+                draggable={false}
+                onDragStart={(event) => event.preventDefault()}
+                className="block select-none pointer-events-none saturate-[1.35] brightness-[1.2] contrast-[1.2]"
+              />
+            </button>
+          )}
+
+          {isMicrAIOpen && (
+            <MicrAIDock
+              prompt={copilot.prompt}
+              onPromptChange={copilot.setPrompt}
+              mode={copilot.mode}
+              onModeChange={copilot.setMode}
+              isPlanning={copilot.isPlanning}
+              error={copilot.error}
+              pendingPlan={copilot.pendingPlan}
+              onPlan={handleMicrAIPlan}
+              onApply={handleMicrAIApply}
+              onDismissPlan={copilot.clearPlan}
+              onUndoPatch={handleMicrAIUndoPatch}
+              canUndoPatch={!!lastMicrAIPatchSnapshot}
+              isPlaybackActive={playback.isActive}
+              playbackSpeed={playback.speedMultiplier}
+              onPlaybackSpeedChange={playback.setSpeedMultiplier}
+              onSkipPlayback={playback.skipPlayback}
+              isVoiceRecording={voice.isRecording}
+              isVoiceBusy={voice.isTranscribing}
+              voiceLevel={voice.level}
+              onVoiceToggle={handleDockVoiceToggle}
+              onClose={() => setIsMicrAIOpen(false)}
+            />
+          )}
         </div>
       </div>
-
-      {/* Chat Panel Overlay */}
-      {isChatOpen && (
-        <ChatPanel
-          chatMessage={chatHook.chatMessage}
-          setChatMessage={chatHook.setChatMessage}
-          chatHistory={chatHook.chatHistory}
-          chatHistoryRef={chatHook.chatHistoryRef}
-          textareaRef={chatHook.textareaRef}
-          handleSendMessage={chatHook.handleSendMessage}
-          handleToneSelect={chatHook.handleToneSelect}
-        />
-      )}
 
       {/* Compilation Diagnostics Modal */}
       <CompilationDiagnosticsModal

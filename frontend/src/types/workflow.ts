@@ -1,7 +1,7 @@
 export interface NodePort {
   id: string
   label: string
-  type: 'string' | 'file' | 'image' | 'json' | 'image[]'
+  type: 'string' | 'file' | 'image' | 'image[]'
 }
 
 export interface NodeConfig {

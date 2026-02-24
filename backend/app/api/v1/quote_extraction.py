@@ -9,7 +9,7 @@ router = APIRouter(prefix="/quote-extraction")
 
 class QuoteExtractionRequest(BaseModel):
     transcript: str
-    style: Literal["punchy", "insightful", "contrarian", "emotional"] = "punchy"
+    style: Literal["general", "punchy", "insightful", "contrarian", "emotional"] = "general"
     count: int = Field(10, ge=1, le=30)
 
 

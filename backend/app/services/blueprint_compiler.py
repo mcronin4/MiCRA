@@ -98,7 +98,11 @@ def compile_workflow(
         return CompilationResult(success=False, diagnostics=exc.diagnostics)
 
     # 5. Build workflow outputs (no workflow inputs - bucket nodes replace Start)
-    workflow_outputs = _extract_workflow_outputs(node_map, edges)
+    workflow_outputs = _extract_workflow_outputs(
+        node_map,
+        edges,
+        diagnostics=diagnostics,
+    )
 
     blueprint = Blueprint(
         workflow_id=workflow_id,
@@ -189,8 +193,10 @@ def _validate(
                     field=tgt_handle,
                 ))
 
-        # Type compatibility check (strict - no JSON fallback)
-        if src_spec and tgt_spec and src_handle and tgt_handle:
+        # Type compatibility check (strict runtime matching).
+        # End is a terminal sink and can accept any primitive output type.
+        tgt_node_type = node_map[tgt].get("type", "")
+        if src_spec and tgt_spec and src_handle and tgt_handle and tgt_node_type != "End":
             src_port = next((p for p in src_spec.outputs if p.key == src_handle), None)
             tgt_port = next((p for p in tgt_spec.inputs if p.key == tgt_handle), None)
             if src_port and tgt_port:
@@ -213,22 +219,12 @@ def _validate(
         wired_inputs.add((tgt, tgt_handle))
         nodes_with_incoming.add(tgt)
 
-    # Validate no multiple connections to same input port
-    input_connections: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    for edge in edges:
-        tgt = edge.get("target")
-        tgt_handle = edge.get("targetHandle", "")
-        if tgt in node_map:
-            input_connections[(tgt, tgt_handle)].append(edge)
-    
-    for (node_id, input_key), conns in input_connections.items():
-        if len(conns) > 1:
-            diags.append(CompilationDiagnostic(
-                level="error",
-                message=f"Multiple edges connect to input '{input_key}' of node '{node_id}' (only one connection per input allowed)",
-                node_id=node_id,
-                field=input_key,
-            ))
+    # Universal fan-in support: multiple edges to the same input are allowed.
+    # Runtime resolver merges by runtime type:
+    # - Text: blank-line join
+    # - list-shaped ports: list concatenation
+    # - media single inputs: grouped list for node-specific processing
+    # - other single inputs: deterministic first-item fallback with warning
 
     # Check required inputs are wired
     for nid, node in node_map.items():
@@ -242,6 +238,19 @@ def _validate(
                     message=f"Required input '{port.key}' is not connected",
                     node_id=nid,
                     field=port.key,
+                ))
+
+    # Node-specific validation rules.
+    for nid, node in node_map.items():
+        node_type = node.get("type", "")
+        if node_type == "Transcription":
+            has_audio = (nid, "audio") in wired_inputs
+            has_video = (nid, "video") in wired_inputs
+            if not has_audio and not has_video:
+                diags.append(CompilationDiagnostic(
+                    level="error",
+                    message="Transcription requires at least one connected input: audio or video",
+                    node_id=nid,
                 ))
 
     # Validate bucket nodes don't have incoming connections (they're sources)
@@ -264,7 +273,7 @@ def _types_compatible(src: PortSchema, tgt: PortSchema) -> bool:
     Check if two ports are type-compatible.
 
     Type compatibility rules:
-    - Runtime types must match exactly (strict, no JSON fallback)
+    - Runtime types must match exactly
     - Special case: VideoRef can connect to AudioRef (video contains audio track)
 
     Shape compatibility rules (for matching runtime types):
@@ -279,15 +288,11 @@ def _types_compatible(src: PortSchema, tgt: PortSchema) -> bool:
     This check ensures the conversion is safe and expected.
     """
     # Runtime type compatibility.
-    # Special case: JSON is treated as an "any" sink type — any source
-    # runtime_type can flow into a JSON target, as long as shapes are compatible.
-    if tgt.runtime_type != "JSON":
-        # Strict type matching for non-JSON targets
-        if src.runtime_type != tgt.runtime_type:
-            # Special case: VideoRef can connect to AudioRef
-            # (video files contain audio tracks that can be extracted/transcribed)
-            if not (src.runtime_type == "VideoRef" and tgt.runtime_type == "AudioRef"):
-                return False
+    if src.runtime_type != tgt.runtime_type:
+        # Special case: VideoRef can connect to AudioRef
+        # (video files contain audio tracks that can be extracted/transcribed)
+        if not (src.runtime_type == "VideoRef" and tgt.runtime_type == "AudioRef"):
+            return False
     
     # Check shape compatibility:
     # - list -> single: allowed (can take first item or join)
@@ -390,24 +395,93 @@ def _toposort(
 def _extract_workflow_outputs(
     node_map: dict[str, dict[str, Any]],
     edges: list[dict[str, Any]],
+    *,
+    diagnostics: list[CompilationDiagnostic] | None = None,
 ) -> list[WorkflowOutput]:
-    """End node inputs become workflow outputs; trace back to find source."""
+    """
+    End node inputs become workflow outputs; trace back to find source.
+
+    Output keys are unique:
+    - Use End node `data.output_key` when provided.
+    - Otherwise auto-generate deterministic keys: output_1, output_2, ...
+    - Duplicate configured keys fall back to an auto-generated key and emit warning.
+    """
     outputs: list[WorkflowOutput] = []
+    used_keys: set[str] = set()
+    auto_index = 1
+
+    def _allocate_output_key(
+        preferred_key: str | None,
+        *,
+        node_id: str,
+        warn_on_duplicate: bool = True,
+    ) -> str:
+        nonlocal auto_index
+
+        key = preferred_key.strip() if isinstance(preferred_key, str) and preferred_key.strip() else None
+        if not key:
+            while f"output_{auto_index}" in used_keys:
+                auto_index += 1
+            key = f"output_{auto_index}"
+            auto_index += 1
+            used_keys.add(key)
+            return key
+
+        if key in used_keys:
+            if diagnostics is not None and warn_on_duplicate:
+                diagnostics.append(CompilationDiagnostic(
+                    level="warning",
+                    message=(
+                        f"Duplicate End output key '{key}' on node '{node_id}'. "
+                        "Using auto-generated key instead."
+                    ),
+                    node_id=node_id,
+                    field="output_key",
+                ))
+            while f"output_{auto_index}" in used_keys:
+                auto_index += 1
+            key = f"output_{auto_index}"
+            auto_index += 1
+
+        used_keys.add(key)
+        return key
+
     for nid, node in node_map.items():
         if node.get("type") == "End":
             spec = get_node_spec("End")
             if not spec:
                 continue
+
+            node_data = node.get("data", {}) or {}
+            configured_key = (
+                node_data.get("output_key")
+                if isinstance(node_data.get("output_key"), str)
+                else None
+            )
+            configured_key = configured_key.strip() if configured_key else None
+
             for port in spec.inputs:
-                # Find the edge feeding this input
-                feeding_edge = next(
-                    (e for e in edges
-                     if e.get("target") == nid and e.get("targetHandle") == port.key),
-                    None,
-                )
-                if feeding_edge:
+                # Find all edges feeding this input (fan-in supported)
+                feeding_edges = [
+                    e for e in edges
+                    if e.get("target") == nid and e.get("targetHandle") == port.key
+                ]
+                if not feeding_edges:
+                    continue
+
+                for edge_index, feeding_edge in enumerate(feeding_edges):
+                    preferred_key = configured_key
+                    if configured_key and edge_index > 0:
+                        preferred_key = f"{configured_key}_{edge_index + 1}"
+
+                    key = _allocate_output_key(
+                        preferred_key,
+                        node_id=nid,
+                        warn_on_duplicate=(edge_index == 0),
+                    )
+
                     outputs.append(WorkflowOutput(
-                        key=port.key,
+                        key=key,
                         from_node=feeding_edge["source"],
                         from_output=feeding_edge.get("sourceHandle", ""),
                     ))

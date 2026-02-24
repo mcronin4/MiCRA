@@ -24,6 +24,7 @@ Rules:
 - Do not use <think> or similar tags.
 
 Style guidance:
+- general: balanced and broadly useful pull quotes (target 6-30 words).
 - punchy: short, memorable, high-impact phrasing (target 5-18 words).
 - insightful: reveals a key idea, lesson, or takeaway (target 8-35 words).
 - contrarian: challenges conventional wisdom or offers a surprising take (target 6-30 words).
@@ -35,7 +36,7 @@ Return ONLY valid JSON in this exact shape:
 """
 
 
-STYLE_OPTIONS = {"punchy", "insightful", "contrarian", "emotional"}
+STYLE_OPTIONS = {"general", "punchy", "insightful", "contrarian", "emotional"}
 
 
 def _strip_code_fences(text: str) -> str:
@@ -184,6 +185,8 @@ def _split_sentences(transcript: str) -> List[str]:
 
 
 def _style_length_bounds(style: str) -> Tuple[int, int]:
+    if style == "general":
+        return (6, 30)
     if style == "punchy":
         return (5, 18)
     if style == "insightful":
@@ -274,9 +277,9 @@ async def extract_quotes(
     if not transcript or not transcript.strip():
         raise ValueError("Transcript cannot be empty")
 
-    normalized_style = style.strip().lower() if style else "punchy"
+    normalized_style = style.strip().lower() if style else "general"
     if normalized_style not in STYLE_OPTIONS:
-        normalized_style = "punchy"
+        normalized_style = "general"
 
     count = max(1, min(count, 30))
 

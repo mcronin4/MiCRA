@@ -3,14 +3,14 @@
 import React, { useState, useEffect } from "react";
 import { NodeProps } from "@xyflow/react";
 import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
-import { useWorkflowStore, ImageBucketItem } from "@/lib/stores/workflowStore";
+import { useWorkflowStore, type ImageBucketItem } from "@/lib/stores/workflowStore";
 import {
   matchImagesToText,
-  ImageWithId,
-  ImageMatchResult,
+  type ImageWithId,
+  type ImageMatchResult,
 } from "@/lib/fastapi/image-matching";
 import { getImageBase64, getImageSrc } from "@/lib/utils/imageUtils";
-import { NodeConfig } from "@/types/workflow";
+import type { NodeConfig } from "@/types/workflow";
 import {
   Check,
   AlertCircle,
@@ -18,6 +18,13 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useNodeConnections } from "@/hooks/useNodeConnections";
+
+type MatchCountMode = "all" | "manual";
+
+const clampMatchCount = (value: number) => {
+  if (Number.isNaN(value)) return 5;
+  return Math.max(1, Math.min(value, 200));
+};
 
 // Config for this node type
 const config: NodeConfig = {
@@ -28,7 +35,7 @@ const config: NodeConfig = {
     { id: "images", label: "Images", type: "image[]" },
     { id: "text", label: "Text", type: "string" },
   ],
-  outputs: [{ id: "matches", label: "Results", type: "json" }],
+  outputs: [{ id: "images", label: "Matched Images", type: "image[]" }],
 };
 
 export function ImageMatchingNode({ id }: NodeProps) {
@@ -50,14 +57,27 @@ export function ImageMatchingNode({ id }: NodeProps) {
   const initialSelectedIds = Array.isArray(node?.inputs?.selectedImageIds)
     ? (node.inputs.selectedImageIds as string[])
     : [];
+  const initialMatchCountMode: MatchCountMode =
+    node?.inputs?.match_count_mode === "manual" ? "manual" : "all";
+  const initialMaxMatches =
+    typeof node?.inputs?.max_matches === "number"
+      ? clampMatchCount(node.inputs.max_matches)
+      : 5;
 
   const [text, setText] = useState<string>(initialText);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(
     new Set(initialSelectedIds),
   );
+  const [matchCountMode, setMatchCountMode] =
+    useState<MatchCountMode>(initialMatchCountMode);
+  const [maxMatches, setMaxMatches] = useState<number>(initialMaxMatches);
   const [imageResults, setImageResults] = useState<
     Map<string, ImageMatchResult>
   >(new Map());
+  const matchedImages = Array.isArray(node?.outputs?.images)
+    ? node.outputs.images
+    : [];
+  const hasMatchResults = matchedImages.length > 0;
 
   // Clear outputs when test mode is disabled
   useEffect(() => {
@@ -72,24 +92,28 @@ export function ImageMatchingNode({ id }: NodeProps) {
     ? imageBucket.filter((img) => selectedImageIds.has(img.id))
     : [];
 
-  // Syncing to Zustand store
   useEffect(() => {
     const idsArray = Array.from(selectedImageIds);
+    const normalizedMaxMatches = clampMatchCount(maxMatches);
     if (
       node &&
       (node.inputs.text !== text ||
         JSON.stringify(node.inputs.selectedImageIds) !==
-          JSON.stringify(idsArray))
+          JSON.stringify(idsArray) ||
+        node.inputs.match_count_mode !== matchCountMode ||
+        node.inputs.max_matches !== normalizedMaxMatches)
     ) {
       updateNode(id, {
         inputs: {
           ...node.inputs,
           text: text,
           selectedImageIds: idsArray,
+          match_count_mode: matchCountMode,
+          max_matches: normalizedMaxMatches,
         },
       });
     }
-  }, [text, selectedImageIds, id, updateNode, node]);
+  }, [text, selectedImageIds, matchCountMode, maxMatches, id, updateNode, node]);
 
   const toggleImageSelection = (imageId: string) => {
     setSelectedImageIds((prev) => {
@@ -141,12 +165,46 @@ export function ImageMatchingNode({ id }: NodeProps) {
         resultsMap.set(result.image_id, result);
       });
       setImageResults(resultsMap);
+      const selectedImageById = new Map(
+        selectedImages.map((img) => [img.id, img] as const),
+      );
+      const matches = response.results
+        .map((result) => {
+          const image = selectedImageById.get(result.image_id);
+          const similarityScore =
+            typeof result.combined_score === "number"
+              ? result.combined_score
+              : 0;
+          return {
+            image_url: image ? getImageSrc(image) : "",
+            similarity_score: similarityScore,
+            caption: "",
+            status: result.status,
+            error: result.error,
+          };
+        })
+        .sort((a, b) => b.similarity_score - a.similarity_score);
+
+      const limitedMatches =
+        matchCountMode === "manual"
+          ? matches.slice(0, clampMatchCount(maxMatches))
+          : matches;
+      const images = limitedMatches.filter(
+        (match) => typeof match.image_url === "string" && match.image_url.length > 0,
+      );
 
       // Update node
       updateNode(id, {
         status: "completed",
-        outputs: { results: response.results },
-        inputs: { selectedImageIds: Array.from(selectedImageIds), text },
+        outputs: {
+          images,
+        },
+        inputs: {
+          selectedImageIds: Array.from(selectedImageIds),
+          text,
+          match_count_mode: matchCountMode,
+          max_matches: clampMatchCount(maxMatches),
+        },
       });
     } catch (error) {
       const errorMessage =
@@ -161,8 +219,73 @@ export function ImageMatchingNode({ id }: NodeProps) {
       config={config}
       onExecute={handleExecute}
       theme={nodeThemes.amber}
+      getOutputDataType={(outputId, defaultType) =>
+        outputId === "images" ? "images" : defaultType
+      }
     >
       <div className="space-y-4">
+        {!showManualInputs &&
+          (hasMatchResults ? (
+            <div className="border border-slate-200 rounded-xl p-4 bg-white text-center">
+              <div className="p-2.5 rounded-xl bg-amber-50 w-fit mx-auto mb-2">
+                <ImageIcon size={18} className="text-amber-500" />
+              </div>
+              <p className="text-xs font-medium text-slate-700">
+                Match results ready
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {matchedImages.length} image
+                {matchedImages.length === 1 ? "" : "s"} available
+              </p>
+            </div>
+          ) : (
+            <div className="border border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center">
+              <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
+                <ImageIcon size={18} className="text-slate-400" />
+              </div>
+              <p className="text-xs font-medium text-slate-600">
+                No matches yet
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Run workflow to populate matched images
+              </p>
+            </div>
+          ))}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Match Count
+            </label>
+            <select
+              value={matchCountMode}
+              onChange={(event) =>
+                setMatchCountMode(event.target.value as MatchCountMode)
+              }
+              className="nodrag w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all"
+            >
+              <option value="all">All</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+              Max Matches
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={maxMatches}
+              onChange={(event) =>
+                setMaxMatches(clampMatchCount(Number(event.target.value)))
+              }
+              disabled={matchCountMode !== "manual"}
+              className="nodrag w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all disabled:opacity-60"
+            />
+          </div>
+        </div>
+
         {/* Text input - only show in test mode */}
         {showManualInputs && (
           <div className="space-y-2">
