@@ -12,6 +12,7 @@
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
     "test:perf": "playwright test tests/e2e/performance --reporter=list",
     "test:perf:baseline": "playwright test tests/e2e/performance --reporter=json && cp test-results/results.json benchmark-results/baseline.json",
     "test:perf:optimized": "playwright test tests/e2e/performance --reporter=json && cp test-results/results.json benchmark-results/optimized.json",

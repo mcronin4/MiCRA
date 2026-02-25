@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback, useMemo } from "react";
 import type { Node, Edge, OnConnect, ReactFlowInstance, NodeChange } from "@xyflow/react";
+import { Loader2 } from "lucide-react";
 import AddPartMenu from "./AddPartMenu";
 import PartContextMenu from "./PartContextMenu";
 import { LinkedInNode } from "./nodes/LinkedInNode";
@@ -158,6 +159,10 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>(storeReactFlowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(storeReactFlowEdges);
 
+  // Check if we're in auto-loading state (empty store but autoLoadWorkflowId exists)
+  const hasNodes = storeReactFlowNodes.length > 0;
+  const isAutoLoading = !!autoLoadWorkflowId && !hasNodes;
+
   // Map nodes to ensure unknown types are handled gracefully
   const safeNodes = useMemo(() => {
     return nodes.map((node) => {
@@ -297,6 +302,16 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       }`}
       style={interactionMode === "pan" ? { cursor: "grab" } : undefined}
     >
+      {/* Loading overlay during workflow load */}
+      {isAutoLoading && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <Loader2 size={32} className="animate-spin mx-auto mb-3 text-indigo-500" />
+            <p className="text-sm text-slate-600">Loading workflow...</p>
+          </div>
+        </div>
+      )}
+
       {/* Style to disable all node interactions in pan/view mode */}
       {interactionMode === "pan" && (
         <style>{`
