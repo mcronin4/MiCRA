@@ -16,6 +16,7 @@ interface WorkflowRowProps {
   onDuplicate: () => void;
   onDelete: () => void;
   isDeleting: boolean;
+  isLoading?: boolean;
 }
 
 export function WorkflowRow({
@@ -24,6 +25,7 @@ export function WorkflowRow({
   onDuplicate,
   onDelete,
   isDeleting,
+  isLoading = false,
 }: WorkflowRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -46,7 +48,7 @@ export function WorkflowRow({
   return (
     <div
       className={`group flex items-center justify-between px-5 py-4 border border-slate-200 rounded-lg cursor-pointer transition-all hover:bg-slate-50 hover:border-slate-300 ${
-        isDeleting ? "opacity-50 pointer-events-none" : ""
+        isDeleting || isLoading ? "opacity-50 pointer-events-none" : ""
       }`}
       onClick={onOpen}
     >
@@ -63,65 +65,74 @@ export function WorkflowRow({
 
       {/* Right: Node count + context menu */}
       <div className="flex items-center gap-3 shrink-0">
-        <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium">
-          {workflow.node_count} node{workflow.node_count !== 1 ? "s" : ""}
-        </span>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-indigo-600">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-sm font-medium">Loading...</span>
+          </div>
+        ) : (
+          <>
+            <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium">
+              {workflow.node_count} node{workflow.node_count !== 1 ? "s" : ""}
+            </span>
 
-        {/* Three-dot menu */}
-        <div ref={menuRef} className="relative">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuOpen((prev) => !prev);
-            }}
-            className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-          >
-            {isDeleting ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <MoreVertical size={16} />
-            )}
-          </button>
+            {/* Three-dot menu */}
+            <div ref={menuRef} className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen((prev) => !prev);
+                }}
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+              >
+                {isDeleting ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <MoreVertical size={16} />
+                )}
+              </button>
 
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-20">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onOpen();
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                <ExternalLink size={14} className="text-slate-400" />
-                Open
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onDuplicate();
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                <Copy size={14} className="text-slate-400" />
-                Duplicate
-              </button>
-              <div className="my-1 border-t border-slate-100" />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onDelete();
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <Trash2 size={14} />
-                Delete
-              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-20">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      onOpen();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <ExternalLink size={14} className="text-slate-400" />
+                    Open
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      onDuplicate();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <Copy size={14} className="text-slate-400" />
+                    Duplicate
+                  </button>
+                  <div className="my-1 border-t border-slate-100" />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      onDelete();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

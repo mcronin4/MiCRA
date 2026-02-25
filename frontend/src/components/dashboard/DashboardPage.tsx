@@ -51,6 +51,7 @@ export function DashboardPage() {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const router = useRouter();
   const { user, signOut } = useAuth();
@@ -115,11 +116,20 @@ export function DashboardPage() {
   }, [workflows, searchQuery, sortBy]);
 
   const handleOpenWorkflow = (workflow: WorkflowMetadata) => {
+    // Set loading state to show spinner on clicked card
+    setLoadingId(workflow.id);
+
+    // Clear old workflow data from store BEFORE navigation
+    // This prevents flash of old workflow when canvas mounts
+    clearWorkflowMetadata();
+
+    // Set new workflow metadata (will be used after load completes)
     setWorkflowMetadata(
       workflow.id,
       workflow.name,
       workflow.description || undefined
     );
+
     router.push(`/workflow?loadWorkflow=${workflow.id}`);
   };
 
@@ -367,6 +377,7 @@ export function DashboardPage() {
                   handleDeleteWorkflow(workflow.id, workflow.name)
                 }
                 isDeleting={deletingId === workflow.id}
+                isLoading={loadingId === workflow.id}
               />
             ))}
           </div>
