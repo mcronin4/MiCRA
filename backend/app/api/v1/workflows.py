@@ -202,8 +202,9 @@ def get_latest_versions_batch(supabase: Client, workflow_ids: List[str]) -> Dict
         return {}
     
     # Get all versions for these workflows, ordered by version_number desc
+    # Only select needed columns (not the full payload) for performance
     result = supabase.table("workflow_versions")\
-        .select("*")\
+        .select("workflow_id, version_number, created_at, node_count, edge_count")\
         .in_("workflow_id", workflow_ids)\
         .order("workflow_id")\
         .order("version_number", desc=True)\
@@ -255,15 +256,15 @@ async def list_workflows(
         for item in result.data:
             workflow_id = str(item["id"])
             version = latest_versions.get(workflow_id)
-            
+
             if not version:
                 # Skip workflows without versions
                 continue
-            
-            payload = version["payload"]
-            node_count = len(payload.get("nodes", []))
-            edge_count = len(payload.get("edges", []))
-            
+
+            # Use pre-computed node_count and edge_count from database
+            node_count = version.get("node_count", 0)
+            edge_count = version.get("edge_count", 0)
+
             workflows.append(WorkflowMetadataResponse(
                 id=workflow_id,
                 name=item["name"],
@@ -315,15 +316,15 @@ async def list_templates(
         for item in result.data:
             workflow_id = str(item["id"])
             version = latest_versions.get(workflow_id)
-            
+
             if not version:
                 # Skip workflows without versions
                 continue
-            
-            payload = version["payload"]
-            node_count = len(payload.get("nodes", []))
-            edge_count = len(payload.get("edges", []))
-            
+
+            # Use pre-computed node_count and edge_count from database
+            node_count = version.get("node_count", 0)
+            edge_count = version.get("edge_count", 0)
+
             templates.append(WorkflowMetadataResponse(
                 id=workflow_id,
                 name=item["name"],

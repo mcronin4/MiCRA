@@ -763,57 +763,64 @@ async def list_files(
 
         # If include_urls, generate presigned URLs for R2 in parallel
         if include_urls:
+            # Use ThreadPoolExecutor for true parallelization of boto3 calls
+            # boto3 is blocking, so we need thread pool (not just asyncio.gather)
+            from concurrent.futures import ThreadPoolExecutor
 
-            async def sign_item(item: FileListItem):
-                if item.status != "uploaded":
-                    return
-                thumb_id = item.metadata.get("thumbnail_file_id")
-                has_thumbnail = False
+            # Create thread pool with max 20 workers for parallel URL generation
+            with ThreadPoolExecutor(max_workers=20) as executor:
 
-                # Generate Thumbnail URL
-                if thumb_id and thumb_id in thumbnail_map:
-                    thumb_record = thumbnail_map[thumb_id]
-                    if thumb_record["status"] == "uploaded":
+                async def sign_item(item: FileListItem):
+                    if item.status != "uploaded":
+                        return
+                    thumb_id = item.metadata.get("thumbnail_file_id")
+                    has_thumbnail = False
+
+                    # Generate Thumbnail URL
+                    if thumb_id and thumb_id in thumbnail_map:
+                        thumb_record = thumbnail_map[thumb_id]
+                        if thumb_record["status"] == "uploaded":
+                            try:
+                                thumb_url = await loop.run_in_executor(
+                                    executor,  # Use dedicated thread pool
+                                    partial(
+                                        r2.client.generate_presigned_url,
+                                        'get_object',
+                                        Params={
+                                            'Bucket': R2_BUCKET,
+                                            'Key': thumb_record["path"],
+                                        },
+                                        ExpiresIn=expires_in,
+                                    ),
+                                )
+                                setattr(item, "thumbnailUrl", thumb_url)
+                                has_thumbnail = True
+                            except Exception as e:
+                                print(f"Error signing thumbnail URL: {e}")
+
+                    # Generate Main URL
+                    should_generate_main = not thumbnails_only or not has_thumbnail
+
+                    if should_generate_main:
                         try:
-                            thumb_url = await loop.run_in_executor(
-                                None,
+                            signed_url = await loop.run_in_executor(
+                                executor,  # Use dedicated thread pool
                                 partial(
                                     r2.client.generate_presigned_url,
                                     'get_object',
                                     Params={
                                         'Bucket': R2_BUCKET,
-                                        'Key': thumb_record["path"],
+                                        'Key': item.path,
                                     },
                                     ExpiresIn=expires_in,
                                 ),
                             )
-                            setattr(item, "thumbnailUrl", thumb_url)
-                            has_thumbnail = True
+                            item.signedUrl = signed_url
                         except Exception as e:
-                            print(f"Error signing thumbnail URL: {e}")
+                            print(f"Error signing URL for {item.path}: {e}")
 
-                # Generate Main URL
-                should_generate_main = not thumbnails_only or not has_thumbnail
-
-                if should_generate_main:
-                    try:
-                        signed_url = await loop.run_in_executor(
-                            None,
-                            partial(
-                                r2.client.generate_presigned_url,
-                                'get_object',
-                                Params={
-                                    'Bucket': R2_BUCKET,
-                                    'Key': item.path,
-                                },
-                                ExpiresIn=expires_in,
-                            ),
-                        )
-                        item.signedUrl = signed_url
-                    except Exception as e:
-                        print(f"Error signing URL for {item.path}: {e}")
-
-            await asyncio.gather(*[sign_item(item) for item in items])
+                # Process all items in parallel using the thread pool
+                await asyncio.gather(*[sign_item(item) for item in items])
         
         # Determine next offset based on ORIGINAL result length (to keep pagination stable-ish)
         next_offset = None
