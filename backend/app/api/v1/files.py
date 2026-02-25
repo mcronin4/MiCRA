@@ -109,6 +109,12 @@ class InitUploadRequest(BaseModel):
     @field_validator("contentType")
     @classmethod
     def validate_content_type(cls, v: str, info) -> str:
+        # Block HEIC/HEIF uploads
+        if v.lower() in ("image/heic", "image/heif"):
+            raise ValueError(
+                "HEIC/HEIF format is not supported. Please convert to JPEG before uploading."
+            )
+
         bucket = info.data.get("bucket")
         file_type = info.data.get("type")
         
@@ -243,6 +249,8 @@ def get_extension_from_content_type(content_type: str) -> Optional[str]:
         "image/png": "png",
         "image/gif": "gif",
         "image/webp": "webp",
+        "image/heic": "heic",
+        "image/heif": "heif",
         "video/mp4": "mp4",
         "video/mpeg": "mpeg",
         "video/quicktime": "mov",
