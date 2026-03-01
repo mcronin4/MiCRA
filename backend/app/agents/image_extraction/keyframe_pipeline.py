@@ -30,15 +30,12 @@ DEFAULT_CONFIG = {
     
     # Quality thresholds
     "blur_threshold": 30.0,  #laplacian variance
-    "exposure_low": 50,
-    "exposure_high": 175,
     
      "min_face_size_for_eye_check": 150,  #inimum face width (pixels) to apply eyes-closed rejection
     
     # Scoring weights
     "face_bias_weight": 0.2,
     "blur_weight": 0.3,
-    "exposure_weight": 0.3,
     "happy_emotion_weight": 0.15,
     "face_closeup_weight": 0.1,   # Boost for larger/closer faces
     "frontal_face_weight": 0.2,   # Boost for faces looking at camera
@@ -219,12 +216,6 @@ def compute_blur_score(
     return float(blur_score), "full"
 
 
-def compute_exposure_score(frame_bgr: np.ndarray) -> float:
-    #mean grayscale intensity [0-255]
-    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-    return float(np.mean(gray))
-
-
 def check_eyes_open(frame_bgr: np.ndarray, eye_cascade, face_cascade) -> Tuple[bool, bool, int, bool]:
     #haar cascade eye detection, returns (face_detected, eyes_open, face_size, is_frontal)
     if eye_cascade is None or face_cascade is None:
@@ -260,14 +251,6 @@ def normalize_blur(blur_score: float, threshold: float) -> float:
     return max(0.0, min(1.0, normalized))
 
 
-def normalize_exposure(exposure: float, low: float, high: float) -> float:
-    #normalize exposure to [0,1], 1 = optimal middle, 0 = at boundaries
-    mid = (low + high) / 2
-    half_range = (high - low) / 2
-    distance_from_mid = abs(exposure - mid)
-    return max(0.0, 1.0 - distance_from_mid / half_range)
-
-
 def normalize_face_size(face_size: int, frame_width: int) -> float:
     #normalize face size relative to frame width, returns [0,1] where 1 = close-up
     if frame_width == 0 or face_size == 0:
@@ -281,7 +264,6 @@ def normalize_face_size(face_size: int, frame_width: int) -> float:
 
 def compute_quality_score(
     blur_norm: float,
-    exposure_norm: float,
     face_present: int,
     dominant_emotion: Optional[str],
     face_size: int,
@@ -289,15 +271,14 @@ def compute_quality_score(
     is_frontal: bool,
     config: Dict
 ) -> float:
-    #deterministic quality score combining blur, exposure, face bias, emotion, and face positioning
+    #deterministic quality score combining blur, face bias, emotion, and face positioning
     w_blur = config.get("blur_weight", 0.3)
-    w_exp = config.get("exposure_weight", 0.3)
     w_face = config.get("face_bias_weight", 0.2)
     w_happy = config.get("happy_emotion_weight", 0.15)
     w_closeup = config.get("face_closeup_weight", 0.25)
     w_frontal = config.get("frontal_face_weight", 0.20)
     
-    score = w_blur * blur_norm + w_exp * exposure_norm + w_face * face_present
+    score = w_blur * blur_norm + w_face * face_present
     
     # Boost score if dominant emotion is happy
     if dominant_emotion and dominant_emotion.lower() == "happy":
@@ -325,8 +306,6 @@ def filter_and_analyze_candidates(
 ) -> List[Dict]:
     #apply quality filters and run analysis on each candidate, returns (passed, rejected) tuples
     blur_thresh = config.get("blur_threshold", 100.0)
-    exp_low = config.get("exposure_low", 30)
-    exp_high = config.get("exposure_high", 225)
     topk = config.get("topk_scenes", 5)
     min_face_for_eye_check = config.get("min_face_size_for_eye_check", 150)
     
@@ -347,7 +326,7 @@ def filter_and_analyze_candidates(
     
     passed = []
     rejected = []
-    rejected_counts = {"blur": 0, "exposure": 0, "eyes_closed": 0}
+    rejected_counts = {"blur": 0, "eyes_closed": 0}
     
     for cand in candidates:
         frame_bgr = cand.get("frame_bgr")
@@ -371,21 +350,6 @@ def filter_and_analyze_candidates(
             })
             continue
         
-        # Exposure check
-        exposure_score = compute_exposure_score(frame_bgr)
-        if exposure_score < exp_low or exposure_score > exp_high:
-            rejected_counts["exposure"] += 1
-            reason = "too_dark" if exposure_score < exp_low else "too_bright"
-            rejected.append({
-                "frame_path": cand["frame_path"],
-                "timestamp": cand["timestamp"],
-                "scene_id": cand["scene_id"],
-                "rejection_reason": reason,
-                "exposure_score": round(exposure_score, 2),
-                "exposure_range": [exp_low, exp_high]
-            })
-            continue
-        
         # Eye check - returns (face_detected, eyes_open, face_size, is_frontal)
         face_detected_cv, eyes_open, face_size, is_frontal = check_eyes_open(frame_bgr, eye_cascade, face_cascade)
         
@@ -398,7 +362,6 @@ def filter_and_analyze_candidates(
                 "scene_id": cand["scene_id"],
                 "rejection_reason": "eyes_closed",
                 "blur_score": round(blur_score, 2),
-                "exposure_score": round(exposure_score, 2),
                 "face_size": face_size,
                 "min_face_size_for_eye_check": min_face_for_eye_check
             })
@@ -422,9 +385,8 @@ def filter_and_analyze_candidates(
         
         # Compute normalized scores
         blur_norm = normalize_blur(blur_score, blur_thresh)
-        exposure_norm = normalize_exposure(exposure_score, exp_low, exp_high)
         quality_score = compute_quality_score(
-            blur_norm, exposure_norm, face_present, dominant_emotion,
+            blur_norm, face_present, dominant_emotion,
             face_size, frame_width, is_frontal, config
         )
         
@@ -439,14 +401,13 @@ def filter_and_analyze_candidates(
             "is_frontal": is_frontal,
             "blur_score": round(blur_score, 2),
             "blur_region": blur_region,  # 'body' if focused on face/body, 'full' otherwise
-            "exposure_score": round(exposure_score, 2),
             "eyes_open": eyes_open,
             "emotion_analysis": emotion_result,
             "scene_analysis": scene_result
         }
         passed.append(cand_out)
     
-    print(f"  Rejected: blur={rejected_counts['blur']}, exposure={rejected_counts['exposure']}, eyes_closed={rejected_counts['eyes_closed']}")
+    print(f"  Rejected: blur={rejected_counts['blur']}, eyes_closed={rejected_counts['eyes_closed']}")
     return passed, rejected
 
 
@@ -512,6 +473,8 @@ def select_final_frames(candidates: List[Dict], config: Dict) -> List[Dict]:
     
     if not candidates:
         return []
+    if max_total <= 0:
+        return []
     
     # Group by scene_id
     by_scene = {}
@@ -544,7 +507,14 @@ def select_final_frames(candidates: List[Dict], config: Dict) -> List[Dict]:
         
         # Sort extra pool by quality
         extra_pool.sort(key=lambda x: x["quality_score"], reverse=True)
-        
+
+        # If guaranteed already exceeds cap, keep highest-quality guaranteed subset.
+        if len(guaranteed) >= max_total:
+            guaranteed.sort(key=lambda x: x["quality_score"], reverse=True)
+            selected = guaranteed[:max_total]
+            selected.sort(key=lambda x: (x["scene_id"], x["timestamp"]))
+            return selected
+
         # How many more can we add?
         remaining_slots = max_total - len(guaranteed)
         selected = guaranteed + extra_pool[:remaining_slots]

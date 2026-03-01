@@ -17,6 +17,7 @@ backend_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(backend_root))
 
 from app.db.supabase import get_supabase
+from app.services.blueprint_compiler import compile_workflow
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -31,7 +32,7 @@ TEMPLATES = [
                     "id": "img-bucket-1",
                     "type": "ImageBucket",
                     "position": {"x": 50, "y": 200},
-                    "data": {"label": "Image Bucket", "params": {"selected_file_ids": []}}
+                    "data": {"label": "Image Bucket", "selected_file_ids": []}
                 },
                 {
                     "id": "img-match-1",
@@ -58,7 +59,7 @@ TEMPLATES = [
                     "id": "e2",
                     "source": "img-match-1",
                     "target": "text-gen-1",
-                    "sourceHandle": "matches",
+                    "sourceHandle": "captions",
                     "targetHandle": "text"
                 }
             ]
@@ -73,7 +74,7 @@ TEMPLATES = [
                     "id": "audio-bucket-1",
                     "type": "AudioBucket",
                     "position": {"x": 50, "y": 200},
-                    "data": {"label": "Audio Bucket", "params": {"selected_file_ids": []}}
+                    "data": {"label": "Audio Bucket", "selected_file_ids": []}
                 },
                 {
                     "id": "transcription-1",
@@ -115,7 +116,7 @@ TEMPLATES = [
                     "id": "text-bucket-1",
                     "type": "TextBucket",
                     "position": {"x": 100, "y": 200},
-                    "data": {"label": "Text Bucket", "params": {"selected_file_ids": []}}
+                    "data": {"label": "Text Bucket", "selected_file_ids": []}
                 },
                 {
                     "id": "text-gen-1",
@@ -149,6 +150,18 @@ def seed_workflows():
         skipped_count = 0
         
         for template in TEMPLATES:
+            compilation = compile_workflow(
+                nodes=template["workflow_data"].get("nodes", []),
+                edges=template["workflow_data"].get("edges", []),
+                name=template["name"],
+            )
+            if not compilation.success:
+                print(f"  âŒ Template '{template['name']}' failed compile validation, skipping:")
+                for diag in compilation.diagnostics:
+                    print(f"      - [{diag.level}] {diag.message}")
+                skipped_count += 1
+                continue
+
             # Check if template already exists (by name and system flag)
             existing = supabase.table("workflows")\
                 .select("id")\

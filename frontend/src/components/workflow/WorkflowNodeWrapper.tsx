@@ -113,19 +113,20 @@ interface Props {
   onExecute: () => Promise<void>;
   theme?: NodeTheme;
   children?: React.ReactNode;
+  getOutputLabel?: (outputId: string, defaultLabel: string) => string;
+  getOutputDataType?: (outputId: string, defaultDataType: string) => string;
+  onOutputHandleDoubleClick?: (outputId: string) => void;
 }
 
 // Tooltip component for handles
 function HandleTooltip({
   label,
-  type,
-  dataType,
+  runtimeType,
   visible,
   position,
 }: {
   label: string;
-  type: "input" | "output";
-  dataType: string;
+  runtimeType: RuntimeType | null;
   visible: boolean;
   position: "left" | "right";
 }) {
@@ -133,44 +134,59 @@ function HandleTooltip({
 
   const positionClasses =
     position === "left" ? "right-full mr-3" : "left-full ml-3";
+  const theme = HANDLE_TOOLTIP_THEMES[runtimeType ?? "default"];
 
   return (
     <div
       className={`
         absolute ${positionClasses} top-1/2 -translate-y-1/2 z-50
-        px-3 py-2 rounded-lg
-        bg-white/90 backdrop-blur-md
-        text-slate-700 text-xs font-medium
+        px-3.5 py-1.5 rounded-full border
+        text-xs font-bold tracking-tight
         shadow-[0_4px_20px_-4px_rgba(0,0,0,0.15)]
-        border border-slate-100/50
         whitespace-nowrap
         animate-fade-in
         pointer-events-none
+        ${theme.pillClass}
+        ${theme.textClass}
       `}
     >
-      <div className="flex items-center gap-2">
-        <span
-          className={`
-          w-1.5 h-1.5 rounded-full
-          ${type === "input" ? "bg-indigo-500" : "bg-emerald-500"}
-        `}
-        />
-        <span className="font-semibold tracking-tight">{label}</span>
-        <span className="text-slate-400 text-[10px] uppercase tracking-wider font-medium">
-          {dataType}
-        </span>
-      </div>
+      <span>{label}</span>
     </div>
   );
 }
 
 // Color mapping for data types (matches edge colors)
 const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
-  Text: '#10b981', // emerald-500
+  Text: '#22c55e', // green-500
   ImageRef: '#3b82f6', // blue-500
-  AudioRef: '#8b5cf6', // violet-500
-  VideoRef: '#ec4899', // pink-500
-  JSON: '#f59e0b', // amber-500
+  AudioRef: '#a855f7', // purple-500
+  VideoRef: '#eab308', // yellow-500
+};
+
+const HANDLE_TOOLTIP_THEMES: Record<
+  RuntimeType | "default",
+  { pillClass: string; textClass: string }
+> = {
+  Text: {
+    pillClass: "bg-gradient-to-br from-green-50 to-green-100 border-green-200/90",
+    textClass: "text-green-900",
+  },
+  ImageRef: {
+    pillClass: "bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200/90",
+    textClass: "text-blue-900",
+  },
+  AudioRef: {
+    pillClass: "bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200/90",
+    textClass: "text-purple-900",
+  },
+  VideoRef: {
+    pillClass: "bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200/90",
+    textClass: "text-amber-900",
+  },
+  default: {
+    pillClass: "bg-gradient-to-br from-slate-50 to-slate-100 border-slate-200/90",
+    textClass: "text-slate-800",
+  },
 };
 
 // Map NodePort type to RuntimeType
@@ -192,7 +208,8 @@ function getRuntimeTypeFromPortType(portType: string, portId: string, nodeType: 
     'image': 'ImageRef',
     'file': 'ImageRef',
     'image[]': 'ImageRef',
-    'json': 'JSON',
+    // Legacy fallback: treat json-like ports as text to keep primitive-only handles.
+    'json': 'Text',
     'audio': 'AudioRef',
     'video': 'VideoRef',
   };
@@ -201,8 +218,7 @@ function getRuntimeTypeFromPortType(portType: string, portId: string, nodeType: 
 }
 
 // Get handle color based on data type
-function getHandleColor(portType: string, portId: string, nodeType: string, isInput: boolean): string {
-  const runtimeType = getRuntimeTypeFromPortType(portType, portId, nodeType, isInput);
+function getHandleColor(runtimeType: RuntimeType | null): string {
   if (runtimeType && DATA_TYPE_COLORS[runtimeType]) {
     return DATA_TYPE_COLORS[runtimeType];
   }
@@ -216,6 +232,9 @@ export function WorkflowNodeWrapper({
   onExecute,
   theme = nodeThemes.indigo,
   children,
+  getOutputLabel,
+  getOutputDataType,
+  onOutputHandleDoubleClick,
 }: Props) {
   const node = useWorkflowStore((state) => state.nodes[nodeId]);
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
@@ -337,7 +356,13 @@ export function WorkflowNodeWrapper({
 
       {/* Input handles with minimalist tooltips */}
       {config.inputs.map((input, idx) => {
-        const handleColor = getHandleColor(input.type, input.id, node?.type || config.type, true);
+        const runtimeType = getRuntimeTypeFromPortType(
+          input.type,
+          input.id,
+          node?.type || config.type,
+          true,
+        );
+        const handleColor = getHandleColor(runtimeType);
         return (
           <div
             key={input.id}
@@ -367,8 +392,7 @@ export function WorkflowNodeWrapper({
             />
             <HandleTooltip
               label={input.label}
-              type="input"
-              dataType={input.type}
+              runtimeType={runtimeType}
               visible={hoveredHandle === input.id}
               position="left"
             />
@@ -393,7 +417,15 @@ export function WorkflowNodeWrapper({
 
       {/* Output handles with minimalist tooltips */}
       {config.outputs.map((output, idx) => {
-        const handleColor = getHandleColor(output.type, output.id, node?.type || config.type, false);
+        const resolvedLabel = getOutputLabel ? getOutputLabel(output.id, output.label) : output.label;
+        const resolvedDataType = getOutputDataType ? getOutputDataType(output.id, output.type) : output.type;
+        const runtimeType = getRuntimeTypeFromPortType(
+          resolvedDataType,
+          output.id,
+          node?.type || config.type,
+          false,
+        );
+        const handleColor = getHandleColor(runtimeType);
         return (
           <div
             key={output.id}
@@ -405,6 +437,12 @@ export function WorkflowNodeWrapper({
             }}
             onMouseEnter={() => setHoveredHandle(output.id)}
             onMouseLeave={() => setHoveredHandle(null)}
+            onDoubleClick={(event) => {
+              if (!onOutputHandleDoubleClick) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onOutputHandleDoubleClick(output.id);
+            }}
           >
             <Handle
               type="source"
@@ -422,9 +460,8 @@ export function WorkflowNodeWrapper({
               className="hover:scale-125 hover:border-[4px]"
             />
             <HandleTooltip
-              label={output.label}
-              type="output"
-              dataType={output.type}
+              label={resolvedLabel}
+              runtimeType={runtimeType}
               visible={hoveredHandle === output.id}
               position="right"
             />

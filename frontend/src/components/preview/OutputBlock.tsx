@@ -6,7 +6,6 @@ import { CONTENT_TYPE_ICONS, refKey } from '@/lib/preview-utils'
 import { ImagePreview } from './previews/ImagePreview'
 import { VideoPreview } from './previews/VideoPreview'
 import { TextPreview } from './previews/TextPreview'
-import { JsonPreview } from './previews/JsonPreview'
 import { GripVertical, FileText } from 'lucide-react'
 
 interface OutputBlockProps {
@@ -56,7 +55,11 @@ function RichPreview({
 }) {
   switch (contentType) {
     case 'image':
-      if (nodeType === 'ImageMatching' && value && typeof value === 'object') {
+      if (
+        value &&
+        typeof value === 'object' &&
+        (nodeType === 'ImageMatching' || '_matchScore' in (value as Record<string, unknown>))
+      ) {
         return <MatchedImagePreview value={value as Record<string, unknown>} />
       }
       return <ImagePreview value={value} size="thumbnail" />
@@ -64,8 +67,6 @@ function RichPreview({
       return <VideoPreview value={value} size="thumbnail" />
     case 'text':
       return <TextPreview value={value} maxLength={80} />
-    case 'json':
-      return <JsonPreview value={value} nodeType={nodeType} />
     default:
       return <TextPreview value={value} maxLength={60} />
   }

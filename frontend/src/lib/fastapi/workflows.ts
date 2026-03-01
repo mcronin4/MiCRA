@@ -1,9 +1,9 @@
 /**
  * Workflow persistence API client.
  * 
- * NOTE: This system only saves workflow structure (nodes, edges, positions).
- * Node inputs/outputs, attachments (e.g., base64 images), and execution state
- * are NOT persisted. All workflows load with nodes in 'idle' state with empty inputs.
+ * NOTE: Persistence saves workflow structure + node configuration params
+ * (e.g., presets, selected file IDs, output keys). Runtime outputs and
+ * ephemeral manual test data are not persisted.
  * 
  * In prototype mode: all workflows are accessible to all users.
  * System workflows cannot be deleted or updated.
@@ -172,6 +172,46 @@ export interface WorkflowRunOutputs {
   blueprint_snapshot: BlueprintSnapshot | null
   payload_bytes: number
   created_at: string
+}
+
+export type CopilotPlanStatus = 'ready' | 'clarify' | 'error'
+export type CopilotPlanMode = 'create' | 'edit'
+export type CopilotBuildStepKind = 'node_intro' | 'connect' | 'backtrack'
+
+export interface CopilotBuildStep {
+  step_id: string
+  kind: CopilotBuildStepKind
+  node_id?: string | null
+  node_type?: string | null
+  source_node_id?: string | null
+  source_handle?: string | null
+  target_node_id?: string | null
+  target_handle?: string | null
+  runtime_type?: 'Text' | 'ImageRef' | 'AudioRef' | 'VideoRef' | null
+  narration?: string | null
+  is_new_node: boolean
+  order_index: number
+}
+
+export interface CopilotPlanRequest {
+  message: string
+  mode: CopilotPlanMode
+  workflow_data?: SavedWorkflowData
+  preferences?: Record<string, unknown>
+}
+
+export interface CopilotPlanResponse {
+  status: CopilotPlanStatus
+  summary: string
+  workflow_data: SavedWorkflowData | null
+  operations: Array<Record<string, unknown>>
+  diagnostics: Array<Record<string, unknown>>
+  auto_repair_attempts: number
+  touched_node_ids: string[]
+  build_steps?: CopilotBuildStep[]
+  closing_narration?: string | null
+  requires_replace_confirmation: boolean
+  clarification_question: string | null
 }
 
 // Preview drafts
@@ -477,6 +517,19 @@ export async function compileWorkflowById(
 }
 
 /**
+ * Plan a workflow patch with MicrAI copilot.
+ */
+export async function planWorkflowWithCopilot(
+  request: CopilotPlanRequest
+): Promise<CopilotPlanResponse> {
+  return apiClient.request<CopilotPlanResponse>('/v1/workflows/copilot/plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+}
+
+/**
  * Execute a raw (unsaved) workflow.
  */
 export async function executeWorkflow(
@@ -552,7 +605,8 @@ export async function executeWorkflowStreamingWithCallback(
   workflowData: SavedWorkflowData,
   onEvent: (event: StreamingExecutionEvent) => void,
   workflowId?: string | null,
-  workflowName?: string | null
+  workflowName?: string | null,
+  signal?: AbortSignal
 ): Promise<void> {
   // Get auth token
   const { data: { session } } = await supabase.auth.getSession()
@@ -570,6 +624,7 @@ export async function executeWorkflowStreamingWithCallback(
   const response = await fetch(`${baseUrl}/v1/workflows/execute/stream`, {
     method: 'POST',
     headers,
+    signal,
     body: JSON.stringify({
       nodes: workflowData.nodes,
       edges: workflowData.edges,
@@ -661,7 +716,8 @@ export async function executeWorkflowStreamingWithCallback(
  */
 export async function executeWorkflowByIdStreamingWithCallback(
   workflowId: string,
-  onEvent: (event: StreamingExecutionEvent) => void
+  onEvent: (event: StreamingExecutionEvent) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession()
   const headers: HeadersInit = {
@@ -678,6 +734,7 @@ export async function executeWorkflowByIdStreamingWithCallback(
   const response = await fetch(`${baseUrl}/v1/workflows/${workflowId}/execute/stream`, {
     method: 'POST',
     headers,
+    signal,
     body: JSON.stringify({}),
   })
 

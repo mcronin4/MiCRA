@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Node, Edge } from '@xyflow/react'
 import type { SavedWorkflowData, SavedWorkflowNode, SavedWorkflowEdge } from '@/lib/fastapi/workflows'
+import { getNodeSpec } from '@/lib/nodeRegistry'
 
 export type NodeStatus = 'idle' | 'pending' | 'running' | 'completed' | 'error'
 
@@ -43,11 +44,66 @@ const CONNECTED_INPUT_KEYS: Record<string, string[]> = {
   TextBucket: [],
 }
 
+const LEGACY_OUTPUT_NODE_TYPES = new Set(['LinkedIn', 'TikTok', 'Email'])
+
 /** Returns input keys that are params (not connected) for a node type. Exported for prepareWorkflowForExecution. */
 export function getParamKeysToPersist(nodeType: string, inputs: Record<string, unknown>): string[] {
   const connected = CONNECTED_INPUT_KEYS[nodeType] ?? []
   const connectedSet = new Set(connected)
   return Object.keys(inputs).filter((k) => !connectedSet.has(k))
+}
+
+/**
+ * Remove edges with invalid source/target handles based on the current node registry.
+ * Also removes dangling edges that reference missing nodes.
+ */
+export function sanitizeWorkflowEdgesAgainstRegistry(
+  nodes: Array<{ id: string; type?: string | null }>,
+  edges: SavedWorkflowEdge[]
+): { edges: SavedWorkflowEdge[]; removedCount: number } {
+  const nodeTypeById = new Map<string, string>()
+  for (const node of nodes) {
+    nodeTypeById.set(node.id, node.type ?? '')
+  }
+
+  const sanitized: SavedWorkflowEdge[] = []
+  let removedCount = 0
+
+  for (const edge of edges) {
+    if (!nodeTypeById.has(edge.source) || !nodeTypeById.has(edge.target)) {
+      removedCount += 1
+      continue
+    }
+
+    const sourceType = nodeTypeById.get(edge.source) ?? ''
+    const targetType = nodeTypeById.get(edge.target) ?? ''
+    const sourceSpec = getNodeSpec(sourceType)
+    const targetSpec = getNodeSpec(targetType)
+
+    const sourceHandle =
+      typeof edge.sourceHandle === 'string' ? edge.sourceHandle.trim() : ''
+    if (sourceSpec && sourceHandle) {
+      const validSourceHandles = new Set(sourceSpec.outputs.map((p) => p.key))
+      if (!validSourceHandles.has(sourceHandle)) {
+        removedCount += 1
+        continue
+      }
+    }
+
+    const targetHandle =
+      typeof edge.targetHandle === 'string' ? edge.targetHandle.trim() : ''
+    if (targetSpec && targetHandle) {
+      const validTargetHandles = new Set(targetSpec.inputs.map((p) => p.key))
+      if (!validTargetHandles.has(targetHandle)) {
+        removedCount += 1
+        continue
+      }
+    }
+
+    sanitized.push(edge)
+  }
+
+  return { edges: sanitized, removedCount }
 }
 
 interface WorkflowStore {
@@ -195,7 +251,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     })
 
     // Extract only structural properties from ReactFlow edges
-    const savedEdges: SavedWorkflowEdge[] = reactFlowEdges.map((edge) => ({
+    const rawSavedEdges: SavedWorkflowEdge[] = reactFlowEdges.map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
@@ -203,6 +259,10 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       targetHandle: edge.targetHandle ?? undefined,
       // Preserve other ReactFlow edge properties generically
     }))
+    const { edges: savedEdges } = sanitizeWorkflowEdgesAgainstRegistry(
+      savedNodes.map((n) => ({ id: n.id, type: n.type })),
+      rawSavedEdges
+    )
 
     return {
       nodes: savedNodes,
@@ -249,8 +309,13 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       return node
     })
 
+    const { edges: sanitizedSavedEdges } = sanitizeWorkflowEdgesAgainstRegistry(
+      savedData.nodes.map((n) => ({ id: n.id, type: n.type })),
+      savedData.edges
+    )
+
     // Convert saved edges to ReactFlow format
-    const reactFlowEdges: Edge[] = savedData.edges.map((savedEdge) => ({
+    const reactFlowEdges: Edge[] = sanitizedSavedEdges.map((savedEdge) => ({
       id: savedEdge.id,
       source: savedEdge.source,
       target: savedEdge.target,
@@ -279,9 +344,13 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
     // Bucket node types that need their inputs included
     const bucketNodeTypes = ['ImageBucket', 'AudioBucket', 'VideoBucket', 'TextBucket']
+    const executableNodes = reactFlowNodes.filter(
+      (node) => !LEGACY_OUTPUT_NODE_TYPES.has(node.type || '')
+    )
+    const executableNodeIds = new Set(executableNodes.map((node) => node.id))
 
     // Extract nodes with runtime inputs for bucket nodes
-    const savedNodes: SavedWorkflowNode[] = reactFlowNodes.map((node) => {
+    const savedNodes: SavedWorkflowNode[] = executableNodes.map((node) => {
       const nodeState = store.nodes[node.id]
       const isBucketNode = bucketNodeTypes.includes(node.type || '')
 
@@ -311,13 +380,22 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     })
 
     // Extract edges (same as exportWorkflowStructure)
-    const savedEdges: SavedWorkflowEdge[] = reactFlowEdges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.sourceHandle ?? undefined,
-      targetHandle: edge.targetHandle ?? undefined,
-    }))
+    const rawSavedEdges: SavedWorkflowEdge[] = reactFlowEdges
+      .filter(
+        (edge) =>
+          executableNodeIds.has(edge.source) && executableNodeIds.has(edge.target)
+      )
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle ?? undefined,
+        targetHandle: edge.targetHandle ?? undefined,
+      }))
+    const { edges: savedEdges } = sanitizeWorkflowEdgesAgainstRegistry(
+      savedNodes.map((n) => ({ id: n.id, type: n.type })),
+      rawSavedEdges
+    )
 
     return {
       nodes: savedNodes,

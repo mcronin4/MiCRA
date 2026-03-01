@@ -14,7 +14,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-RuntimeType = Literal["Text", "ImageRef", "VideoRef", "AudioRef", "JSON"]
+RuntimeType = Literal["Text", "ImageRef", "VideoRef", "AudioRef"]
 RuntimeShape = Literal["single", "list", "map"]
 
 

@@ -25,7 +25,7 @@ function port(
 
 export const NODE_REGISTRY: Record<string, NodeTypeSpec> = {
   End: {
-    inputs: [port('end-input', 'JSON')],
+    inputs: [port('end-input', 'Text')],
     outputs: [],
   },
   ImageBucket: {
@@ -61,7 +61,7 @@ export const NODE_REGISTRY: Record<string, NodeTypeSpec> = {
       port('images', 'ImageRef', 'list'),
       port('text', 'Text'),
     ],
-    outputs: [port('matches', 'JSON')],
+    outputs: [port('images', 'ImageRef', 'list')],
   },
   Transcription: {
     inputs: [
@@ -76,7 +76,7 @@ export const NODE_REGISTRY: Record<string, NodeTypeSpec> = {
   },
   QuoteExtraction: {
     inputs: [port('text', 'Text')],
-    outputs: [port('quotes', 'JSON')],
+    outputs: [port('quotes', 'Text')],
   },
 }
 

@@ -6,6 +6,8 @@ import re
 import time
 import tempfile
 import requests
+from requests import Response
+from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout as RequestsTimeout
 from typing import Optional, List, Dict, Any
 
 # Lazy import yt-dlp to reduce deployment size (only needed for URL transcription)
@@ -20,6 +22,61 @@ except ImportError:
 load_dotenv()
 FIREWORK_API_KEY = os.getenv("FIREWORK_API_KEY")
 FIREWORK_API_URL = "https://audio-turbo.api.fireworks.ai/v1/audio/transcriptions"
+FIREWORK_REQUEST_TIMEOUT_SECONDS = 300
+FIREWORK_CONNECT_TIMEOUT_SECONDS = 20
+FIREWORK_MAX_RETRIES = 4
+FIREWORK_RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+
+
+def _post_transcription_with_retries(audio_path: str) -> Response:
+    """
+    Submit transcription request with retries for transient network/server failures.
+    """
+    last_error: Exception | None = None
+
+    for attempt in range(FIREWORK_MAX_RETRIES):
+        try:
+            with open(audio_path, "rb") as f:
+                response = requests.post(
+                    FIREWORK_API_URL,
+                    headers={"Authorization": f"Bearer {FIREWORK_API_KEY}"},
+                    files={"file": f},
+                    data={
+                        "model": "whisper-v3-turbo",
+                        "temperature": "0",
+                        "vad_model": "silero",
+                        "response_format": "verbose_json",
+                        "timestamp_granularities": "segment"
+                    },
+                    timeout=(FIREWORK_CONNECT_TIMEOUT_SECONDS, FIREWORK_REQUEST_TIMEOUT_SECONDS),
+                )
+
+            if response.status_code in FIREWORK_RETRYABLE_STATUS_CODES and attempt < FIREWORK_MAX_RETRIES - 1:
+                backoff_seconds = min(8.0, 1.0 * (2 ** attempt))
+                print(
+                    f"Transient Firework API status {response.status_code}; "
+                    f"retrying in {backoff_seconds:.1f}s (attempt {attempt + 1}/{FIREWORK_MAX_RETRIES})"
+                )
+                time.sleep(backoff_seconds)
+                continue
+
+            return response
+        except (RequestsConnectionError, RequestsTimeout) as e:
+            last_error = e
+            if attempt >= FIREWORK_MAX_RETRIES - 1:
+                break
+            backoff_seconds = min(8.0, 1.0 * (2 ** attempt))
+            print(
+                f"Transient connection error during transcription request: {e}. "
+                f"Retrying in {backoff_seconds:.1f}s (attempt {attempt + 1}/{FIREWORK_MAX_RETRIES})"
+            )
+            time.sleep(backoff_seconds)
+        except Exception as e:
+            # Non-network exceptions should surface immediately.
+            last_error = e
+            break
+
+    raise RuntimeError(f"Firework transcription request failed after retries: {last_error}")
 
 
 def download_audio(url: str) -> str:
@@ -128,20 +185,7 @@ def transcribe_audio_or_video_file(audio_path: str, model: Any = None):
         print("Transcribing audio with Firework API...")
         start_time = time.time()
 
-        # Open the file and send to Firework API
-        with open(audio_path, "rb") as f:
-            response = requests.post(
-                FIREWORK_API_URL,
-                headers={"Authorization": f"Bearer {FIREWORK_API_KEY}"},
-                files={"file": f},
-                data={
-                    "model": "whisper-v3-turbo",
-                    "temperature": "0",
-                    "vad_model": "silero",
-                    "response_format": "verbose_json",
-                    "timestamp_granularities": "segment"
-                },
-            )
+        response = _post_transcription_with_retries(audio_path)
 
         end_time = time.time()
         elapsed = end_time - start_time

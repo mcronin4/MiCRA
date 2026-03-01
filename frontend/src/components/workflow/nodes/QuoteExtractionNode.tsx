@@ -6,9 +6,9 @@ import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import {
   extractQuotes,
-  QuoteItem,
+  type QuoteItem,
 } from "@/lib/fastapi/quote-extraction";
-import { NodeConfig } from "@/types/workflow";
+import type { NodeConfig } from "@/types/workflow";
 import { TextQuote, X } from "lucide-react";
 
 const config: NodeConfig = {
@@ -16,21 +16,54 @@ const config: NodeConfig = {
   label: "Quote Extraction",
   description: "Extract curated quotes from a transcript",
   inputs: [{ id: "text", label: "Text", type: "string" }],
-  outputs: [{ id: "quotes", label: "Quotes", type: "json" }],
+  outputs: [{ id: "quotes", label: "Quotes", type: "string" }],
 };
 
-type QuoteStyle = "punchy" | "insightful" | "contrarian" | "emotional";
+type QuoteStyle =
+  | "general"
+  | "punchy"
+  | "insightful"
+  | "contrarian"
+  | "emotional";
 
 const quoteStyleOptions: { value: QuoteStyle; label: string }[] = [
+  { value: "general", label: "General" },
   { value: "punchy", label: "Punchy" },
   { value: "insightful", label: "Insightful" },
   { value: "contrarian", label: "Contrarian" },
   { value: "emotional", label: "Emotional" },
 ];
+const isQuoteStyle = (value: string): value is QuoteStyle =>
+  quoteStyleOptions.some((option) => option.value === value);
 
 const clampQuoteCount = (value: number) => {
   if (Number.isNaN(value)) return 10;
   return Math.max(1, Math.min(value, 30));
+};
+
+const toQuoteItems = (value: unknown): QuoteItem[] => {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is QuoteItem => {
+        return (
+          !!item &&
+          typeof item === "object" &&
+          "text" in item &&
+          typeof (item as { text?: unknown }).text === "string"
+        );
+      })
+      .map((item) => item);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\n\s*\n/g)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => ({ text: line }));
+  }
+
+  return [];
 };
 
 export function QuoteExtractionNode({ id }: NodeProps) {
@@ -42,14 +75,12 @@ export function QuoteExtractionNode({ id }: NodeProps) {
   const initialText =
     typeof node?.inputs?.text === "string" ? node.inputs.text : "";
   const initialStyle =
-    typeof node?.inputs?.style === "string"
-      ? (node.inputs.style as QuoteStyle)
-      : "punchy";
+    typeof node?.inputs?.style === "string" && isQuoteStyle(node.inputs.style)
+      ? node.inputs.style
+      : "general";
   const initialCount =
     typeof node?.inputs?.count === "number" ? node.inputs.count : 10;
-  const initialQuotes = Array.isArray(node?.outputs?.quotes)
-    ? (node?.outputs?.quotes as QuoteItem[])
-    : [];
+  const initialQuotes = toQuoteItems(node?.outputs?.quotes);
 
   const [text, setText] = useState<string>(initialText);
   const [quoteStyle, setQuoteStyle] = useState<QuoteStyle>(initialStyle);
@@ -105,10 +136,14 @@ export function QuoteExtractionNode({ id }: NodeProps) {
       }
 
       const nextQuotes = response.quotes || [];
+      const quotesText = nextQuotes
+        .map((quote) => quote.text?.trim() ?? "")
+        .filter((quote) => quote.length > 0)
+        .join("\n\n");
       setQuotes(nextQuotes);
       updateNode(id, {
         status: "completed",
-        outputs: { quotes: nextQuotes },
+        outputs: { quotes: quotesText },
         inputs: {
           text,
           style: quoteStyle,

@@ -13,8 +13,6 @@ export function useWorkflowExecution() {
     useState<WorkflowExecutionResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [currentNode, setCurrentNode] = useState<string | null>(null)
-  // TODO: Wire up AbortController to support cancelling a running workflow.
-  // Currently unused — execute/executeById don't assign it or pass a signal.
   const abortControllerRef = useRef<AbortController | null>(null)
   // Track nodes that just completed for animation purposes
   const justCompletedRef = useRef<Set<string>>(new Set())
@@ -25,6 +23,16 @@ export function useWorkflowExecution() {
     const currentNodes = useWorkflowStore.getState().nodes
     for (const nodeId of Object.keys(currentNodes)) {
       updateNode(nodeId, { status: 'idle', outputs: null, error: undefined })
+    }
+  }, [updateNode])
+
+  const clearInFlightNodes = useCallback(() => {
+    const currentNodes = useWorkflowStore.getState().nodes
+    for (const nodeId of Object.keys(currentNodes)) {
+      const status = currentNodes[nodeId]?.status
+      if (status === 'pending' || status === 'running') {
+        updateNode(nodeId, { status: 'idle', error: undefined })
+      }
     }
   }, [updateNode])
 
@@ -123,6 +131,8 @@ export function useWorkflowExecution() {
       resetNodes()
 
       console.log('[Execute] Starting workflow execution...')
+      const controller = new AbortController()
+      abortControllerRef.current = controller
 
       try {
         // Use callback-based streaming for immediate event processing
@@ -130,24 +140,38 @@ export function useWorkflowExecution() {
           workflowData,
           handleStreamEvent,
           workflowId,
-          workflowName
+          workflowName,
+          controller.signal
         )
 
         console.log('[Execute] Stream complete, final result:', finalResultRef.current)
         // Return the final result captured by the event handler
         return finalResultRef.current
       } catch (err) {
+        if (
+          controller.signal.aborted ||
+          (err instanceof Error && err.name === 'AbortError')
+        ) {
+          clearInFlightNodes()
+          setCurrentNode(null)
+          setError(null)
+          return null
+        }
+
         const msg = err instanceof Error ? err.message : String(err)
         console.error('[Execute] Error:', msg)
         setError(msg)
         resetNodes()
         throw err
       } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null
+        }
         setIsExecuting(false)
         setCurrentNode(null)
       }
     },
-    [resetNodes, handleStreamEvent]
+    [resetNodes, handleStreamEvent, clearInFlightNodes]
   )
 
   const executeById = useCallback(
@@ -160,29 +184,52 @@ export function useWorkflowExecution() {
       resetNodes()
 
       console.log('[ExecuteById] Starting workflow execution...')
+      const controller = new AbortController()
+      abortControllerRef.current = controller
 
       try {
         // Use callback-based streaming for immediate event processing
         await executeWorkflowByIdStreamingWithCallback(
           workflowId,
-          handleStreamEvent
+          handleStreamEvent,
+          controller.signal
         )
 
         console.log('[ExecuteById] Stream complete, final result:', finalResultRef.current)
         return finalResultRef.current
       } catch (err) {
+        if (
+          controller.signal.aborted ||
+          (err instanceof Error && err.name === 'AbortError')
+        ) {
+          clearInFlightNodes()
+          setCurrentNode(null)
+          setError(null)
+          return null
+        }
+
         const msg = err instanceof Error ? err.message : String(err)
         console.error('[ExecuteById] Error:', msg)
         setError(msg)
         resetNodes()
         throw err
       } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null
+        }
         setIsExecuting(false)
         setCurrentNode(null)
       }
     },
-    [resetNodes, handleStreamEvent]
+    [resetNodes, handleStreamEvent, clearInFlightNodes]
   )
+
+  const cancelExecution = useCallback(() => {
+    if (!abortControllerRef.current) return
+    abortControllerRef.current.abort()
+    abortControllerRef.current = null
+    setCurrentNode(null)
+  }, [])
 
   const reset = useCallback(() => {
     if (abortControllerRef.current) {
@@ -203,6 +250,7 @@ export function useWorkflowExecution() {
     executionResult,
     error,
     currentNode,
+    cancelExecution,
     reset,
   }
 }

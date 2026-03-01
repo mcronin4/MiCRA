@@ -3,7 +3,7 @@
  * Used for display/inspection of compiled workflows.
  */
 
-export type RuntimeType = 'Text' | 'ImageRef' | 'VideoRef' | 'AudioRef' | 'JSON'
+export type RuntimeType = 'Text' | 'ImageRef' | 'VideoRef' | 'AudioRef'
 export type RuntimeShape = 'single' | 'list' | 'map'
 
 export interface PortSchema {

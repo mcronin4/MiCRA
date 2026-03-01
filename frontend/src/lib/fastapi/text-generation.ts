@@ -40,6 +40,11 @@ export interface GenerateTextRequest {
   input_text: string
   preset_id: string
   source_texts?: Array<{ title?: string; content: string }>
+  tone_guidance_override?: string
+  max_length_override?: number
+  structure_template_override?: string
+  prompt_template_override?: string
+  output_format_override?: Record<string, unknown>
 }
 
 export interface GenerateTextResponse {
