@@ -27,12 +27,12 @@ export function ManualInputToggle({
     <button
       onClick={handleToggle}
       className={`
-        absolute top-4 right-19 z-20
         flex items-center gap-1.5
         px-2.5 py-1.5 rounded-lg
         transition-all duration-200
         nodrag
         border-2
+        shrink-0
         ${
           isEnabled
             ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-lg ring-2 ring-amber-200"

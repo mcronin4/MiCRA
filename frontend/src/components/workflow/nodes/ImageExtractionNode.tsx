@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { NodeProps } from "@xyflow/react";
 import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import {
-  extractKeyframesFromFile,
+  extractKeyframesFromFileId,
   type ExtractedImage,
   type FrameSelectionMode,
 } from "@/lib/fastapi/image-extraction";
+import { listFiles, type FileListItem } from "@/lib/fastapi/files";
 import type { NodeConfig } from "@/types/workflow";
-import { Upload, X, Image as ImageIcon } from "lucide-react";
+import { X, Image as ImageIcon, Video, Loader2 } from "lucide-react";
 import Image from "next/image";
 
 const clampFrameCount = (value: number) => {
@@ -44,8 +45,6 @@ export function ImageExtractionNode({ id }: NodeProps) {
       : typeof node?.inputs?.frame_count === "number"
         ? clampFrameCount(node.inputs.frame_count)
         : 10;
-  const initialFileName =
-    typeof node?.inputs?.file_name === "string" ? node.inputs.file_name : "";
   const initialImages =
     node?.outputs && Array.isArray(node.outputs.images)
       ? (node.outputs.images as ExtractedImage[])
@@ -54,16 +53,19 @@ export function ImageExtractionNode({ id }: NodeProps) {
   const [selectionMode, setSelectionMode] =
     useState<FrameSelectionMode>(initialSelectionMode);
   const [maxFrames, setMaxFrames] = useState<number>(initialMaxFrames);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [fileName, setFileName] = useState<string>(initialFileName);
-  const [isDragging, setIsDragging] = useState(false);
   const [selectedImages, setSelectedImages] =
     useState<ExtractedImage[]>(initialImages);
   const [metadata, setMetadata] = useState<Record<string, unknown>[]>([]);
   const [stats, setStats] = useState<Record<string, number> | null>(null);
   const [showGallery, setShowGallery] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Video picker state (self-contained, no upload box)
+  const [pickerFiles, setPickerFiles] = useState<FileListItem[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<FileListItem | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [isLoadingPicker, setIsLoadingPicker] = useState(false);
+  const [pickerLoaded, setPickerLoaded] = useState(false);
+
   const isRunning = node?.status === "running";
   const scoredImages = useMemo(() => {
     const scoreLookup = new Map<string, number>();
@@ -96,7 +98,6 @@ export function ImageExtractionNode({ id }: NodeProps) {
       });
   }, [metadata, selectedImages]);
 
-  const topImages = scoredImages.slice(0, 3);
   const hasResults = scoredImages.length > 0;
 
   const formatScore = (score: number | null) => {
@@ -108,20 +109,18 @@ export function ImageExtractionNode({ id }: NodeProps) {
     if (!node) return;
     const normalizedMaxFrames = clampFrameCount(maxFrames);
     if (
-      node.inputs.file_name !== fileName ||
       node.inputs.selection_mode !== selectionMode ||
       node.inputs.max_frames !== normalizedMaxFrames
     ) {
       updateNode(id, {
         inputs: {
           ...node.inputs,
-          file_name: fileName,
           selection_mode: selectionMode,
           max_frames: normalizedMaxFrames,
         },
       });
     }
-  }, [fileName, selectionMode, maxFrames, id, updateNode, node]);
+  }, [selectionMode, maxFrames, id, updateNode, node]);
 
   // Clear outputs when test mode is disabled
   useEffect(() => {
@@ -129,54 +128,31 @@ export function ImageExtractionNode({ id }: NodeProps) {
       setSelectedImages([]);
       setMetadata([]);
       setStats(null);
+      setSelectedVideo(null);
+      setShowPicker(false);
+      setPickerLoaded(false);
       updateNode(id, { outputs: null, status: "idle" });
     }
   }, [node?.manualInputEnabled, id, updateNode]);
 
-  const handleSelectFile = (file: File) => {
-    setSelectedFile(file);
-    setFileName(file.name);
-  };
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    handleSelectFile(e.target.files[0]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+  const openPicker = async () => {
+    setShowPicker(true);
+    if (!pickerLoaded) {
+      setIsLoadingPicker(true);
+      try {
+        const response = await listFiles({
+          type: "video",
+          status: "uploaded",
+          limit: 100,
+        });
+        setPickerFiles(response.items);
+        setPickerLoaded(true);
+      } catch {
+        // Empty picker is a valid state
+      } finally {
+        setIsLoadingPicker(false);
+      }
     }
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isRunning) {
-      setIsDragging(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.currentTarget === e.target) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    if (isRunning) return;
-    const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile) {
-      handleSelectFile(droppedFile);
-    }
-  };
-
-  const clearFile = () => {
-    setSelectedFile(null);
-    setFileName("");
   };
 
   const pushImagesToBucket = (images: ExtractedImage[]) => {
@@ -198,20 +174,15 @@ export function ImageExtractionNode({ id }: NodeProps) {
     setStats(null);
 
     try {
+      if (!selectedVideo) {
+        throw new Error("Please select a video");
+      }
+
       const manualMaxFrames =
         selectionMode === "manual" ? clampFrameCount(maxFrames) : undefined;
 
-      if (!selectedFile) {
-        throw new Error("Please upload an MP4 file");
-      }
-      const isMp4 =
-        selectedFile.type === "video/mp4" ||
-        selectedFile.name.toLowerCase().endsWith(".mp4");
-      if (!isMp4) {
-        throw new Error("Please upload an MP4 file");
-      }
-      const response = await extractKeyframesFromFile(
-        selectedFile,
+      const response = await extractKeyframesFromFileId(
+        selectedVideo.id,
         selectionMode,
         manualMaxFrames,
       );
@@ -227,7 +198,6 @@ export function ImageExtractionNode({ id }: NodeProps) {
         status: "completed",
         outputs: { images: nextImages },
         inputs: {
-          file_name: selectedFile.name,
           selection_mode: selectionMode,
           max_frames: manualMaxFrames ?? clampFrameCount(maxFrames),
         },
@@ -285,65 +255,100 @@ export function ImageExtractionNode({ id }: NodeProps) {
           </div>
         </div>
 
+        {/* Video picker - self-contained, lazy-loaded */}
         {showManualInputs && (
           <div className="space-y-2">
             <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-              Video File
+              Video
             </label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/mp4,video/*"
-              onChange={handleFileInput}
-              className="hidden"
-            />
-            <div
-              onClick={() => !isRunning && fileInputRef.current?.click()}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              className={`
-                nodrag relative w-full border border-dashed rounded-xl transition-all duration-200 cursor-pointer
-                ${
-                  isDragging
-                    ? "border-sky-400 bg-sky-50 ring-2 ring-sky-200"
-                    : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-slate-100"
-                }
-                ${isRunning ? "opacity-60 cursor-not-allowed" : ""}
-              `}
-            >
-              <div className="flex flex-col items-center justify-center text-center py-4">
-                <div
-                  className={`p-2.5 rounded-lg mb-2 ${
-                    isDragging
-                      ? "bg-sky-100 text-sky-600"
-                      : "bg-white text-slate-400 shadow-sm border border-slate-100"
-                  }`}
+
+            {!showPicker && selectedVideo && (
+              <div className="flex items-center gap-2 p-2.5 border border-sky-300 rounded-xl bg-sky-50">
+                <Video size={16} className="text-sky-600 shrink-0" />
+                <span className="text-sm font-medium text-slate-700 truncate flex-1">
+                  {selectedVideo.name}
+                </span>
+                <button
+                  onClick={() => { setSelectedVideo(null); }}
+                  className="nodrag p-1 rounded-md hover:bg-sky-100 transition-colors"
                 >
-                  <Upload size={18} strokeWidth={2} />
-                </div>
-                <p
-                  className={`text-sm font-medium ${
-                    isDragging ? "text-sky-700" : "text-slate-700"
-                  }`}
-                >
-                  {fileName ? fileName : "Drag & drop MP4 here"}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  or click to browse (MP4 only)
-                </p>
+                  <X size={14} className="text-slate-400 hover:text-red-500" />
+                </button>
               </div>
-            </div>
-            {fileName && (
-              <button
-                type="button"
-                onClick={clearFile}
-                disabled={isRunning}
-                className="nodrag inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-500 transition-colors"
-              >
-                <X size={12} />
-                Remove file
-              </button>
+            )}
+
+            <button
+              onClick={() => (showPicker ? setShowPicker(false) : openPicker())}
+              disabled={isRunning}
+              className="nodrag w-full px-3 py-2 text-sm bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium transition-all hover:shadow-sm active:scale-[0.98] disabled:opacity-60"
+            >
+              {showPicker
+                ? "Done"
+                : selectedVideo
+                  ? "Change Video"
+                  : "Select Video"}
+            </button>
+
+            {showPicker && (
+              <>
+                {isLoadingPicker ? (
+                  <div className="flex justify-center py-6">
+                    <Loader2
+                      size={20}
+                      className="animate-spin text-slate-400"
+                    />
+                  </div>
+                ) : pickerFiles.length === 0 ? (
+                  <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
+                    <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
+                      <Video size={20} className="text-slate-400" />
+                    </div>
+                    <p className="text-sm font-medium text-slate-600">
+                      No videos found
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Upload videos via the sidebar to get started
+                    </p>
+                  </div>
+                ) : (
+                  <div className="nodrag space-y-1 p-2 border border-slate-200 rounded-xl bg-slate-50 max-h-48 overflow-y-auto">
+                    {pickerFiles.map((file) => {
+                      const isSelected = selectedVideo?.id === file.id;
+                      return (
+                        <button
+                          key={file.id}
+                          onClick={() => {
+                            setSelectedVideo(isSelected ? null : file);
+                          }}
+                          className={`
+                            w-full px-3 py-2 text-left rounded-lg transition-all flex items-center gap-2
+                            ${
+                              isSelected
+                                ? "bg-sky-100 border-2 border-sky-400"
+                                : "bg-white hover:bg-slate-100 border-2 border-transparent"
+                            }
+                          `}
+                        >
+                          <Video
+                            size={16}
+                            className={
+                              isSelected ? "text-sky-600" : "text-slate-400"
+                            }
+                          />
+                          <span className="flex-1 text-xs font-medium text-slate-700 truncate">
+                            {file.name}
+                          </span>
+                          {isSelected && (
+                            <div className="w-4 h-4 bg-sky-500 rounded-full flex items-center justify-center">
+                              <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -369,33 +374,30 @@ export function ImageExtractionNode({ id }: NodeProps) {
         )}
 
         {hasResults ? (
-          <div
-            className="nodrag border border-slate-200 rounded-xl bg-white p-3 cursor-pointer transition-shadow hover:shadow-md"
-            onClick={() => setShowGallery(true)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                setShowGallery(true);
-              }
-            }}
-            aria-label="Open selected frames gallery"
-          >
-            <div className="flex items-center justify-between text-[11px] text-slate-500 mb-2">
+          <div className="border border-slate-200 rounded-xl bg-white p-3 space-y-2">
+            <div className="flex items-center justify-between text-[11px] text-slate-500">
               <span className="font-semibold uppercase tracking-wide">
                 Selected frames
               </span>
-              <span>{scoredImages.length} total</span>
+              <div className="flex items-center gap-2">
+                <span>{scoredImages.length} total</span>
+                <button
+                  onClick={() => setShowGallery(true)}
+                  className="nodrag text-sky-600 hover:text-sky-700 font-medium transition-colors"
+                >
+                  Expand
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              {topImages.map((img, index) => (
-                <div key={`${img.id}-${index}`} className="relative w-20 shrink-0">
+            <div className="nodrag nowheel grid grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
+              {scoredImages.map((img, index) => (
+                <div key={`${img.id}-${index}`} className="relative">
                   <Image
                     src={img.base64}
                     alt={img.filename}
                     width={96}
                     height={64}
-                    className="w-20 h-14 object-cover rounded-lg border border-slate-200"
+                    className="w-full aspect-video object-cover rounded-lg border border-slate-200"
                     unoptimized
                   />
                   <div className="absolute top-1 right-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">
@@ -403,14 +405,6 @@ export function ImageExtractionNode({ id }: NodeProps) {
                   </div>
                 </div>
               ))}
-              {topImages.length === 0 && (
-                <div className="text-xs text-slate-400">
-                  No images selected yet.
-                </div>
-              )}
-            </div>
-            <div className="mt-2 text-[10px] text-slate-400">
-              Click to expand and download any frame
             </div>
           </div>
         ) : (
@@ -431,12 +425,12 @@ export function ImageExtractionNode({ id }: NodeProps) {
         {node?.manualInputEnabled && (
           <button
             onClick={handleExecute}
-            disabled={node?.status === "running" || !selectedFile}
+            disabled={node?.status === "running" || !selectedVideo}
             className={`
               nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
               transition-all duration-200
               ${
-                node?.status === "running" || !selectedFile
+                node?.status === "running" || !selectedVideo
                   ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                   : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
               }
@@ -478,7 +472,7 @@ export function ImageExtractionNode({ id }: NodeProps) {
                 <X size={16} />
               </button>
             </div>
-            <div className="p-5 overflow-y-auto max-h-[calc(92vh-70px)]">
+            <div className="nowheel p-5 overflow-y-auto max-h-[calc(92vh-70px)]">
               <div
                 className="grid gap-4"
                 style={{

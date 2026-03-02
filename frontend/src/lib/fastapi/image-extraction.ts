@@ -36,3 +36,19 @@ export async function extractKeyframesFromFile(
     body: formData,
   })
 }
+
+export async function extractKeyframesFromFileId(
+  fileId: string,
+  selectionMode: FrameSelectionMode = 'auto',
+  maxFrames?: number,
+): Promise<ImageExtractionResponse> {
+  return apiClient.request<ImageExtractionResponse>('/v1/image-extraction/from-file', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      file_id: fileId,
+      selection_mode: selectionMode,
+      max_frames: maxFrames,
+    }),
+  })
+}

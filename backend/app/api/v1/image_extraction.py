@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -7,6 +7,10 @@ import base64
 import os
 import asyncio
 import traceback
+
+from ...auth.dependencies import User, get_current_user
+from ...db.supabase import get_supabase
+from ...storage.r2 import get_r2, R2_BUCKET
 
 # NOTE: image_extraction depends on optional heavy deps (opencv-python-headless, etc).
 # To avoid crashing server startup when those aren't installed, we import lazily
@@ -131,6 +135,60 @@ async def extract_keyframes_from_file(
         return _build_response(result)
     except Exception as exc:
         print(f"Image extraction error: {exc}")
+        print(traceback.format_exc())
+        return ImageExtractionResponse(success=False, error=str(exc))
+    finally:
+        if video_path and os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+            except Exception:
+                pass
+
+
+class ExtractFromFileIdRequest(BaseModel):
+    file_id: str
+    selection_mode: str = "auto"
+    max_frames: Optional[int] = None
+
+
+@router.post("/from-file", response_model=ImageExtractionResponse)
+async def extract_keyframes_from_file_id(
+    request: ExtractFromFileIdRequest,
+    user: User = Depends(get_current_user),
+):
+    """Extract keyframes from a video already stored in R2, referenced by file ID."""
+    supabase = get_supabase().client
+    r2 = get_r2()
+
+    result = supabase.table("files").select("*").eq("id", request.file_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record = result.data[0]
+    if file_record.get("user_id") != user.sub:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if file_record["status"] != "uploaded":
+        raise HTTPException(status_code=400, detail="File not uploaded yet")
+
+    r2_path = file_record["path"]
+    ext = os.path.splitext(file_record.get("name", ""))[1] or ".mp4"
+    video_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            video_path = tmp.name
+
+        await asyncio.to_thread(
+            r2.client.download_file, R2_BUCKET, r2_path, video_path
+        )
+
+        max_frames = request.max_frames if request.selection_mode == "manual" else None
+        pipeline_result = await _run_pipeline(video_path, max_frames=max_frames)
+        return _build_response(pipeline_result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Image extraction error (from-file): {exc}")
         print(traceback.format_exc())
         return ImageExtractionResponse(success=False, error=str(exc))
     finally:
