@@ -1,11 +1,9 @@
 import os
 
-import yt_dlp
-
-from scenedetect import open_video, SceneManager, ContentDetector
-
 
 def download_youtube_video(url, output_dir="mp4_downloads") -> str:
+    import yt_dlp
+
     os.makedirs(output_dir, exist_ok=True)
 
     ydl_opts = {
@@ -29,6 +27,8 @@ def detect_scenes(video_path, threshold=30.0, show_progress=True):
     Detect scenes using PySceneDetect's modern API.
     Returns list of (start_timecode, end_timecode) tuples.
     """
+    from scenedetect import open_video, SceneManager, ContentDetector
+
     print(f"🎬 Detecting scenes in: {video_path}")
     
     video = open_video(video_path)

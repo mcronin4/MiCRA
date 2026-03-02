@@ -63,16 +63,12 @@ def _get_output_dir() -> Path:
 
 def _build_pipeline_config(
     *,
-    selection_mode: str = "auto",
     max_frames: Optional[int] = None,
 ) -> Dict[str, Any]:
     output_dir = _get_output_dir()
     config: Dict[str, Any] = {"output_dir": str(output_dir)}
 
-    mode = str(selection_mode or "auto").strip().lower()
-    if mode == "manual":
-        if max_frames is None:
-            raise ValueError("max_frames is required when selection_mode is 'manual'")
+    if max_frames is not None:
         max_frames = max(1, min(int(max_frames), 200))
         config["max_total_frames"] = max_frames
 
@@ -82,11 +78,9 @@ def _build_pipeline_config(
 async def _run_pipeline(
     video_path: str,
     *,
-    selection_mode: str = "auto",
     max_frames: Optional[int] = None,
 ) -> Dict[str, Any]:
     config = _build_pipeline_config(
-        selection_mode=selection_mode,
         max_frames=max_frames,
     )
     from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
@@ -142,7 +136,6 @@ async def extract_keyframes_from_url(request: ImageExtractionRequest):
         video_path = download_youtube_video(request.url.strip(), output_dir=download_dir)
         result = await _run_pipeline(
             video_path,
-            selection_mode=request.selection_mode,
             max_frames=request.max_frames,
         )
         return _build_response(result)

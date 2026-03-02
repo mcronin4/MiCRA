@@ -1047,11 +1047,11 @@ async def _exec_image_extraction(params: dict, inputs: dict) -> dict[str, Any]:
         else params.get("frame_count")
     )
     max_frames: int | None = None
-    if selection_mode == "manual":
+    if max_frames_raw is not None:
         try:
             max_frames = max(1, min(int(max_frames_raw), 200))
-        except Exception as exc:
-            raise ValueError("ImageExtraction manual mode requires a valid max_frames value") from exc
+        except Exception:
+            pass
 
     from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
 

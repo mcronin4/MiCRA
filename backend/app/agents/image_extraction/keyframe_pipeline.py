@@ -12,13 +12,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import imagehash
 from PIL import Image
 
-# Import from sibling modules
 from .scene_detection import detect_scenes
-from .analyze_frame import (
-    load_places_model,
-    classify_scene,
-    analyze_emotion
-)
 
 #config
 
@@ -29,16 +23,14 @@ DEFAULT_CONFIG = {
     "max_extra": 3,
     
     # Quality thresholds
-    "blur_threshold": 30.0,  #laplacian variance
-    
-     "min_face_size_for_eye_check": 150,  #inimum face width (pixels) to apply eyes-closed rejection
+    "blur_threshold": 30.0,
+    "min_face_size_for_eye_check": 150,
     
     # Scoring weights
-    "face_bias_weight": 0.2,
-    "blur_weight": 0.3,
-    "happy_emotion_weight": 0.15,
-    "face_closeup_weight": 0.1,   # Boost for larger/closer faces
-    "frontal_face_weight": 0.2,   # Boost for faces looking at camera
+    "blur_weight": 0.35,
+    "face_bias_weight": 0.25,
+    "face_closeup_weight": 0.2,
+    "frontal_face_weight": 0.2,
     
     # Selection
     "per_scene_target": 2,
@@ -49,9 +41,6 @@ DEFAULT_CONFIG = {
     
     # Scene detection
     "scene_threshold": 30.0,
-    
-    # Analysis
-    "topk_scenes": 5,
 }
 
 
@@ -265,31 +254,22 @@ def normalize_face_size(face_size: int, frame_width: int) -> float:
 def compute_quality_score(
     blur_norm: float,
     face_present: int,
-    dominant_emotion: Optional[str],
     face_size: int,
     frame_width: int,
     is_frontal: bool,
     config: Dict
 ) -> float:
-    #deterministic quality score combining blur, face bias, emotion, and face positioning
-    w_blur = config.get("blur_weight", 0.3)
-    w_face = config.get("face_bias_weight", 0.2)
-    w_happy = config.get("happy_emotion_weight", 0.15)
-    w_closeup = config.get("face_closeup_weight", 0.25)
-    w_frontal = config.get("frontal_face_weight", 0.20)
+    w_blur = config.get("blur_weight", 0.35)
+    w_face = config.get("face_bias_weight", 0.25)
+    w_closeup = config.get("face_closeup_weight", 0.2)
+    w_frontal = config.get("frontal_face_weight", 0.2)
     
     score = w_blur * blur_norm + w_face * face_present
     
-    # Boost score if dominant emotion is happy
-    if dominant_emotion and dominant_emotion.lower() == "happy":
-        score += w_happy
-    
-    # Boost for close-up faces (larger faces score higher)
     if face_present and face_size > 0:
         closeup_norm = normalize_face_size(face_size, frame_width)
         score += w_closeup * closeup_norm
     
-    # Boost for frontal faces (looking at camera)
     if face_present and is_frontal:
         score += w_frontal
     
@@ -299,17 +279,10 @@ def compute_quality_score(
 def filter_and_analyze_candidates(
     candidates: List[Dict],
     config: Dict,
-    places_model=None,
-    places_classes=None,
-    places_transform=None,
-    analyzer=None
 ) -> List[Dict]:
-    #apply quality filters and run analysis on each candidate, returns (passed, rejected) tuples
     blur_thresh = config.get("blur_threshold", 100.0)
-    topk = config.get("topk_scenes", 5)
     min_face_for_eye_check = config.get("min_face_size_for_eye_check", 150)
     
-    # Initialize OpenCV Haar cascades for eye detection
     face_cascade = None
     eye_cascade = None
     try:
@@ -335,7 +308,6 @@ def filter_and_analyze_candidates(
         
         frame_height, frame_width = frame_bgr.shape[:2]
         
-        # Blur check (focused on face/body region if detected)
         blur_score, blur_region = compute_blur_score(frame_bgr, face_cascade, focus_on_subject=True)
         if blur_score < blur_thresh:
             rejected_counts["blur"] += 1
@@ -350,10 +322,8 @@ def filter_and_analyze_candidates(
             })
             continue
         
-        # Eye check - returns (face_detected, eyes_open, face_size, is_frontal)
         face_detected_cv, eyes_open, face_size, is_frontal = check_eyes_open(frame_bgr, eye_cascade, face_cascade)
         
-        # Only reject for closed eyes if the face is large enough (close-up)
         if face_detected_cv and not eyes_open and face_size >= min_face_for_eye_check:
             rejected_counts["eyes_closed"] += 1
             rejected.append({
@@ -367,30 +337,14 @@ def filter_and_analyze_candidates(
             })
             continue
         
-        # Run emotion analysis (use injected analyzer or default)
-        if analyzer:
-            emotion_result = analyzer.analyze_emotion(frame_bgr)
-        else:
-            emotion_result = analyze_emotion(frame_bgr)
-        face_present = 1 if emotion_result.get("face_detected", False) else 0
-        dominant_emotion = emotion_result.get("dominant_emotion")
+        face_present = 1 if face_detected_cv else 0
         
-        # Run scene classification (use injected analyzer or default)
-        if analyzer:
-            scene_result = analyzer.classify_scene(frame_bgr, topk=topk)
-        else:
-            scene_result = classify_scene(
-                frame_bgr, places_model, places_classes, places_transform, topk=topk
-            )
-        
-        # Compute normalized scores
         blur_norm = normalize_blur(blur_score, blur_thresh)
         quality_score = compute_quality_score(
-            blur_norm, face_present, dominant_emotion,
+            blur_norm, face_present,
             face_size, frame_width, is_frontal, config
         )
         
-        # Build metadata
         cand_out = {
             "frame_path": cand["frame_path"],
             "timestamp": cand["timestamp"],
@@ -400,10 +354,8 @@ def filter_and_analyze_candidates(
             "face_size": face_size,
             "is_frontal": is_frontal,
             "blur_score": round(blur_score, 2),
-            "blur_region": blur_region,  # 'body' if focused on face/body, 'full' otherwise
+            "blur_region": blur_region,
             "eyes_open": eyes_open,
-            "emotion_analysis": emotion_result,
-            "scene_analysis": scene_result
         }
         passed.append(cand_out)
     
@@ -538,9 +490,7 @@ def sanitize_filename(name: str) -> str:
     return name or "video"
 
 
-def run_keyframe_pipeline(video_path: str, config: Optional[Dict] = None, analyzer=None) -> Dict[str, Any]:
-    #main entry point for keyframe extraction pipeline, returns dict with selected_frames, output paths, and stats
-    # Merge config with defaults
+def run_keyframe_pipeline(video_path: str, config: Optional[Dict] = None) -> Dict[str, Any]:
     cfg = {**DEFAULT_CONFIG, **(config or {})}
     
     video_path = os.path.abspath(video_path)
@@ -558,34 +508,20 @@ def run_keyframe_pipeline(video_path: str, config: Optional[Dict] = None, analyz
     print(f"Output: {output_dir}")
     print(f"{'='*60}\n")
     
-    # Phase 0: Scene detection
     print("[Phase 0] Detecting scenes...")
     scenes = run_scene_detection(video_path, cfg["scene_threshold"])
     print(f"  Found {len(scenes)} scene(s)\n")
     
-    # Phase 1: Candidate sampling
     print("[Phase 1] Generating candidate timestamps...")
     candidates = generate_all_candidates(scenes, cfg)
     print(f"  Generated {len(candidates)} candidate timestamps\n")
     
-    # Phase 2: Frame extraction
     print("[Phase 2] Extracting frames...")
     candidates = extract_candidates(video_path, candidates, output_dir)
     print(f"  Extracted {len(candidates)} frames\n")
     
-    # Load Places365 model once (skip if using injected analyzer)
-    places_model, places_classes, places_transform = None, None, None
-    if analyzer is None:
-        print("[Phase 3] Loading analysis models...")
-        places_model, places_classes, places_transform = load_places_model()
-    else:
-        print("[Phase 3] Using injected analyzer...")
-    
-    # Phase 3: Quality filtering + analysis
-    print("[Phase 3] Filtering and analyzing candidates...")
-    filtered, rejected = filter_and_analyze_candidates(
-        candidates, cfg, places_model, places_classes, places_transform, analyzer=analyzer
-    )
+    print("[Phase 3] Filtering candidates...")
+    filtered, rejected = filter_and_analyze_candidates(candidates, cfg)
     print(f"  {len(filtered)} candidates passed filters\n")
     
     # Phase 4: Deduplication

@@ -30,7 +30,7 @@ export async function extractKeyframesFromUrl(
     keep_video: keepVideo,
     selection_mode: selectionMode,
   }
-  if (selectionMode === 'manual' && typeof maxFrames === 'number') {
+  if (typeof maxFrames === 'number') {
     payload.max_frames = maxFrames
   }
 
@@ -51,7 +51,7 @@ export async function extractKeyframesFromFile(
   const formData = new FormData()
   formData.append('file', file)
   formData.append('selection_mode', selectionMode)
-  if (selectionMode === 'manual' && typeof maxFrames === 'number') {
+  if (typeof maxFrames === 'number') {
     formData.append('max_frames', String(maxFrames))
   }
 

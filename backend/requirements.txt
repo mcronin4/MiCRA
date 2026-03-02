@@ -48,9 +48,6 @@ fireworks-ai
 google-genai
 openai
 
-# Transcription (Faster-Whisper)
-faster-whisper
-
 # Image processing
 Pillow
 opencv-python-headless
