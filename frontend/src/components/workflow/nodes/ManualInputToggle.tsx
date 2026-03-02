@@ -27,7 +27,7 @@ export function ManualInputToggle({
     <button
       onClick={handleToggle}
       className={`
-        absolute bottom-3 right-3 z-20
+        absolute top-4 right-19 z-20
         flex items-center gap-1.5
         px-2.5 py-1.5 rounded-lg
         transition-all duration-200
@@ -36,7 +36,12 @@ export function ManualInputToggle({
         ${
           isEnabled
             ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-lg ring-2 ring-amber-200"
-            : "bg-white text-slate-500 border-slate-300 hover:border-slate-400 hover:bg-slate-50 shadow-sm"
+            : "bg-white text-slate-500 border-slate-300 shadow-sm"
+        }
+        ${
+          isEnabled
+            ? "opacity-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 translate-y-1 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto"
         }
       `}
       title={isEnabled ? "Disable test mode" : "Enable test mode (manual input)"}

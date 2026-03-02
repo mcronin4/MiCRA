@@ -116,6 +116,8 @@ interface Props {
   getOutputLabel?: (outputId: string, defaultLabel: string) => string;
   getOutputDataType?: (outputId: string, defaultDataType: string) => string;
   onOutputHandleDoubleClick?: (outputId: string) => void;
+  // Optional extra className to customize the outer wrapper (e.g., per-node width)
+  className?: string;
 }
 
 // Tooltip component for handles
@@ -235,6 +237,7 @@ export function WorkflowNodeWrapper({
   getOutputLabel,
   getOutputDataType,
   onOutputHandleDoubleClick,
+  className,
 }: Props) {
   const node = useWorkflowStore((state) => state.nodes[nodeId]);
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
@@ -301,7 +304,7 @@ export function WorkflowNodeWrapper({
         hover:-translate-y-1
         ${justCompleted ? 'animate-node-complete' : ''}
         ${isRunning ? 'animate-running-glow border-blue-300' : ''}
-      `}
+      ${className ?? ''}`}
     >
       {/* Minimalist header */}
       <div className="px-6 py-5 pb-2">
