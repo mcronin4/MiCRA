@@ -89,6 +89,11 @@ const nodeCategories = [
         label: "Image-Text Matching",
         icon: ImageIcon,
       },
+      {
+        type: "VideoGeneration" as NodeType,
+        label: "Generate Video",
+        icon: Video,
+      },
     ],
   },
 ];

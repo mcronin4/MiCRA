@@ -78,6 +78,14 @@ export const NODE_REGISTRY: Record<string, NodeTypeSpec> = {
     inputs: [port('text', 'Text')],
     outputs: [port('quotes', 'Text')],
   },
+  VideoGeneration: {
+    inputs: [
+      port('images', 'ImageRef', 'list', false),
+      port('videos', 'VideoRef', 'list', false),
+      port('text', 'Text', 'single', false),
+    ],
+    outputs: [port('generated_video', 'VideoRef')],
+  },
 }
 
 export function getNodeSpec(nodeType: string): NodeTypeSpec | undefined {
