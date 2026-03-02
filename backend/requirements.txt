@@ -51,7 +51,6 @@ openai
 # Image processing
 Pillow
 opencv-python-headless
-imagehash
 
 # Video processing
 scenedetect

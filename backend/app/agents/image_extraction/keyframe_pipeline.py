@@ -9,8 +9,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
-import imagehash
 from PIL import Image
+
+from .phash import phash as compute_phash_impl
 
 from .scene_detection import detect_scenes
 
@@ -365,11 +366,11 @@ def filter_and_analyze_candidates(
 
 #phase 4: deduplication
 
-def compute_phash(frame_path: str) -> Optional[imagehash.ImageHash]:
-    #compute perceptual hash for an image
+def compute_phash(frame_path: str):
+    """Compute perceptual hash for an image. Returns an object supporting ``h1 - h2`` for hamming distance."""
     try:
         img = Image.open(frame_path)
-        return imagehash.phash(img)
+        return compute_phash_impl(img)
     except Exception as e:
         print(f"  [WARN] Could not hash {frame_path}: {e}")
         return None
