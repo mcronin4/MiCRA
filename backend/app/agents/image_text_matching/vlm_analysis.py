@@ -203,10 +203,16 @@ class ImageTextMatcherVLM:
         """
         # Build prompt
         prompt = (
-            f"Rate how well this image matches the following text on a scale from 0 to 100, where:\n"
-            f"- 0 = completely unrelated\n"
-            f"- 50 = somewhat related (shares general topic)\n"
-            f"- 100 = perfect match (image directly illustrates the text)\n\n"
+            f"You are a strict image-text relevance judge. Rate how well this image matches "
+            f"the following text on a scale from 0 to 100.\n\n"
+            f"Calibration:\n"
+            f"- 0-20: No meaningful connection (different topic entirely)\n"
+            f"- 21-40: Same broad domain but the image does not illustrate the text\n"
+            f"- 41-60: Related topic, but the image is only tangentially relevant\n"
+            f"- 61-80: Good match — image clearly relates to the specific content described\n"
+            f"- 81-100: Excellent match — image unmistakably and specifically depicts what the text describes\n\n"
+            f"Be critical. Most images should score 30-60. Reserve 80+ only for images that "
+            f"directly and specifically illustrate the exact content described.\n\n"
             f"Text to match:\n\"\"\"{text}\"\"\"\n\n"
             f"Respond with ONLY a number from 0-100, no explanation."
         )
@@ -267,12 +273,23 @@ class ImageTextMatcherVLM:
         # Combine visual information
         visual_info = f"{caption} {ocr_text}".lower()
         text_lower = text.lower()
-        
+
+        # Filter out common words that match trivially across any domain
+        _STOPWORDS = {
+            'this', 'that', 'with', 'from', 'have', 'been', 'will', 'they',
+            'were', 'their', 'there', 'what', 'when', 'which', 'also', 'more',
+            'some', 'into', 'than', 'then', 'about', 'would', 'could', 'should',
+            'each', 'other', 'after', 'before', 'between', 'through', 'over',
+            'under', 'where', 'while', 'these', 'those', 'both', 'such',
+            'using', 'used', 'uses', 'based', 'shows', 'shown', 'image',
+            'video', 'figure', 'section', 'example', 'slide', 'screen',
+        }
+
         # PRIMARY: Content-based word overlap
-        # Extract meaningful words (4+ characters to avoid noise)
-        text_words = set(re.findall(r'\b\w{4,}\b', text_lower))
-        visual_words = set(re.findall(r'\b\w{4,}\b', visual_info))
-        
+        # Extract meaningful words (5+ characters to reduce noise, minus stopwords)
+        text_words = {w for w in re.findall(r'\b\w{5,}\b', text_lower) if w not in _STOPWORDS}
+        visual_words = {w for w in re.findall(r'\b\w{5,}\b', visual_info) if w not in _STOPWORDS}
+
         # Calculate base overlap score
         overlap = len(text_words & visual_words)
         base_score = overlap / len(text_words) if len(text_words) > 0 else 0.0

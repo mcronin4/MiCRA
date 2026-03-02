@@ -341,6 +341,8 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
           node: Node,
         ) => handlePartContextMenu(event, node.id)}
         fitView
+        fitViewOptions={{ padding: 4 }}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
         nodesDraggable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         nodesConnectable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         panOnDrag={interactionMode === "pan" ? true : [1, 2]}
