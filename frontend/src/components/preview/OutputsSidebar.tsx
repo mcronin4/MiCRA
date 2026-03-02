@@ -21,7 +21,7 @@ import {
   TextQuote,
   Flag,
 } from 'lucide-react'
-import { usePreviewData } from './PreviewDataContext'
+import { usePreviewData, type PreviewNodeState } from './PreviewDataContext'
 
 /** Input bucket node types - excluded from preview as they are seed info, not workflow outputs */
 const BUCKET_NODE_TYPES = ['ImageBucket', 'AudioBucket', 'VideoBucket', 'TextBucket']
@@ -60,21 +60,22 @@ function itemLabel(nodeType: string, outputKey: string, index: number, item: unk
     const preview = text.length > 40 ? text.slice(0, 37) + '...' : text
     return `Quote #${index + 1}: ${preview}`
   }
-  if (nodeType === 'ImageMatching' && item && typeof item === 'object') {
+
+  if (item && typeof item === 'object') {
     const obj = item as Record<string, unknown>
     const score = (obj._matchScore ?? obj.similarity_score ?? obj.combined_score ?? obj.score ?? obj.similarity) as number | undefined
     if (typeof score === 'number' && score > 0) {
       const pct = Math.round(score * 100)
       const caption = typeof obj._caption === 'string' && obj._caption
-        ? ` — ${obj._caption.length > 25 ? obj._caption.slice(0, 22) + '...' : obj._caption}`
+        ? ` - ${obj._caption.length > 25 ? obj._caption.slice(0, 22) + '...' : obj._caption}`
         : ''
-      return `Image #${index + 1} — ${pct}% match${caption}`
+      return `Image #${index + 1} - ${pct}% match${caption}`
     }
     if (obj.status === 'failed' || obj.error) {
-      return `Image #${index + 1} — failed`
+      return `Image #${index + 1} - failed`
     }
-    return `Image #${index + 1}`
   }
+
   if (nodeType === 'TextBucket') {
     if (typeof item === 'string') {
       const preview = item.length > 40 ? item.slice(0, 37) + '...' : item
@@ -82,7 +83,53 @@ function itemLabel(nodeType: string, outputKey: string, index: number, item: unk
     }
     return `Text #${index + 1}`
   }
+
   return `${outputKey} #${index + 1}`
+}
+
+function extractImageUrlFromValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    if (value.startsWith('http') || value.startsWith('data:image')) {
+      return value
+    }
+    return null
+  }
+
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    if (typeof obj.image_url === 'string') return obj.image_url
+    if (typeof obj.url === 'string') return obj.url
+    if (typeof obj.signedUrl === 'string') return obj.signedUrl
+  }
+
+  return null
+}
+
+function inferOutputContentType(
+  outputKey: string,
+  value: unknown,
+  fallback: SlotContentType
+): SlotContentType {
+  if (outputKey !== 'selected_output') return fallback
+
+  const sample = Array.isArray(value) && value.length > 0 ? value[0] : value
+
+  if (typeof sample === 'string') {
+    if (sample.startsWith('http') || sample.startsWith('data:image')) return 'image'
+    if (sample.startsWith('data:video')) return 'video'
+    return 'text'
+  }
+
+  if (sample && typeof sample === 'object') {
+    if (extractImageUrlFromValue(sample)) return 'image'
+
+    const obj = sample as Record<string, unknown>
+    if (typeof obj.text === 'string' || typeof obj.caption === 'string') {
+      return 'text'
+    }
+  }
+
+  return fallback
 }
 
 /** Enrich an ImageMatching result item with image URL from bucket if needed */
@@ -90,7 +137,7 @@ function enrichImageMatchItem(
   item: Record<string, unknown>,
   imageBucket: ImageBucketItem[],
 ): Record<string, unknown> {
-  // Workflow mode: item already has image_url — normalize score field
+  // Workflow mode: item already has image_url - normalize score field
   if (typeof item.image_url === 'string') {
     return {
       ...item,
@@ -114,24 +161,120 @@ function enrichImageMatchItem(
   return item
 }
 
+function buildImageMatchScoreMap(
+  nodes: Record<string, PreviewNodeState>,
+  imageBucket: ImageBucketItem[],
+): Map<string, { score: number; caption?: string }> {
+  const scoreMap = new Map<string, { score: number; caption?: string }>()
+
+  for (const node of Object.values(nodes)) {
+    if (node.type !== 'ImageMatching' || node.status !== 'completed' || !node.outputs) continue
+
+    const matchesRaw =
+      (Array.isArray(node.outputs.matches) && node.outputs.matches) ||
+      (Array.isArray(node.outputs.results) && node.outputs.results) ||
+      []
+
+    if (matchesRaw.length > 0) {
+      for (const raw of matchesRaw) {
+        if (!raw || typeof raw !== 'object') continue
+
+        const match = enrichImageMatchItem(raw as Record<string, unknown>, imageBucket)
+        const imageUrl = extractImageUrlFromValue(match)
+        if (!imageUrl) continue
+
+        const score = match._matchScore as number | undefined
+        if (typeof score !== 'number') continue
+
+        const current = scoreMap.get(imageUrl)
+        if (!current || score > current.score) {
+          scoreMap.set(imageUrl, {
+            score,
+            caption: typeof match._caption === 'string' ? match._caption : undefined,
+          })
+        }
+      }
+      continue
+    }
+
+    const imageList = Array.isArray(node.outputs.images) ? node.outputs.images : []
+    const scoreList = Array.isArray(node.outputs.scores) ? node.outputs.scores : []
+    const captionList = Array.isArray(node.outputs.captions) ? node.outputs.captions : []
+
+    for (let i = 0; i < imageList.length; i++) {
+      const imageUrl = extractImageUrlFromValue(imageList[i])
+      if (!imageUrl) continue
+
+      let numericScore: number | null = null
+      let caption: string | undefined
+
+      const score = scoreList[i]
+      if (typeof score === 'number') {
+        numericScore = score
+      } else if (imageList[i] && typeof imageList[i] === 'object') {
+        const imageObj = imageList[i] as Record<string, unknown>
+        const inlineScore = imageObj.similarity_score ?? imageObj.combined_score
+        if (typeof inlineScore === 'number') {
+          numericScore = inlineScore
+        }
+        if (typeof imageObj.caption === 'string') {
+          caption = imageObj.caption
+        }
+      }
+
+      if (numericScore == null) continue
+
+      const current = scoreMap.get(imageUrl)
+      if (!current || numericScore > current.score) {
+        scoreMap.set(imageUrl, {
+          score: numericScore,
+          caption:
+            caption ??
+            (typeof captionList[i] === 'string' ? captionList[i] : undefined),
+        })
+      }
+    }
+  }
+
+  return scoreMap
+}
+
+function enrichImageValueWithScore(
+  value: unknown,
+  scoreMap: Map<string, { score: number; caption?: string }>,
+): unknown {
+  const imageUrl = extractImageUrlFromValue(value)
+  if (!imageUrl) return value
+
+  const scoreMeta = scoreMap.get(imageUrl)
+  if (!scoreMeta) return value
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return {
+      ...(value as Record<string, unknown>),
+      _matchScore: scoreMeta.score,
+      _caption: scoreMeta.caption ?? '',
+    }
+  }
+
+  return {
+    image_url: imageUrl,
+    _matchScore: scoreMeta.score,
+    _caption: scoreMeta.caption ?? '',
+  }
+}
+
 export function useNodeOutputs(): NodeGroup[] {
   const { nodes } = usePreviewData()
   const imageBucket = useWorkflowStore((s) => s.imageBucket)
 
   return useMemo(() => {
     const groups: NodeGroup[] = []
-
-    // Suppress ImageExtraction when ImageMatching is completed
-    const hasCompletedImageMatching = Object.values(nodes).some(
-      (n) => n.type === 'ImageMatching' && n.status === 'completed' && n.outputs
-    )
+    const imageScoreMap = buildImageMatchScoreMap(nodes, imageBucket)
 
     for (const [nodeId, node] of Object.entries(nodes)) {
       if (BUCKET_NODE_TYPES.includes(node.type)) continue
       if (node.status !== 'completed' || !node.outputs) continue
-
-      // Skip ImageExtraction when ImageMatching consolidates its images
-      if (node.type === 'ImageExtraction' && hasCompletedImageMatching) continue
 
       const spec = NODE_REGISTRY[node.type]
       if (!spec) continue
@@ -140,9 +283,10 @@ export function useNodeOutputs(): NodeGroup[] {
       const entries: OutputEntry[] = []
 
       for (const portSpec of spec.outputs) {
-        // For ImageMatching, also check 'results' key (manual test mode stores under 'results')
         let val = node.outputs[portSpec.key]
         let actualOutputKey = portSpec.key
+
+        // Backward compatibility for manual test data.
         if (isImageMatching && (val === undefined || val === null)) {
           val = node.outputs['results']
           if (val !== undefined && val !== null) {
@@ -151,17 +295,19 @@ export function useNodeOutputs(): NodeGroup[] {
         }
         if (val === undefined || val === null) continue
 
-        // Override contentType to 'image' for ImageMatching so items can drop on media slots
-        const contentType = isImageMatching ? 'image' : runtimeTypeToSlotContentType(portSpec.runtime_type)
+        let contentType = runtimeTypeToSlotContentType(portSpec.runtime_type)
+        contentType = inferOutputContentType(actualOutputKey, val, contentType)
         const shortId = nodeId.split('-').pop() ?? nodeId
 
-        // Expand array values into individual items
         if (Array.isArray(val) && val.length > 0) {
           for (let i = 0; i < val.length; i++) {
-            // Enrich ImageMatching items with image URL and normalized score
-            const item = isImageMatching && val[i] && typeof val[i] === 'object'
+            let item: unknown = isImageMatching && val[i] && typeof val[i] === 'object'
               ? enrichImageMatchItem(val[i] as Record<string, unknown>, imageBucket)
               : val[i]
+
+            if (contentType === 'image') {
+              item = enrichImageValueWithScore(item, imageScoreMap)
+            }
 
             entries.push({
               ref: {
@@ -176,15 +322,20 @@ export function useNodeOutputs(): NodeGroup[] {
             })
           }
         } else {
+          let singleValue: unknown = val
+          if (contentType === 'image') {
+            singleValue = enrichImageValueWithScore(singleValue, imageScoreMap)
+          }
+
           entries.push({
             ref: {
               nodeId,
               nodeType: node.type,
               outputKey: actualOutputKey,
-              label: `${node.type} (${shortId}) — ${portSpec.key}`,
+              label: `${node.type} (${shortId}) - ${portSpec.key}`,
             },
             contentType,
-            value: val,
+            value: singleValue,
           })
         }
       }
@@ -274,7 +425,7 @@ export function OutputsSidebar() {
       <div className="px-4 py-3 border-b border-slate-200 bg-white">
         <h2 className="text-sm font-semibold text-slate-800">Node Outputs</h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          {showSkeleton ? 'Loading outputs…' : 'Drag to slots or click to assign'}
+          {showSkeleton ? 'Loading outputs...' : 'Drag to slots or click to assign'}
         </p>
       </div>
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4">

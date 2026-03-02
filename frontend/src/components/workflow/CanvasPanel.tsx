@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback, useMemo } from "react";
 import type { Node, Edge, OnConnect, ReactFlowInstance, NodeChange } from "@xyflow/react";
+import { Loader2 } from "lucide-react";
 import AddPartMenu from "./AddPartMenu";
 import PartContextMenu from "./PartContextMenu";
 import { LinkedInNode } from "./nodes/LinkedInNode";
@@ -24,11 +25,10 @@ import type { NodeType } from "./types";
 import type { RuntimeType } from "@/types/blueprint";
 
 const DATA_TYPE_COLORS: Record<RuntimeType, string> = {
-  Text: "#10b981", // emerald-500
+  Text: "#22c55e", // green-500
   ImageRef: "#3b82f6", // blue-500
-  AudioRef: "#8b5cf6", // violet-500
-  VideoRef: "#ec4899", // pink-500
-  JSON: "#f59e0b", // amber-500
+  AudioRef: "#a855f7", // purple-500
+  VideoRef: "#eab308", // yellow-500
 };
 
 const nodeTypes = {
@@ -101,10 +101,14 @@ interface CanvasPanelProps {
   setNodesRef: React.MutableRefObject<React.Dispatch<
     React.SetStateAction<Node[]>
   > | null>;
+  setEdgesRef: React.MutableRefObject<React.Dispatch<
+    React.SetStateAction<Edge[]>
+  > | null>;
   showSaveDialog?: boolean;
   showLoadDialog?: boolean;
   onDialogClose?: () => void;
   interactionMode?: "select" | "pan";
+  isMicrAIPlaybackActive?: boolean;
   autoLoadWorkflowId?: string | null;
   onAutoLoadComplete?: () => void;
 }
@@ -137,10 +141,12 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setIsLocked,
   setNodesRef,
+  setEdgesRef,
   showSaveDialog,
   showLoadDialog,
   onDialogClose,
   interactionMode = "select",
+  isMicrAIPlaybackActive = false,
   autoLoadWorkflowId,
   onAutoLoadComplete,
 }) => {
@@ -152,6 +158,10 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>(storeReactFlowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(storeReactFlowEdges);
+
+  // Check if we're in auto-loading state (empty store but autoLoadWorkflowId exists)
+  const hasNodes = storeReactFlowNodes.length > 0;
+  const isAutoLoading = !!autoLoadWorkflowId && !hasNodes;
 
   // Map nodes to ensure unknown types are handled gracefully
   const safeNodes = useMemo(() => {
@@ -204,6 +214,12 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
     }
   }, [setNodesRef, setNodes]);
 
+  useEffect(() => {
+    if (setEdgesRef) {
+      setEdgesRef.current = setEdges;
+    }
+  }, [setEdgesRef, setEdges]);
+
   // Sync ReactFlow nodes/edges to Zustand store so canvas state survives page navigation
   useEffect(() => {
     setReactFlowState(nodes, edges);
@@ -212,6 +228,21 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),
     [setEdges, addEdge],
+  );
+
+  // Right-click on an edge to remove it (simple confirm flow)
+  const handleEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Keep the UX minimal for now: browser confirm before deleting
+      const shouldDelete = window.confirm("Delete this connection?");
+      if (!shouldDelete) return;
+
+      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+    },
+    [setEdges],
   );
 
   const TEST_MODE_COLOR = '#94a3b8'; // slate-400 (gray)
@@ -271,6 +302,16 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       }`}
       style={interactionMode === "pan" ? { cursor: "grab" } : undefined}
     >
+      {/* Loading overlay during workflow load */}
+      {isAutoLoading && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <Loader2 size={32} className="animate-spin mx-auto mb-3 text-indigo-500" />
+            <p className="text-sm text-slate-600">Loading workflow...</p>
+          </div>
+        </div>
+      )}
+
       {/* Style to disable all node interactions in pan/view mode */}
       {interactionMode === "pan" && (
         <style>{`
@@ -291,6 +332,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onEdgeContextMenu={handleEdgeContextMenu}
         onInit={setReactFlowInstance}
         nodeTypes={nodeTypesWithFallback}
         onPaneContextMenu={handleCanvasContextMenu}
@@ -299,10 +341,10 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
           node: Node,
         ) => handlePartContextMenu(event, node.id)}
         fitView
-        nodesDraggable={!isLocked && interactionMode === "select"}
-        nodesConnectable={!isLocked && interactionMode === "select"}
+        nodesDraggable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
+        nodesConnectable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         panOnDrag={interactionMode === "pan" ? true : [1, 2]}
-        selectionOnDrag={!isLocked && interactionMode === "select"}
+        selectionOnDrag={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         zoomOnScroll={true}
         zoomOnDoubleClick={!isLocked}
         panOnScroll={true}

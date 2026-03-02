@@ -4,9 +4,54 @@ import type {
   SlotAssignment,
   PlatformTemplate,
 } from '@/types/preview'
-import { FileText, Image, Music, Video, Braces } from 'lucide-react'
+import { FileText, Image, Music, Video } from 'lucide-react'
 import type { PreviewNodeState } from '@/components/preview/PreviewDataContext'
 import type { WorkflowRunOutputs } from '@/lib/fastapi/workflows'
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export type DraftSlotContentByOutput = Record<string, Record<string, unknown>>
+
+/**
+ * Parse draft slot_content payload into a by-output map.
+ *
+ * Supported formats:
+ * - V2: { by_output: { output_key: { slotId: value } } }
+ * - V1 legacy flat: { slotId: value }
+ */
+export function parseDraftSlotContentByOutput(
+  slotContent: Record<string, unknown> | null | undefined,
+  fallbackOutputKey: string
+): DraftSlotContentByOutput {
+  if (!slotContent || !isObjectRecord(slotContent)) return {}
+
+  const byOutputRaw = slotContent.by_output
+  if (isObjectRecord(byOutputRaw)) {
+    const parsed: DraftSlotContentByOutput = {}
+    for (const [outputKey, value] of Object.entries(byOutputRaw)) {
+      if (isObjectRecord(value)) {
+        parsed[outputKey] = value
+      }
+    }
+    return parsed
+  }
+
+  // Legacy flat payload: treat as content for current output tab.
+  return { [fallbackOutputKey]: slotContent }
+}
+
+/** Build persisted draft slot_content payload (v2 by-output map). */
+export function buildDraftSlotContentPayload(
+  byOutput: DraftSlotContentByOutput,
+  defaultOutputKey?: string
+): Record<string, unknown> {
+  return {
+    by_output: byOutput,
+    ...(defaultOutputKey ? { default_output_key: defaultOutputKey } : {}),
+  }
+}
 
 /** Resolve a single NodeOutputRef to its raw value */
 export function resolveRef(
@@ -112,7 +157,6 @@ export const CONTENT_TYPE_ICONS: Record<SlotContentType, React.ElementType> = {
   image: Image,
   audio: Music,
   video: Video,
-  json: Braces,
 }
 
 /** Build a unique string key for a NodeOutputRef */

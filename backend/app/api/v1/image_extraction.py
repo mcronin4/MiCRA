@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -7,6 +7,7 @@ import base64
 import os
 import asyncio
 import traceback
+from typing import Literal
 
 # NOTE: image_extraction depends on optional heavy deps (opencv-python-headless, etc).
 # To avoid crashing server startup when those aren't installed, we import lazily
@@ -18,6 +19,8 @@ router = APIRouter(prefix="/image-extraction")
 class ImageExtractionRequest(BaseModel):
     url: str
     keep_video: Optional[bool] = False
+    selection_mode: Literal["auto", "manual"] = "auto"
+    max_frames: Optional[int] = None
 
 
 class ExtractedImage(BaseModel):
@@ -58,9 +61,34 @@ def _get_output_dir() -> Path:
     return output_dir
 
 
-async def _run_pipeline(video_path: str) -> Dict[str, Any]:
+def _build_pipeline_config(
+    *,
+    selection_mode: str = "auto",
+    max_frames: Optional[int] = None,
+) -> Dict[str, Any]:
     output_dir = _get_output_dir()
-    config = {"output_dir": str(output_dir)}
+    config: Dict[str, Any] = {"output_dir": str(output_dir)}
+
+    mode = str(selection_mode or "auto").strip().lower()
+    if mode == "manual":
+        if max_frames is None:
+            raise ValueError("max_frames is required when selection_mode is 'manual'")
+        max_frames = max(1, min(int(max_frames), 200))
+        config["max_total_frames"] = max_frames
+
+    return config
+
+
+async def _run_pipeline(
+    video_path: str,
+    *,
+    selection_mode: str = "auto",
+    max_frames: Optional[int] = None,
+) -> Dict[str, Any]:
+    config = _build_pipeline_config(
+        selection_mode=selection_mode,
+        max_frames=max_frames,
+    )
     from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
     return await asyncio.to_thread(run_keyframe_pipeline, video_path, config)
 
@@ -112,7 +140,11 @@ async def extract_keyframes_from_url(request: ImageExtractionRequest):
             )
 
         video_path = download_youtube_video(request.url.strip(), output_dir=download_dir)
-        result = await _run_pipeline(video_path)
+        result = await _run_pipeline(
+            video_path,
+            selection_mode=request.selection_mode,
+            max_frames=request.max_frames,
+        )
         return _build_response(result)
     except Exception as exc:
         print(f"Image extraction error: {exc}")
@@ -132,7 +164,11 @@ async def extract_keyframes_from_url(request: ImageExtractionRequest):
 
 
 @router.post("/upload", response_model=ImageExtractionResponse)
-async def extract_keyframes_from_file(file: UploadFile = File(...)):
+async def extract_keyframes_from_file(
+    file: UploadFile = File(...),
+    selection_mode: str = Form("auto"),
+    max_frames: Optional[int] = Form(None),
+):
     video_path = None
     try:
         if not file.filename:
@@ -143,7 +179,11 @@ async def extract_keyframes_from_file(file: UploadFile = File(...)):
             video_path = temp_file.name
             temp_file.write(await file.read())
 
-        result = await _run_pipeline(video_path)
+        result = await _run_pipeline(
+            video_path,
+            selection_mode=selection_mode,
+            max_frames=max_frames,
+        )
         return _build_response(result)
     except Exception as exc:
         print(f"Image extraction error: {exc}")

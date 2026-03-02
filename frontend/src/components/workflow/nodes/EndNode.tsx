@@ -1,16 +1,51 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { NodeProps, Handle, Position } from "@xyflow/react";
 import { Flag, Loader2, CheckCircle2, XCircle, Eye } from "lucide-react";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 
+const OUTPUT_KEY_OPTIONS = [
+  { value: "", label: "Default (Auto)" },
+  { value: "linkedin_post", label: "LinkedIn post" },
+  { value: "x_post", label: "X post" },
+  { value: "email", label: "Email" },
+] as const;
+
 export function EndNode({ id }: NodeProps) {
   const node = useWorkflowStore((state) => state.nodes[id]);
+  const addNode = useWorkflowStore((state) => state.addNode);
+  const updateNode = useWorkflowStore((state) => state.updateNode);
   const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
   const status = node?.status || "idle";
   const router = useRouter();
+  const outputKey =
+    typeof node?.inputs?.output_key === "string" ? node.inputs.output_key : "";
+
+  useEffect(() => {
+    if (node) return;
+    addNode({
+      id,
+      type: "End",
+      status: "idle",
+      inputs: {},
+      outputs: null,
+    });
+  }, [addNode, id, node]);
+
+  const handleOutputKeyChange = (nextValue: string) => {
+    if (!node) return;
+    const currentValue =
+      typeof node.inputs?.output_key === "string" ? node.inputs.output_key : "";
+    if (currentValue === nextValue) return;
+    updateNode(id, {
+      inputs: {
+        ...node.inputs,
+        output_key: nextValue,
+      },
+    });
+  };
 
   const statusConfig = {
     idle: {
@@ -56,6 +91,13 @@ export function EndNode({ id }: NodeProps) {
   }[status];
 
   const StatusIcon = statusConfig.icon;
+  const hasKnownOutputType = OUTPUT_KEY_OPTIONS.some(
+    (option) => option.value === outputKey,
+  );
+  const legacyOutputLabel =
+    !hasKnownOutputType && outputKey
+      ? `Custom (legacy): ${outputKey}`
+      : null;
 
   return (
     <div
@@ -110,6 +152,26 @@ export function EndNode({ id }: NodeProps) {
             {statusConfig.label}
           </p>
         </div>
+      </div>
+
+      <div className="px-5 pb-4">
+        <label className="block text-[10px] font-semibold uppercase tracking-wide text-rose-500 mb-1">
+          Output Type
+        </label>
+        <select
+          value={outputKey}
+          onChange={(e) => handleOutputKeyChange(e.target.value)}
+          className="nodrag w-full rounded-lg border border-rose-200 bg-white/80 px-2.5 py-1.5 text-xs font-semibold text-rose-900 focus:outline-none focus:ring-2 focus:ring-rose-300/60"
+        >
+          {OUTPUT_KEY_OPTIONS.map((option) => (
+            <option key={option.value || "__default"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+          {legacyOutputLabel && (
+            <option value={outputKey}>{legacyOutputLabel}</option>
+          )}
+        </select>
       </div>
 
       {/* View Results button when completed */}

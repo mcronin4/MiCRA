@@ -54,6 +54,11 @@ class GenerateRequest(BaseModel):
     input_text: str = Field(..., min_length=1)
     preset_id: str
     source_texts: Optional[List[Dict[str, Any]]] = None
+    tone_guidance_override: Optional[str] = None
+    max_length_override: Optional[int] = Field(None, gt=0)
+    structure_template_override: Optional[str] = None
+    prompt_template_override: Optional[str] = None
+    output_format_override: Optional[Dict[str, Any]] = None
 
 
 class GenerateResponse(BaseModel):
@@ -359,7 +364,12 @@ async def generate_text_endpoint(
         output = generate_text(
             input_text=request.input_text,
             preset_id=request.preset_id,
-            source_texts=request.source_texts
+            source_texts=request.source_texts,
+            tone_guidance_override=request.tone_guidance_override,
+            max_length_override=request.max_length_override,
+            structure_template_override=request.structure_template_override,
+            prompt_template_override=request.prompt_template_override,
+            output_format_override=request.output_format_override,
         )
         
         return GenerateResponse(

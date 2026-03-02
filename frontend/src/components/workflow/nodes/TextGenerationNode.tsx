@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { NodeProps } from "@xyflow/react";
 import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
@@ -15,13 +15,168 @@ import { Plus, Settings } from "lucide-react";
 import { PresetManager } from "./PresetManager";
 import { useNodeConnections } from "@/hooks/useNodeConnections";
 
+type PresetVariant = "summary" | "action_items" | null;
+
+interface PresetOption {
+  optionValue: string;
+  presetId: string;
+  label: string;
+  variant: PresetVariant;
+  preset: TextGenerationPreset;
+}
+
+const normalizePresetName = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const isSummaryActionComboPreset = (preset: TextGenerationPreset): boolean => {
+  const normalized = normalizePresetName(preset.name);
+  return normalized.includes("summary") && normalized.includes("action");
+};
+
+const findPreset = (
+  presets: TextGenerationPreset[],
+  predicate: (normalizedName: string) => boolean,
+): TextGenerationPreset | undefined =>
+  presets.find((preset) => predicate(normalizePresetName(preset.name)));
+
+function buildPresetOptions(presets: TextGenerationPreset[]): PresetOption[] {
+  const linkedinPreset = findPreset(
+    presets,
+    (name) => name.includes("linkedin post") || name.includes("linkedin"),
+  );
+  const xPreset = findPreset(
+    presets,
+    (name) =>
+      name === "x" ||
+      name === "x post" ||
+      name.includes("x post") ||
+      name.includes("twitter"),
+  );
+  const emailPreset = findPreset(presets, (name) => name.includes("email"));
+
+  const summaryActionComboPreset = findPreset(
+    presets,
+    (name) => name.includes("summary") && name.includes("action"),
+  );
+
+  const summaryPreset =
+    findPreset(
+      presets,
+      (name) => name.includes("summary") && !name.includes("action"),
+    ) || summaryActionComboPreset;
+
+  const actionItemsPreset =
+    findPreset(
+      presets,
+      (name) =>
+        (name.includes("action item") || name.includes("action items")) &&
+        !name.includes("summary"),
+    ) || summaryActionComboPreset;
+
+  const options: PresetOption[] = [];
+
+  if (linkedinPreset) {
+    options.push({
+      optionValue: linkedinPreset.id,
+      presetId: linkedinPreset.id,
+      label: "LinkedIn Post",
+      variant: null,
+      preset: linkedinPreset,
+    });
+  }
+
+  if (xPreset) {
+    options.push({
+      optionValue: xPreset.id,
+      presetId: xPreset.id,
+      label: "X Post",
+      variant: null,
+      preset: xPreset,
+    });
+  }
+
+  if (emailPreset) {
+    options.push({
+      optionValue: emailPreset.id,
+      presetId: emailPreset.id,
+      label: "Email",
+      variant: null,
+      preset: emailPreset,
+    });
+  }
+
+  if (summaryPreset) {
+    const summaryUsesCombo = isSummaryActionComboPreset(summaryPreset);
+    const variant: PresetVariant = summaryUsesCombo ? "summary" : null;
+    options.push({
+      optionValue: variant
+        ? `${summaryPreset.id}::${variant}`
+        : summaryPreset.id,
+      presetId: summaryPreset.id,
+      label: "Summary",
+      variant,
+      preset: summaryPreset,
+    });
+  }
+
+  if (actionItemsPreset) {
+    const actionUsesCombo = isSummaryActionComboPreset(actionItemsPreset);
+    const variant: PresetVariant = actionUsesCombo ? "action_items" : null;
+    options.push({
+      optionValue: variant
+        ? `${actionItemsPreset.id}::${variant}`
+        : actionItemsPreset.id,
+      presetId: actionItemsPreset.id,
+      label: "Action Items",
+      variant,
+      preset: actionItemsPreset,
+    });
+  }
+
+  if (options.length === 0) {
+    return presets.map((preset) => ({
+      optionValue: preset.id,
+      presetId: preset.id,
+      label: preset.name,
+      variant: null,
+      preset,
+    }));
+  }
+
+  return options;
+}
+
+function applyPresetVariantInput(
+  input: string,
+  variant: PresetVariant,
+): string {
+  if (variant === "summary") {
+    return (
+      "Task: Provide only a concise summary of the content. Do not include action items.\n\n" +
+      `Source content:\n${input}`
+    );
+  }
+
+  if (variant === "action_items") {
+    return (
+      "Task: Extract only actionable next steps as bullet points. Do not include a narrative summary.\n\n" +
+      `Source content:\n${input}`
+    );
+  }
+
+  return input;
+}
+
 // Config for this node type
 const config: NodeConfig = {
   type: "text-generation",
   label: "Text Generation",
   description: "Generate text using customizable presets",
   inputs: [{ id: "text", label: "Text", type: "string" }],
-  outputs: [{ id: "generated_text", label: "Generated Text", type: "json" }],
+  outputs: [{ id: "generated_text", label: "Generated Text", type: "string" }],
 };
 
 export function TextGenerationNode({ id }: NodeProps) {
@@ -39,11 +194,15 @@ export function TextGenerationNode({ id }: NodeProps) {
     typeof node?.inputs?.text === "string" ? node.inputs.text : "";
   const initialPresetId =
     typeof node?.inputs?.preset_id === "string" ? node.inputs.preset_id : "";
+  const initialPresetVariant =
+    typeof node?.inputs?.preset_variant === "string"
+      ? node.inputs.preset_variant
+      : "";
 
   const [text, setText] = useState<string>(initialText);
-  const [presets, setPresets] = useState<TextGenerationPreset[]>([]);
-  const [selectedPresetId, setSelectedPresetId] =
-    useState<string>(initialPresetId);
+  const [presetOptions, setPresetOptions] = useState<PresetOption[]>([]);
+  const [selectedPresetOptionValue, setSelectedPresetOptionValue] =
+    useState<string>("");
   const [isLoadingPresets, setIsLoadingPresets] = useState(true);
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [editingPreset, setEditingPreset] =
@@ -65,17 +224,8 @@ export function TextGenerationNode({ id }: NodeProps) {
     try {
       setIsLoadingPresets(true);
       const loadedPresets = await getPresets();
-      setPresets(loadedPresets);
-
-      // If no preset selected and there are presets, select the first default or first one
-      setSelectedPresetId((currentId) => {
-        if (!currentId && loadedPresets.length > 0) {
-          const defaultPreset =
-            loadedPresets.find((p) => p.is_default) || loadedPresets[0];
-          return defaultPreset.id;
-        }
-        return currentId;
-      });
+      const curatedOptions = buildPresetOptions(loadedPresets);
+      setPresetOptions(curatedOptions);
     } catch (error) {
       console.error("Failed to load presets:", error);
     } finally {
@@ -88,29 +238,153 @@ export function TextGenerationNode({ id }: NodeProps) {
     loadPresets();
   }, [loadPresets]);
 
+  // Resolve the selected preset option from node inputs and available options.
+  useEffect(() => {
+    if (presetOptions.length === 0) {
+      setSelectedPresetOptionValue("");
+      return;
+    }
+
+    setSelectedPresetOptionValue((current) => {
+      if (current && presetOptions.some((option) => option.optionValue === current)) {
+        return current;
+      }
+
+      const byIdAndVariant = presetOptions.find(
+        (option) =>
+          option.presetId === initialPresetId &&
+          (option.variant ?? "") === initialPresetVariant,
+      );
+      if (byIdAndVariant) return byIdAndVariant.optionValue;
+
+      const byId = presetOptions.find(
+        (option) => option.presetId === initialPresetId,
+      );
+      if (byId) return byId.optionValue;
+
+      return presetOptions[0]?.optionValue ?? "";
+    });
+  }, [
+    presetOptions,
+    initialPresetId,
+    initialPresetVariant,
+  ]);
+
+  const selectedPresetOption =
+    presetOptions.find((option) => option.optionValue === selectedPresetOptionValue) ??
+    null;
+  const selectedPreset = selectedPresetOption?.preset ?? null;
+  const selectedPresetId = selectedPresetOption?.presetId ?? "";
+  const selectedPresetVariant = selectedPresetOption?.variant ?? null;
+  const rawMaxLengthOverride = node?.inputs?.max_length_override;
+  const toneGuidanceOverride =
+    typeof node?.inputs?.tone_guidance_override === "string"
+      ? node.inputs.tone_guidance_override
+      : "";
+  const maxLengthOverride =
+    typeof rawMaxLengthOverride === "number" &&
+    Number.isFinite(rawMaxLengthOverride)
+      ? Math.floor(rawMaxLengthOverride)
+      : null;
+  const structureTemplateOverride =
+    typeof node?.inputs?.structure_template_override === "string"
+      ? node.inputs.structure_template_override
+      : "";
+  const promptTemplateOverride =
+    typeof node?.inputs?.prompt_template_override === "string"
+      ? node.inputs.prompt_template_override
+      : "";
+  const outputFormatOverride =
+    node?.inputs?.output_format_override &&
+    typeof node.inputs.output_format_override === "object" &&
+    !Array.isArray(node.inputs.output_format_override)
+      ? (node.inputs.output_format_override as Record<string, unknown>)
+      : undefined;
+  const effectivePresetForEditor = useMemo<TextGenerationPreset | null>(() => {
+    if (!selectedPreset) return null;
+    return {
+      ...selectedPreset,
+      tone_guidance: toneGuidanceOverride.trim() || selectedPreset.tone_guidance,
+      max_length:
+        typeof maxLengthOverride === "number"
+          ? maxLengthOverride
+          : selectedPreset.max_length,
+      structure_template:
+        structureTemplateOverride.trim() || selectedPreset.structure_template,
+      prompt: promptTemplateOverride.trim() || selectedPreset.prompt,
+      output_format: outputFormatOverride ?? selectedPreset.output_format,
+    };
+  }, [
+    selectedPreset,
+    toneGuidanceOverride,
+    maxLengthOverride,
+    structureTemplateOverride,
+    promptTemplateOverride,
+    outputFormatOverride,
+  ]);
+
   // Sync inputs to Zustand store
   useEffect(() => {
+    if (!node) return;
+
+    if (presetOptions.length === 0 || !selectedPresetOption) {
+      if (node.inputs.text !== text) {
+        updateNode(id, {
+          inputs: {
+            ...node.inputs,
+            text,
+          },
+        });
+      }
+      return;
+    }
+
+    const existingVariant =
+      typeof node.inputs.preset_variant === "string"
+        ? node.inputs.preset_variant
+        : undefined;
+    const nextVariant = selectedPresetVariant ?? undefined;
+
     if (
-      node &&
-      (node.inputs.text !== text || node.inputs.preset_id !== selectedPresetId)
+      node.inputs.text !== text ||
+      node.inputs.preset_id !== selectedPresetId ||
+      existingVariant !== nextVariant
     ) {
+      const nextInputs: Record<string, unknown> = {
+        ...node.inputs,
+        text,
+        preset_id: selectedPresetId,
+      };
+
+      if (selectedPresetVariant) {
+        nextInputs.preset_variant = selectedPresetVariant;
+      } else {
+        delete nextInputs.preset_variant;
+      }
+
       updateNode(id, {
-        inputs: {
-          ...node.inputs,
-          text: text,
-          preset_id: selectedPresetId,
-        },
+        inputs: nextInputs,
       });
     }
-  }, [text, selectedPresetId, id, updateNode, node]);
+  }, [
+    text,
+    selectedPresetId,
+    selectedPresetVariant,
+    presetOptions.length,
+    selectedPresetOption,
+    id,
+    updateNode,
+    node,
+  ]);
 
   const handleCreatePreset = () => {
     setEditingPreset(null);
     setShowPresetManager(true);
   };
 
-  const handleEditPreset = (preset: TextGenerationPreset) => {
-    setEditingPreset(preset);
+  const handleEditPreset = () => {
+    if (!effectivePresetForEditor) return;
+    setEditingPreset(effectivePresetForEditor);
     setShowPresetManager(true);
   };
 
@@ -121,7 +395,7 @@ export function TextGenerationNode({ id }: NodeProps) {
   };
 
   const handleExecute = async () => {
-    if (!selectedPresetId) {
+    if (!selectedPresetOption || !selectedPresetId) {
       updateNode(id, { status: "error", error: "Please select a preset" });
       return;
     }
@@ -136,9 +410,24 @@ export function TextGenerationNode({ id }: NodeProps) {
 
     try {
       const request: GenerateTextRequest = {
-        input_text: text,
+        input_text: applyPresetVariantInput(text, selectedPresetVariant),
         preset_id: selectedPresetId,
       };
+      if (toneGuidanceOverride.trim()) {
+        request.tone_guidance_override = toneGuidanceOverride.trim();
+      }
+      if (typeof maxLengthOverride === "number" && maxLengthOverride > 0) {
+        request.max_length_override = maxLengthOverride;
+      }
+      if (structureTemplateOverride.trim()) {
+        request.structure_template_override = structureTemplateOverride.trim();
+      }
+      if (promptTemplateOverride.trim()) {
+        request.prompt_template_override = promptTemplateOverride.trim();
+      }
+      if (outputFormatOverride) {
+        request.output_format_override = outputFormatOverride;
+      }
 
       const response = await generateText(request);
 
@@ -152,7 +441,14 @@ export function TextGenerationNode({ id }: NodeProps) {
       updateNode(id, {
         status: "completed",
         outputs: { generated_text: response.output },
-        inputs: { text, preset_id: selectedPresetId },
+        inputs: {
+          ...node?.inputs,
+          text,
+          preset_id: selectedPresetId,
+          ...(selectedPresetVariant
+            ? { preset_variant: selectedPresetVariant }
+            : {}),
+        },
       });
     } catch (error) {
       const errorMessage =
@@ -160,8 +456,6 @@ export function TextGenerationNode({ id }: NodeProps) {
       updateNode(id, { status: "error", error: errorMessage });
     }
   };
-
-  const selectedPreset = presets.find((p) => p.id === selectedPresetId);
 
   return (
     <>
@@ -209,20 +503,20 @@ export function TextGenerationNode({ id }: NodeProps) {
             ) : (
               <div className="flex gap-2">
                 <select
-                  value={selectedPresetId}
-                  onChange={(e) => setSelectedPresetId(e.target.value)}
+                  value={selectedPresetOptionValue}
+                  onChange={(e) => setSelectedPresetOptionValue(e.target.value)}
                   className="nodrag flex-1 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all"
                 >
                   <option value="">Select a preset...</option>
-                  {presets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name} {preset.is_default && "(Default)"}
+                  {presetOptions.map((option) => (
+                    <option key={option.optionValue} value={option.optionValue}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
                 {selectedPreset && (
                   <button
-                    onClick={() => handleEditPreset(selectedPreset)}
+                    onClick={handleEditPreset}
                     className="nodrag px-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors"
                     title="Edit preset"
                   >
@@ -236,11 +530,20 @@ export function TextGenerationNode({ id }: NodeProps) {
           {/* Preset info */}
           {selectedPreset && (
             <div className="text-xs text-gray-500 space-y-1">
-              {selectedPreset.max_length && (
-                <div>Max length: {selectedPreset.max_length} characters</div>
+              {(typeof maxLengthOverride === "number" ? maxLengthOverride : selectedPreset.max_length) && (
+                <div>
+                  Max length: {typeof maxLengthOverride === "number" ? maxLengthOverride : selectedPreset.max_length} characters
+                </div>
               )}
-              {selectedPreset.tone_guidance && (
-                <div>Tone: {selectedPreset.tone_guidance}</div>
+              {(toneGuidanceOverride.trim() || selectedPreset.tone_guidance) && (
+                <div>
+                  Tone: {toneGuidanceOverride.trim() || selectedPreset.tone_guidance}
+                </div>
+              )}
+              {structureTemplateOverride.trim() && (
+                <div>
+                  Structure: {structureTemplateOverride}
+                </div>
               )}
             </div>
           )}

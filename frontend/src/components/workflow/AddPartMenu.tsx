@@ -3,8 +3,6 @@
 import React, { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Linkedin,
-  Mail,
   Image as ImageIcon,
   FileText,
   Sparkles,
@@ -12,7 +10,6 @@ import {
   Mic,
   TextQuote,
 } from "lucide-react";
-import { FaTiktok } from "react-icons/fa";
 import type { NodeType } from "./types";
 
 interface AddPartMenuProps {
@@ -45,21 +42,6 @@ const AddPartMenu: React.FC<AddPartMenuProps> = ({
   }, [onClose]);
 
   const parts: { name: NodeType; label: string; icon: React.ReactNode }[] = [
-    {
-      name: "LinkedIn",
-      label: "Generate LinkedIn Post",
-      icon: <Linkedin size={16} className="mr-2" />,
-    },
-    {
-      name: "TikTok",
-      label: "Generate TikTok",
-      icon: <FaTiktok size={16} className="mr-2" />,
-    },
-    {
-      name: "Email",
-      label: "Generate Email",
-      icon: <Mail size={16} className="mr-2" />,
-    },
     {
       name: "TextGeneration",
       label: "Text Generation",

@@ -36,6 +36,9 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
     isViewingDraft,
     isExecuting,
     outputsLoading,
+    outputTabs,
+    activeOutputKey,
+    setActiveOutputKey,
     runs,
     selectedExecutionId,
     runsLoading,
@@ -71,7 +74,7 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   if (isInitialLoading) {
     return (
       <div className="h-screen flex flex-col bg-white">
-        <PreviewHeader workflowName={headerName} />
+        <PreviewHeader workflowName={headerName} workflowId={workflowId} />
         <PreviewPageSkeleton />
       </div>
     )
@@ -80,7 +83,7 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   if (!hasOutputs && !isExecuting && !hasAnyRuns && !hasAnyDrafts) {
     return (
       <div className="h-screen flex flex-col bg-white">
-        <PreviewHeader workflowName={headerName} />
+        <PreviewHeader workflowName={headerName} workflowId={workflowId} />
         <PreviewEmptyState />
       </div>
     )
@@ -88,7 +91,7 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
 
   return (
     <div className="h-screen flex flex-col bg-white">
-      <PreviewHeader workflowName={headerName} />
+      <PreviewHeader workflowName={headerName} workflowId={workflowId} />
 
       <PreviewDataProvider
         value={{
@@ -164,6 +167,29 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
               {(runsError || runNotice) && (
                 <div className="px-6 py-2 text-xs border-b border-amber-200 bg-amber-50 text-amber-700">
                   {runsError ?? runNotice}
+                </div>
+              )}
+
+              {outputTabs.length > 1 && (
+                <div className="px-6 py-2 border-b border-slate-200 bg-white">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Outputs:</span>
+                    <div className="flex items-center gap-1 overflow-x-auto">
+                      {outputTabs.map((outputKey) => (
+                        <button
+                          key={outputKey}
+                          onClick={() => setActiveOutputKey(outputKey)}
+                          className={`px-2.5 py-1 text-xs rounded-md border transition-colors whitespace-nowrap ${
+                            activeOutputKey === outputKey
+                              ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {outputKey}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -261,12 +287,12 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   )
 }
 
-function PreviewHeader({ workflowName }: { workflowName: string }) {
+function PreviewHeader({ workflowName, workflowId }: { workflowName: string; workflowId: string }) {
   return (
     <div className="h-12 bg-white border-b border-slate-100 flex items-center justify-between px-4 shrink-0">
       <div className="flex items-center gap-3">
         <Link
-          href="/"
+          href={`/workflow?loadWorkflow=${workflowId}`}
           className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors"
         >
           <ArrowLeft size={16} />
