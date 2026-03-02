@@ -20,6 +20,7 @@ export interface InitUploadRequest {
   contentType: string;
   name: string;
   contentHash: string;
+  sizeBytes?: number;
   parentId?: string;
   metadata?: Record<string, unknown>;
 }
@@ -89,6 +90,49 @@ export interface ListFilesParams {
   expiresIn?: number;
   ids?: string[];
   thumbnailsOnly?: boolean;
+}
+
+export interface PartInfo {
+  partNumber: number;
+  signedUrl: string;
+}
+
+export interface InitMultipartUploadRequest {
+  bucket: 'media' | 'docs';
+  type: 'image' | 'video' | 'text' | 'pdf' | 'audio' | 'other';
+  contentType: string;
+  name: string;
+  contentHash: string;
+  sizeBytes: number;
+  parentId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface InitMultipartUploadResponse {
+  file: FileResponse;
+  uploadId: string;
+  parts: PartInfo[];
+}
+
+export interface PartETag {
+  partNumber: number;
+  etag: string;
+}
+
+export interface CompleteMultipartUploadRequest {
+  fileId: string;
+  uploadId: string;
+  parts: PartETag[];
+  sizeBytes?: number;
+}
+
+export interface AbortMultipartUploadRequest {
+  fileId: string;
+  uploadId: string;
+}
+
+export interface AbortMultipartUploadResponse {
+  ok: boolean;
 }
 
 export interface DeleteFileRequest {
@@ -189,6 +233,52 @@ export async function listFiles(
 
   return apiClient.request<ListFilesResponse>(url, {
     method: 'GET',
+  });
+}
+
+/**
+ * Initialize a multipart upload for large files (>200MB).
+ * Returns presigned URLs for each part.
+ */
+export async function initMultipartUpload(
+  request: InitMultipartUploadRequest
+): Promise<InitMultipartUploadResponse> {
+  return apiClient.request<InitMultipartUploadResponse>('/v1/files/init-multipart-upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Complete a multipart upload by assembling parts in R2.
+ */
+export async function completeMultipartUpload(
+  request: CompleteMultipartUploadRequest
+): Promise<CompleteUploadResponse> {
+  return apiClient.request<CompleteUploadResponse>('/v1/files/complete-multipart-upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Abort a multipart upload, cleaning up all uploaded parts in R2.
+ */
+export async function abortMultipartUpload(
+  request: AbortMultipartUploadRequest
+): Promise<AbortMultipartUploadResponse> {
+  return apiClient.request<AbortMultipartUploadResponse>('/v1/files/abort-multipart-upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
   });
 }
 

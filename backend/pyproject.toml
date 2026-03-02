@@ -24,6 +24,7 @@ dependencies = [
     "httpcore>=1.0.9",
     "httpx>=0.28.1",
     "idna>=3.11",
+    "opencv-python>=4.13.0.92",
     "pillow>=12.1.0",
     "pyasn1>=0.6.1",
     "pyasn1-modules>=0.4.2",
