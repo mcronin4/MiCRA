@@ -1169,7 +1169,7 @@ async def _exec_video_generation(params: dict, inputs: dict) -> dict[str, Any]:
     Generate a short MP4 video via Veo 3.1 (google-genai SDK).
 
     Params:
-        duration_seconds (str): "4", "6", or "8" (default "8")
+        duration_seconds (str): "1" to "60" (default "8")
         aspect_ratio (str): "9:16" or "16:9" (default "9:16")
         resolution (str): "720p", "1080p", or "4k" (default "720p")
         negative_prompt (str): optional unwanted-content description
@@ -1231,19 +1231,15 @@ async def _exec_video_generation(params: dict, inputs: dict) -> dict[str, Any]:
             except FileNotFoundError:
                 logger.warning("Artifact %s not found", aid)
 
-    # Build the prompt
-    text_input = inputs.get("text", "")
-    if isinstance(text_input, list):
-        text_input = "\n\n".join(str(t) for t in text_input if t)
+    # Run preprocessing pipeline (image selection, analysis, prompt enhancement)
+    from app.agents.video_generation.preprocessor import preprocess_video_inputs
 
-    if user_prompt:
-        final_prompt = user_prompt
-        if text_input:
-            final_prompt += f"\n\nContext:\n{text_input}"
-    elif text_input:
-        final_prompt = f"Create a short video based on: {text_input}"
-    else:
-        final_prompt = "Create a visually compelling short video with smooth motion and cinematic lighting."
+    preprocess_inputs = dict(inputs)
+    preprocess_inputs["_image_bytes"] = image_bytes_list
+
+    final_prompt, image_bytes_list, preprocess_meta = preprocess_video_inputs(
+        params, preprocess_inputs
+    )
 
     # Build prompt bundle
     input_artifact_meta = []
@@ -1276,6 +1272,7 @@ async def _exec_video_generation(params: dict, inputs: dict) -> dict[str, Any]:
         "final_veo_prompt": final_prompt,
         "veo_model": "veo-3.1-generate-preview",
         "veo_generation_params": veo_params,
+        "preprocessing": preprocess_meta,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

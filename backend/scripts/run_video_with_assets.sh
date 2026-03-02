@@ -52,11 +52,11 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # Defaults (cheapest Veo options)
 # ==========================================================================
 ASSETS_DIR="$REPO_ROOT/local_test_assets"
-PROMPT="Create a smooth transition between all the images uploaded by user"
+PROMPT="Create a cinematic marketing-style video that smoothly transitions through the three uploaded images. Start with a clean animated title card introducing the destination. Add short, elegant marketing captions to each image. Use smooth zoom or parallax motion, warm travel-style color grading, and seamless transitions."
 DURATION="8"
 RESOLUTION="720p"
 ASPECT_RATIO="9:16"
-NEGATIVE_PROMPT=""
+NEGATIVE_PROMPT="Voiceover, watermarks, distorted or unreadable text, animate image."
 TRANSCRIPT_FILE="$ASSETS_DIR/transcript.txt"
 IMAGE_FILTER=""          # empty = use all images in ASSETS_DIR
 USE_IMAGES=true

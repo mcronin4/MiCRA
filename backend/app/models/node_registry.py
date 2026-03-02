@@ -131,17 +131,19 @@ NODE_REGISTRY: dict[str, NodeTypeSpec] = {
     "VideoGeneration": NodeTypeSpec(
         inputs=[
             PortSchema(key="images", runtime_type="ImageRef", shape="list", required=False),
+            PortSchema(key="videos", runtime_type="VideoRef", shape="list", required=False),
             PortSchema(key="text", runtime_type="Text", shape="single", required=False),
         ],
         outputs=[
             PortSchema(key="generated_video", runtime_type="VideoRef", shape="single"),
-            PortSchema(key="prompt_bundle", runtime_type="JSON", shape="single"),
         ],
         default_params={
             "duration_seconds": "8",
             "aspect_ratio": "9:16",
             "resolution": "720p",
+            "negative_prompt": "",
             "user_prompt": "",
+            "video_style": "",
         },
     ),
 }

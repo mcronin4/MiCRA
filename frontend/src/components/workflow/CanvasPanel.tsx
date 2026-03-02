@@ -12,6 +12,7 @@ import { ImageGenerationNode } from "./nodes/ImageGenerationNode";
 import { ImageExtractionNode } from "./nodes/ImageExtractionNode";
 import { TranscriptionNode } from "./nodes/TranscriptionNode";
 import { QuoteExtractionNode } from "./nodes/QuoteExtractionNode";
+import { VideoGenerationNode } from "./nodes/VideoGenerationNode";
 import { ImageBucketNode } from "./nodes/ImageBucketNode";
 import { AudioBucketNode } from "./nodes/AudioBucketNode";
 import { VideoBucketNode } from "./nodes/VideoBucketNode";
@@ -41,6 +42,7 @@ const nodeTypes = {
   Transcription: TranscriptionNode,
   ImageExtraction: ImageExtractionNode,
   QuoteExtraction: QuoteExtractionNode,
+  VideoGeneration: VideoGenerationNode,
   ImageBucket: ImageBucketNode,
   AudioBucket: AudioBucketNode,
   VideoBucket: VideoBucketNode,

@@ -26,7 +26,9 @@ _POLL_INTERVAL_SEC = 10
 _MAX_POLL_SEC = 300  # 5 minutes
 
 # Valid parameter values per the official API
-_VALID_DURATIONS = ("4", "6", "8")
+_MIN_DURATION = 1
+_MAX_DURATION = 60
+_DEFAULT_DURATION = 8
 _VALID_ASPECT_RATIOS = ("16:9", "9:16")
 _VALID_RESOLUTIONS = ("720p", "1080p", "4k")
 
@@ -106,9 +108,10 @@ def generate_video_with_veo(
     params = params or {}
 
     # Validate and normalize parameters
-    duration = str(params.get("duration_seconds", "8"))
-    if duration not in _VALID_DURATIONS:
-        duration = "8"
+    try:
+        duration = str(max(_MIN_DURATION, min(_MAX_DURATION, int(params.get("duration_seconds", _DEFAULT_DURATION)))))
+    except (ValueError, TypeError):
+        duration = str(_DEFAULT_DURATION)
 
     aspect_ratio = params.get("aspect_ratio", "9:16")
     if aspect_ratio not in _VALID_ASPECT_RATIOS:
@@ -165,6 +168,9 @@ def generate_video_with_veo(
         "Submitting Veo generation (duration=%ss, ar=%s, res=%s, ref_images=%d)",
         duration, aspect_ratio, resolution, len(reference_images),
     )
+    logger.info("=== VEO PROMPT ===\n%s\n=== END PROMPT ===", prompt)
+    if negative_prompt:
+        logger.info("=== VEO NEGATIVE PROMPT ===\n%s\n=== END NEGATIVE PROMPT ===", negative_prompt)
 
     operation = client.models.generate_videos(**call_kwargs)
 
