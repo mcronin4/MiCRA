@@ -160,6 +160,7 @@ export function ImageMatchingNode({ id }: NodeProps) {
       nodeId={id}
       config={config}
       onExecute={handleExecute}
+      className="min-w-[440px]"
       theme={nodeThemes.amber}
     >
       <div className="space-y-4">

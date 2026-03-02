@@ -113,6 +113,8 @@ interface Props {
   onExecute: () => Promise<void>;
   theme?: NodeTheme;
   children?: React.ReactNode;
+  // Optional extra className to customize the outer wrapper (e.g., per-node width)
+  className?: string;
 }
 
 // Tooltip component for handles
@@ -216,6 +218,7 @@ export function WorkflowNodeWrapper({
   onExecute,
   theme = nodeThemes.indigo,
   children,
+  className,
 }: Props) {
   const node = useWorkflowStore((state) => state.nodes[nodeId]);
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
@@ -282,7 +285,7 @@ export function WorkflowNodeWrapper({
         hover:-translate-y-1
         ${justCompleted ? 'animate-node-complete' : ''}
         ${isRunning ? 'animate-running-glow border-blue-300' : ''}
-      `}
+      ${className ?? ''}`}
     >
       {/* Minimalist header */}
       <div className="px-6 py-5 pb-2">
