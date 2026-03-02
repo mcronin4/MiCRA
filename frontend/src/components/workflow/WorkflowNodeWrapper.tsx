@@ -12,6 +12,7 @@ import {
   Film,
   Mic,
   TextQuote,
+  Video,
 } from "lucide-react";
 import { useWorkflowStore, NodeStatus } from "@/lib/stores/workflowStore";
 import { NodeConfig } from "@/types/workflow";
@@ -21,7 +22,7 @@ import type { RuntimeType } from "@/types/blueprint";
 
 // Minimalist Apple-inspired theme configurations
 export interface NodeTheme {
-  id: "indigo" | "emerald" | "amber" | "sky" | "teal" | "rose";
+  id: "indigo" | "emerald" | "amber" | "sky" | "teal" | "rose" | "violet";
   // Header - minimal/white
   iconColor: string;
   iconBg: string;
@@ -103,6 +104,17 @@ export const nodeThemes: Record<string, NodeTheme> = {
     handleOutput: "#fda4af",
     icon: TextQuote,
   },
+  violet: {
+    id: "violet",
+    iconColor: "text-violet-600",
+    iconBg: "bg-violet-50",
+    accentColor: "bg-violet-600",
+    accentHover: "hover:bg-violet-700",
+    accentRing: "focus:ring-violet-500/30",
+    handleInput: "#7c3aed",
+    handleOutput: "#a78bfa",
+    icon: Video,
+  },
 };
 
 interface Props {
@@ -116,6 +128,8 @@ interface Props {
   getOutputLabel?: (outputId: string, defaultLabel: string) => string;
   getOutputDataType?: (outputId: string, defaultDataType: string) => string;
   onOutputHandleDoubleClick?: (outputId: string) => void;
+  // Optional extra className to customize the outer wrapper (e.g., per-node width)
+  className?: string;
 }
 
 // Tooltip component for handles
@@ -235,6 +249,7 @@ export function WorkflowNodeWrapper({
   getOutputLabel,
   getOutputDataType,
   onOutputHandleDoubleClick,
+  className,
 }: Props) {
   const node = useWorkflowStore((state) => state.nodes[nodeId]);
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
@@ -301,7 +316,7 @@ export function WorkflowNodeWrapper({
         hover:-translate-y-1
         ${justCompleted ? 'animate-node-complete' : ''}
         ${isRunning ? 'animate-running-glow border-blue-300' : ''}
-      `}
+      ${className ?? ''}`}
     >
       {/* Minimalist header */}
       <div className="px-6 py-5 pb-2">

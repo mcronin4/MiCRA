@@ -86,8 +86,13 @@ const nodeCategories = [
       },
       {
         type: "ImageMatching" as NodeType,
-        label: "Match VLM",
+        label: "Image-Text Matching",
         icon: ImageIcon,
+      },
+      {
+        type: "VideoGeneration" as NodeType,
+        label: "Generate Video",
+        icon: Video,
       },
     ],
   },

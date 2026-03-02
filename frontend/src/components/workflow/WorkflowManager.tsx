@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { Node, Edge, ReactFlowInstance } from "@xyflow/react";
 import { useWorkflowPersistence } from "@/hooks/useWorkflowPersistence";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
@@ -334,8 +335,8 @@ export function WorkflowManager({
   return (
     <>
       {/* Save Dialog Modal */}
-      {showSaveDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      {showSaveDialog && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
             <h2 className="text-xl font-semibold mb-4">
               {currentWorkflowId ? "Update Workflow" : "Save Workflow"}
@@ -397,12 +398,13 @@ export function WorkflowManager({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Load Dialog Modal */}
-      {isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      {isOpen && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Load Workflow</h2>
@@ -520,12 +522,13 @@ export function WorkflowManager({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Version History Modal */}
-      {showVersionHistory && selectedWorkflowId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      {showVersionHistory && selectedWorkflowId && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Version History</h2>
@@ -610,7 +613,8 @@ export function WorkflowManager({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

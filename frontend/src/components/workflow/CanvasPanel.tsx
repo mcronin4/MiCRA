@@ -12,6 +12,7 @@ import { ImageGenerationNode } from "./nodes/ImageGenerationNode";
 import { ImageExtractionNode } from "./nodes/ImageExtractionNode";
 import { TranscriptionNode } from "./nodes/TranscriptionNode";
 import { QuoteExtractionNode } from "./nodes/QuoteExtractionNode";
+import { VideoGenerationNode } from "./nodes/VideoGenerationNode";
 import { ImageBucketNode } from "./nodes/ImageBucketNode";
 import { AudioBucketNode } from "./nodes/AudioBucketNode";
 import { VideoBucketNode } from "./nodes/VideoBucketNode";
@@ -41,6 +42,7 @@ const nodeTypes = {
   Transcription: TranscriptionNode,
   ImageExtraction: ImageExtractionNode,
   QuoteExtraction: QuoteExtractionNode,
+  VideoGeneration: VideoGenerationNode,
   ImageBucket: ImageBucketNode,
   AudioBucket: AudioBucketNode,
   VideoBucket: VideoBucketNode,
@@ -341,6 +343,8 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
           node: Node,
         ) => handlePartContextMenu(event, node.id)}
         fitView
+        fitViewOptions={{ padding: 4 }}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
         nodesDraggable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         nodesConnectable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         panOnDrag={interactionMode === "pan" ? true : [1, 2]}

@@ -1,13 +1,13 @@
 export type SourceType = 'Video' | 'Audio' | 'Images' | 'Text';
 
 export type OutputNodeType = 'LinkedIn' | 'TikTok' | 'Email';
-export type WorkflowNodeType = 'ImageMatching' | 'Transcription' | 'TextGeneration' | 'ImageExtraction' | 'ImageGeneration' | 'QuoteExtraction';
+export type WorkflowNodeType = 'ImageMatching' | 'Transcription' | 'TextGeneration' | 'ImageExtraction' | 'ImageGeneration' | 'QuoteExtraction' | 'VideoGeneration';
 export type BucketNodeType = 'ImageBucket' | 'AudioBucket' | 'VideoBucket' | 'TextBucket';
 export type FlowNodeType = 'End';
 export type NodeType = OutputNodeType | WorkflowNodeType | BucketNodeType | FlowNodeType;
 
 export const OUTPUT_NODES: readonly OutputNodeType[] = ['LinkedIn', 'TikTok', 'Email'];
-export const WORKFLOW_NODES: readonly WorkflowNodeType[] = ['ImageMatching', 'Transcription', 'TextGeneration', 'ImageExtraction', 'ImageGeneration', 'QuoteExtraction'];
+export const WORKFLOW_NODES: readonly WorkflowNodeType[] = ['ImageMatching', 'Transcription', 'TextGeneration', 'ImageExtraction', 'ImageGeneration', 'QuoteExtraction', 'VideoGeneration'];
 export const BUCKET_NODES: readonly BucketNodeType[] = ['ImageBucket', 'AudioBucket', 'VideoBucket', 'TextBucket'];
 export const FLOW_NODES: readonly FlowNodeType[] = ['End'];
 

@@ -38,6 +38,7 @@ const CONNECTED_INPUT_KEYS: Record<string, string[]> = {
   Transcription: ['audio', 'video'],
   ImageExtraction: ['source'],
   QuoteExtraction: ['text'],
+  VideoGeneration: ['images', 'videos', 'text'],
   ImageBucket: [],
   AudioBucket: [],
   VideoBucket: [],
