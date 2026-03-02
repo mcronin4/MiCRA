@@ -19,30 +19,6 @@ export interface ImageExtractionResponse {
   error?: string
 }
 
-export async function extractKeyframesFromUrl(
-  url: string,
-  keepVideo = false,
-  selectionMode: FrameSelectionMode = 'auto',
-  maxFrames?: number,
-): Promise<ImageExtractionResponse> {
-  const payload: Record<string, unknown> = {
-    url,
-    keep_video: keepVideo,
-    selection_mode: selectionMode,
-  }
-  if (typeof maxFrames === 'number') {
-    payload.max_frames = maxFrames
-  }
-
-  return apiClient.request<ImageExtractionResponse>('/v1/image-extraction', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  })
-}
-
 export async function extractKeyframesFromFile(
   file: File,
   selectionMode: FrameSelectionMode = 'auto',

@@ -6,15 +6,12 @@ import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import {
   extractKeyframesFromFile,
-  extractKeyframesFromUrl,
   type ExtractedImage,
   type FrameSelectionMode,
 } from "@/lib/fastapi/image-extraction";
 import type { NodeConfig } from "@/types/workflow";
-import { Upload, Link, X, Image as ImageIcon } from "lucide-react";
+import { Upload, X, Image as ImageIcon } from "lucide-react";
 import Image from "next/image";
-
-type SourceType = "file" | "url";
 
 const clampFrameCount = (value: number) => {
   if (Number.isNaN(value)) return 10;
@@ -24,7 +21,7 @@ const clampFrameCount = (value: number) => {
 const config: NodeConfig = {
   type: "image-extraction",
   label: "Image Extraction",
-  description: "Extract keyframes from video or YouTube URL",
+  description: "Extract keyframes from video",
   inputs: [
     // Workflow mode input (from VideoBucket / upstream)
     { id: "source", label: "Video", type: "file" },
@@ -39,8 +36,6 @@ export function ImageExtractionNode({ id }: NodeProps) {
 
   const showManualInputs = node?.manualInputEnabled ?? false;
 
-  const initialSourceType: SourceType =
-    node?.inputs?.source_type === "url" ? "url" : "file";
   const initialSelectionMode: FrameSelectionMode =
     node?.inputs?.selection_mode === "manual" ? "manual" : "auto";
   const initialMaxFrames =
@@ -49,8 +44,6 @@ export function ImageExtractionNode({ id }: NodeProps) {
       : typeof node?.inputs?.frame_count === "number"
         ? clampFrameCount(node.inputs.frame_count)
         : 10;
-  const initialUrl =
-    typeof node?.inputs?.url === "string" ? node.inputs.url : "";
   const initialFileName =
     typeof node?.inputs?.file_name === "string" ? node.inputs.file_name : "";
   const initialImages =
@@ -58,11 +51,9 @@ export function ImageExtractionNode({ id }: NodeProps) {
       ? (node.outputs.images as ExtractedImage[])
       : [];
 
-  const [sourceType, setSourceType] = useState<SourceType>(initialSourceType);
   const [selectionMode, setSelectionMode] =
     useState<FrameSelectionMode>(initialSelectionMode);
   const [maxFrames, setMaxFrames] = useState<number>(initialMaxFrames);
-  const [videoUrl, setVideoUrl] = useState<string>(initialUrl);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>(initialFileName);
   const [isDragging, setIsDragging] = useState(false);
@@ -117,8 +108,6 @@ export function ImageExtractionNode({ id }: NodeProps) {
     if (!node) return;
     const normalizedMaxFrames = clampFrameCount(maxFrames);
     if (
-      node.inputs.source_type !== sourceType ||
-      node.inputs.url !== videoUrl ||
       node.inputs.file_name !== fileName ||
       node.inputs.selection_mode !== selectionMode ||
       node.inputs.max_frames !== normalizedMaxFrames
@@ -126,15 +115,13 @@ export function ImageExtractionNode({ id }: NodeProps) {
       updateNode(id, {
         inputs: {
           ...node.inputs,
-          source_type: sourceType,
-          url: videoUrl,
           file_name: fileName,
           selection_mode: selectionMode,
           max_frames: normalizedMaxFrames,
         },
       });
     }
-  }, [sourceType, videoUrl, fileName, selectionMode, maxFrames, id, updateNode, node]);
+  }, [fileName, selectionMode, maxFrames, id, updateNode, node]);
 
   // Clear outputs when test mode is disabled
   useEffect(() => {
@@ -180,7 +167,7 @@ export function ImageExtractionNode({ id }: NodeProps) {
     e.stopPropagation();
     setIsDragging(false);
 
-    if (isRunning || sourceType !== "file") return;
+    if (isRunning) return;
     const droppedFile = e.dataTransfer.files?.[0];
     if (droppedFile) {
       handleSelectFile(droppedFile);
@@ -214,70 +201,37 @@ export function ImageExtractionNode({ id }: NodeProps) {
       const manualMaxFrames =
         selectionMode === "manual" ? clampFrameCount(maxFrames) : undefined;
 
-      if (sourceType === "url") {
-        if (!videoUrl.trim()) {
-          throw new Error("Please enter a YouTube URL");
-        }
-        const response = await extractKeyframesFromUrl(
-          videoUrl.trim(),
-          false,
-          selectionMode,
-          manualMaxFrames,
-        );
-        if (!response.success) {
-          throw new Error(response.error || "Image extraction failed");
-        }
-        const nextImages = response.selected_images || [];
-        setSelectedImages(nextImages);
-        setMetadata(response.selected_frames || []);
-        setStats(response.stats || null);
-        pushImagesToBucket(nextImages);
-        updateNode(id, {
-          status: "completed",
-          outputs: { images: nextImages },
-          inputs: {
-            source_type: sourceType,
-            url: videoUrl,
-            file_name: "",
-            selection_mode: selectionMode,
-            max_frames: manualMaxFrames ?? clampFrameCount(maxFrames),
-          },
-        });
-      } else {
-        if (!selectedFile) {
-          throw new Error("Please upload an MP4 file");
-        }
-        const isMp4 =
-          selectedFile.type === "video/mp4" ||
-          selectedFile.name.toLowerCase().endsWith(".mp4");
-        if (!isMp4) {
-          throw new Error("Please upload an MP4 file");
-        }
-        const response = await extractKeyframesFromFile(
-          selectedFile,
-          selectionMode,
-          manualMaxFrames,
-        );
-        if (!response.success) {
-          throw new Error(response.error || "Image extraction failed");
-        }
-        const nextImages = response.selected_images || [];
-        setSelectedImages(nextImages);
-        setMetadata(response.selected_frames || []);
-        setStats(response.stats || null);
-        pushImagesToBucket(nextImages);
-        updateNode(id, {
-          status: "completed",
-          outputs: { images: nextImages },
-          inputs: {
-            source_type: sourceType,
-            url: "",
-            file_name: selectedFile.name,
-            selection_mode: selectionMode,
-            max_frames: manualMaxFrames ?? clampFrameCount(maxFrames),
-          },
-        });
+      if (!selectedFile) {
+        throw new Error("Please upload an MP4 file");
       }
+      const isMp4 =
+        selectedFile.type === "video/mp4" ||
+        selectedFile.name.toLowerCase().endsWith(".mp4");
+      if (!isMp4) {
+        throw new Error("Please upload an MP4 file");
+      }
+      const response = await extractKeyframesFromFile(
+        selectedFile,
+        selectionMode,
+        manualMaxFrames,
+      );
+      if (!response.success) {
+        throw new Error(response.error || "Image extraction failed");
+      }
+      const nextImages = response.selected_images || [];
+      setSelectedImages(nextImages);
+      setMetadata(response.selected_frames || []);
+      setStats(response.stats || null);
+      pushImagesToBucket(nextImages);
+      updateNode(id, {
+        status: "completed",
+        outputs: { images: nextImages },
+        inputs: {
+          file_name: selectedFile.name,
+          selection_mode: selectionMode,
+          max_frames: manualMaxFrames ?? clampFrameCount(maxFrames),
+        },
+      });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
@@ -332,63 +286,6 @@ export function ImageExtractionNode({ id }: NodeProps) {
         </div>
 
         {showManualInputs && (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={isRunning}
-            onClick={() => {
-              setSourceType("file");
-              setVideoUrl("");
-            }}
-            className={`nodrag flex-1 px-3 py-2 text-xs font-semibold rounded-xl transition-all ${
-              sourceType === "file"
-                ? "bg-sky-600 text-white shadow-sm"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            } ${isRunning ? "opacity-60 cursor-not-allowed" : ""}`}
-          >
-            Upload MP4
-          </button>
-          <button
-            type="button"
-            disabled={isRunning}
-            onClick={() => {
-              setSourceType("url");
-              clearFile();
-            }}
-            className={`nodrag flex-1 px-3 py-2 text-xs font-semibold rounded-xl transition-all ${
-              sourceType === "url"
-                ? "bg-sky-600 text-white shadow-sm"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            } ${isRunning ? "opacity-60 cursor-not-allowed" : ""}`}
-          >
-            YouTube URL
-          </button>
-        </div>
-        )}
-
-        {showManualInputs && sourceType === "url" && (
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-              YouTube URL
-            </label>
-            <div className="relative">
-              <Link
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                type="url"
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=..."
-                disabled={isRunning}
-                className="nodrag w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 transition-all"
-              />
-            </div>
-          </div>
-        )}
-
-        {showManualInputs && sourceType === "file" && (
           <div className="space-y-2">
             <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
               Video File
@@ -534,16 +431,12 @@ export function ImageExtractionNode({ id }: NodeProps) {
         {node?.manualInputEnabled && (
           <button
             onClick={handleExecute}
-            disabled={
-              node?.status === "running" ||
-              (sourceType === "url" ? !videoUrl.trim() : !selectedFile)
-            }
+            disabled={node?.status === "running" || !selectedFile}
             className={`
               nodrag w-full px-4 py-2.5 rounded-xl font-semibold text-sm
               transition-all duration-200
               ${
-                node?.status === "running" ||
-                (sourceType === "url" ? !videoUrl.trim() : !selectedFile)
+                node?.status === "running" || !selectedFile
                   ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                   : "bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg"
               }

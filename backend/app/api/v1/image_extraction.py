@@ -7,20 +7,12 @@ import base64
 import os
 import asyncio
 import traceback
-from typing import Literal
 
 # NOTE: image_extraction depends on optional heavy deps (opencv-python-headless, etc).
 # To avoid crashing server startup when those aren't installed, we import lazily
 # inside the execution path.
 
 router = APIRouter(prefix="/image-extraction")
-
-
-class ImageExtractionRequest(BaseModel):
-    url: str
-    keep_video: Optional[bool] = False
-    selection_mode: Literal["auto", "manual"] = "auto"
-    max_frames: Optional[int] = None
 
 
 class ExtractedImage(BaseModel):
@@ -116,46 +108,6 @@ def _build_response(result: Dict[str, Any]) -> ImageExtractionResponse:
     )
 
 
-@router.post("", response_model=ImageExtractionResponse)
-async def extract_keyframes_from_url(request: ImageExtractionRequest):
-    video_path = None
-    download_dir = None
-    try:
-        if not request.url or not request.url.strip():
-            return ImageExtractionResponse(success=False, error="URL cannot be empty")
-
-        download_dir = tempfile.mkdtemp(prefix="micra_image_extraction_")
-        try:
-            from app.agents.image_extraction.scene_detection import download_youtube_video
-        except ImportError as exc:
-            return ImageExtractionResponse(
-                success=False,
-                error=f"yt-dlp is required for YouTube downloads: {exc}"
-            )
-
-        video_path = download_youtube_video(request.url.strip(), output_dir=download_dir)
-        result = await _run_pipeline(
-            video_path,
-            max_frames=request.max_frames,
-        )
-        return _build_response(result)
-    except Exception as exc:
-        print(f"Image extraction error: {exc}")
-        print(traceback.format_exc())
-        return ImageExtractionResponse(success=False, error=str(exc))
-    finally:
-        if video_path and not request.keep_video and os.path.exists(video_path):
-            try:
-                os.remove(video_path)
-            except Exception:
-                pass
-        if download_dir:
-            try:
-                os.rmdir(download_dir)
-            except Exception:
-                pass
-
-
 @router.post("/upload", response_model=ImageExtractionResponse)
 async def extract_keyframes_from_file(
     file: UploadFile = File(...),
@@ -174,7 +126,6 @@ async def extract_keyframes_from_file(
 
         result = await _run_pipeline(
             video_path,
-            selection_mode=selection_mode,
             max_frames=max_frames,
         )
         return _build_response(result)
