@@ -433,6 +433,10 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
         finalWorkflow: laidOut,
         canvasContainerRef: contextMenus.canvasContainerRef,
         getViewport: () => canvasOps.reactFlowInstance?.getViewport() ?? null,
+        setViewport: (viewport, options) =>
+          canvasOps.reactFlowInstance?.setViewport(viewport, {
+            duration: options?.duration ?? 320,
+          }) ?? Promise.resolve(false),
         applyWorkflow: (workflowData) =>
           applyWorkflowToCanvas(workflowData, { fitView: false }),
         onComplete: () => {

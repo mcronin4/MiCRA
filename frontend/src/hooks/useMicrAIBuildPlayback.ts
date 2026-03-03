@@ -68,6 +68,10 @@ interface StartPlaybackArgs {
   finalWorkflow: SavedWorkflowData;
   canvasContainerRef: RefObject<HTMLDivElement | null>;
   getViewport?: () => { x: number; y: number; zoom: number } | null;
+  setViewport?: (
+    viewport: { x: number; y: number; zoom: number },
+    options?: { duration?: number }
+  ) => Promise<boolean> | void;
   applyWorkflow: (workflowData: SavedWorkflowData) => void;
   onComplete: () => void;
   onError: (error: Error) => void;
@@ -1038,6 +1042,69 @@ export function useMicrAIBuildPlayback() {
     ]
   );
 
+  const autoPanZoomToFocus = useCallback(
+    async ({
+      runId,
+      primary,
+      secondary,
+      canvasContainerRef,
+      getViewportFn,
+      setViewportFn,
+    }: {
+      runId: number;
+      primary: Point;
+      secondary?: Point | null;
+      canvasContainerRef: RefObject<HTMLDivElement | null>;
+      getViewportFn?: () => { x: number; y: number; zoom: number } | null;
+      setViewportFn?: (
+        viewport: { x: number; y: number; zoom: number },
+        options?: { duration?: number }
+      ) => Promise<boolean> | void;
+    }) => {
+      if (!setViewportFn) return;
+      const container = canvasContainerRef.current;
+      if (!container) return;
+
+      const viewport = getViewport(canvasContainerRef, getViewportFn);
+      const focus = secondary
+        ? { x: (primary.x + secondary.x) / 2, y: (primary.y + secondary.y) / 2 }
+        : primary;
+      const span = secondary ? distance(primary, secondary) : 0;
+      let targetZoom = viewport.zoom;
+      if (secondary) {
+        if (span > 1200) targetZoom = 0.48;
+        else if (span > 900) targetZoom = 0.56;
+        else if (span > 680) targetZoom = 0.68;
+        else if (span > 500) targetZoom = 0.76;
+        else if (span > 360) targetZoom = 0.86;
+        else targetZoom = 0.98;
+      } else {
+        targetZoom = 0.95;
+      }
+      targetZoom = clamp(targetZoom, 0.42, 1.25);
+
+      const centerNow = screenToFlow(
+        { x: container.clientWidth / 2, y: container.clientHeight / 2 },
+        viewport
+      );
+      const centerDist = distance(centerNow, focus);
+      const zoomDelta = Math.abs(viewport.zoom - targetZoom);
+      if (centerDist < 100 / Math.max(viewport.zoom, 0.001) && zoomDelta < 0.05) {
+        return;
+      }
+
+      const nextViewport = {
+        x: container.clientWidth / 2 - focus.x * targetZoom,
+        y: container.clientHeight / 2 - focus.y * targetZoom,
+        zoom: targetZoom,
+      };
+      await Promise.resolve(setViewportFn(nextViewport, { duration: 360 }));
+      await nextAnimationFrame(1);
+      throwIfCancelled(runId);
+    },
+    [getViewport, throwIfCancelled]
+  );
+
   const startPlayback = useCallback(
     async ({
       mode,
@@ -1047,6 +1114,7 @@ export function useMicrAIBuildPlayback() {
       finalWorkflow,
       canvasContainerRef,
       getViewport: getViewportFn,
+      setViewport: setViewportFn,
       applyWorkflow,
       onComplete,
       onError,
@@ -1121,6 +1189,15 @@ export function useMicrAIBuildPlayback() {
       const firstAnchorFlow = firstNodeStep?.node_id
         ? getTalkAnchorFlow(canvasContainerRef, getViewportFn, finalWorkflow, firstNodeStep.node_id)
         : null;
+      if (firstAnchorFlow) {
+        await autoPanZoomToFocus({
+          runId,
+          primary: firstAnchorFlow,
+          canvasContainerRef,
+          getViewportFn,
+          setViewportFn,
+        });
+      }
       robotFlowRef.current = firstAnchorFlow ?? { x: 70, y: 70 };
       setRobotState({
         visible: true,
@@ -1159,6 +1236,13 @@ export function useMicrAIBuildPlayback() {
 
             const talkAnchor = getTalkAnchorFlow(canvasContainerRef, getViewportFn, working, nodeId);
             if (talkAnchor) {
+              await autoPanZoomToFocus({
+                runId,
+                primary: talkAnchor,
+                canvasContainerRef,
+                getViewportFn,
+                setViewportFn,
+              });
               const currentPos = { ...robotFlowRef.current };
               const moveDistance = distance(currentPos, talkAnchor);
               if (moveDistance > 6) {
@@ -1226,6 +1310,15 @@ export function useMicrAIBuildPlayback() {
             );
             if (!targetAnchor) continue;
 
+            await autoPanZoomToFocus({
+              runId,
+              primary: sourceAnchor,
+              secondary: targetAnchor,
+              canvasContainerRef,
+              getViewportFn,
+              setViewportFn,
+            });
+
             const currentPos = { ...robotFlowRef.current };
             const toSourceDistance = distance(currentPos, sourceAnchor);
             setRobotState((prev) => ({
@@ -1284,6 +1377,13 @@ export function useMicrAIBuildPlayback() {
             if (!targetNodeId) continue;
             const anchor = getTalkAnchorFlow(canvasContainerRef, getViewportFn, working, targetNodeId);
             if (!anchor) continue;
+            await autoPanZoomToFocus({
+              runId,
+              primary: anchor,
+              canvasContainerRef,
+              getViewportFn,
+              setViewportFn,
+            });
             await animateFlowArcMove(runId, { ...robotFlowRef.current }, anchor, 280, 20);
           }
         }
@@ -1358,6 +1458,7 @@ export function useMicrAIBuildPlayback() {
       }
     },
     [
+      autoPanZoomToFocus,
       animateAlongConnectorCurve,
       animateFlowArcMove,
       clearNarrationAudio,
