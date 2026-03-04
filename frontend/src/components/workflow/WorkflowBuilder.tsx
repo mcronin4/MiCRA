@@ -19,7 +19,7 @@ import { useCanvasOperations } from "@/hooks/useCanvasOperations";
 import { useContextMenus } from "@/hooks/useContextMenus";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
 import { useBlueprintCompile } from "@/hooks/useBlueprintCompile";
-import type { SavedWorkflowData } from "@/lib/fastapi/workflows";
+import type { CopilotModelTier, SavedWorkflowData } from "@/lib/fastapi/workflows";
 import { layoutWorkflowData } from "@/lib/workflowLayout";
 import {
   useWorkflowStore,
@@ -51,6 +51,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     "select",
   );
   const [isMicrAIOpen, setIsMicrAIOpen] = useState(false);
+  const [copilotModelTier, setCopilotModelTier] = useState<CopilotModelTier>("default");
   // Dialog control for WorkflowManager
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
@@ -351,6 +352,9 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
         message,
         mode: copilot.mode,
         workflowData: current,
+        preferences: {
+          model_tier: copilotModelTier,
+        },
       });
       if (response.status === "clarify") {
         showToast("MicrAI needs clarification before applying changes.", "warning");
@@ -875,6 +879,8 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
               onPromptChange={copilot.setPrompt}
               mode={copilot.mode}
               onModeChange={copilot.setMode}
+              modelTier={copilotModelTier}
+              onModelTierChange={setCopilotModelTier}
               isPlanning={copilot.isPlanning}
               error={copilot.error}
               pendingPlan={copilot.pendingPlan}

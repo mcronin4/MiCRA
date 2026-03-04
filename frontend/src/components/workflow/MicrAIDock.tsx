@@ -2,7 +2,11 @@
 
 import React, { useMemo } from "react";
 import Image from "next/image";
-import type { CopilotPlanMode, CopilotPlanResponse } from "@/lib/fastapi/workflows";
+import type {
+  CopilotModelTier,
+  CopilotPlanMode,
+  CopilotPlanResponse,
+} from "@/lib/fastapi/workflows";
 import { ChevronDown, Loader2, Mic, SendHorizontal, Undo2, X } from "lucide-react";
 
 interface MicrAIDockProps {
@@ -10,6 +14,8 @@ interface MicrAIDockProps {
   onPromptChange: (value: string) => void;
   mode: CopilotPlanMode;
   onModeChange: (mode: CopilotPlanMode) => void;
+  modelTier: CopilotModelTier;
+  onModelTierChange: (tier: CopilotModelTier) => void;
   isPlanning: boolean;
   error: string | null;
   pendingPlan: CopilotPlanResponse | null;
@@ -35,6 +41,8 @@ export const MicrAIDock: React.FC<MicrAIDockProps> = ({
   onPromptChange,
   mode,
   onModeChange,
+  modelTier,
+  onModelTierChange,
   isPlanning,
   error,
   pendingPlan,
@@ -91,6 +99,15 @@ export const MicrAIDock: React.FC<MicrAIDockProps> = ({
             >
               <option value="create">Create New</option>
               <option value="edit">Edit Current</option>
+            </select>
+            <select
+              value={modelTier}
+              onChange={(e) => onModelTierChange(e.target.value as CopilotModelTier)}
+              className="h-8 text-[11px] border border-slate-200 rounded-lg px-2.5 bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300"
+              title="MicrAI model tier"
+            >
+              <option value="default">Default</option>
+              <option value="pro">Pro</option>
             </select>
             <button
               onClick={onUndoPatch}

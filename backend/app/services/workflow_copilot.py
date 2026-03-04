@@ -170,11 +170,17 @@ TONE_STYLE_TERMS = (
 )
 
 PresetVariant = Literal["summary", "action_items"]
+CopilotModelTier = Literal["default", "pro"]
 
 TARGET_CHANNEL_TO_END_OUTPUT_KEY: dict[str, str] = {
     "linkedin": "linkedin_post",
     "x": "x_post",
     "email": "email",
+}
+
+COPILOT_MODEL_BY_TIER: dict[CopilotModelTier, str] = {
+    "default": "gemini-2.5-flash",
+    "pro": "gemini-2.5-pro",
 }
 
 DEFAULT_TEXT_TONE_BY_CHANNEL: dict[str, str] = {
@@ -197,6 +203,14 @@ DEFAULT_TEXT_STRUCTURE_BY_CHANNEL: dict[str, str] = {
     "email": "Subject line, opener, key points, CTA",
     "tiktok": "Hook, core message, CTA",
 }
+
+
+def _resolve_copilot_model_name(preferences: dict[str, Any] | None) -> str:
+    tier_raw = ""
+    if isinstance(preferences, dict):
+        tier_raw = str(preferences.get("model_tier") or "").strip().lower()
+    tier: CopilotModelTier = "pro" if tier_raw == "pro" else "default"
+    return COPILOT_MODEL_BY_TIER[tier]
 
 
 @dataclass
@@ -239,6 +253,7 @@ def plan_workflow_with_copilot(
     preferences: dict[str, Any] | None = None,
 ) -> CopilotPlanResult:
     prompt = (message or "").strip()
+    model_name = _resolve_copilot_model_name(preferences)
     if not prompt:
         return CopilotPlanResult(
             status="clarify",
@@ -263,6 +278,7 @@ def plan_workflow_with_copilot(
         supabase_client=supabase_client,
         user_id=user_id,
         request_text=prompt,
+        model_name=model_name,
     )
     preset_id = text_settings.get("preset_id")
     preset_variant = text_settings.get("preset_variant")
@@ -276,6 +292,7 @@ def plan_workflow_with_copilot(
     end_output_key = _resolve_end_output_key(
         request_text=prompt,
         target_channel_hint=target_channel,
+        model_name=model_name,
     )
 
     planned = _plan_with_gemini(
@@ -287,6 +304,7 @@ def plan_workflow_with_copilot(
         text_overrides=text_overrides,
         target_channel=target_channel,
         end_output_key=end_output_key,
+        model_name=model_name,
     )
     if planned is None:
         planned = _plan_with_fallback(
@@ -386,6 +404,7 @@ def plan_workflow_with_copilot(
             operations=operations,
             touched_node_ids=touched_node_ids,
             request_text=prompt,
+            model_name=model_name,
         )
     except Exception:
         build_steps = []
@@ -393,6 +412,7 @@ def plan_workflow_with_copilot(
         request_text=prompt,
         node_count=len(planned["nodes"]),
         edge_count=len(planned["edges"]),
+        model_name=model_name,
     )
 
     summary = _build_plan_summary(
@@ -402,9 +422,6 @@ def plan_workflow_with_copilot(
         edge_count=len(planned["edges"]),
         target_channel=target_channel,
     )
-
-    if preferences:
-        _ = preferences
 
     return CopilotPlanResult(
         status="ready",
@@ -432,6 +449,7 @@ def _plan_with_gemini(
     text_overrides: dict[str, Any],
     target_channel: str | None,
     end_output_key: str | None,
+    model_name: str,
 ) -> dict[str, Any] | None:
     node_specs = []
     for node_type, spec in NODE_REGISTRY.items():
@@ -484,7 +502,7 @@ Rules:
 - Keep node ids stable for existing nodes when editing.
 - Use primitives only (Text, ImageRef, AudioRef, VideoRef).
 - End node accepts any primitive input but its input handle key is "end-input".
-- If preferred End output key is provided, set End node data.output_key to it.
+- If preferred End output key is provided and the request has a single destination, set End node data.output_key to it.
 - Connect visible outputs into End for UX consistency:
   * TextGeneration.generated_text -> End.end-input
   * ImageMatching.images -> End.end-input
@@ -501,6 +519,33 @@ Rules:
 - Ensure required inputs are connected.
 - For create mode, produce a complete runnable graph.
 - For edit mode, preserve existing structure unless prompt asks to change.
+- Fan-in is allowed and encouraged when runtime types are compatible and the user intent is one combined deliverable.
+- Prefer combining branches into shared downstream nodes instead of duplicating equivalent nodes.
+- Do NOT drop relevant sources in combined workflows; if two upstream branches are both requested, wire both.
+- Multi-fan-in should target the same input handle when types match:
+  * Text -> TextGeneration.text
+  * ImageRef -> ImageMatching.images
+  * Primitive outputs -> End.end-input
+- Transcription must respect media ports:
+  * audio sources -> Transcription.audio
+  * video sources -> Transcription.video
+  * combine via fan-in after transcription on downstream text nodes.
+- If user asks for multiple final deliverables/channels (for example LinkedIn + X), create one End node per deliverable.
+- For multi-deliverable requests, set distinct End.output_key values when applicable:
+  * LinkedIn -> linkedin_post
+  * X/Twitter -> x_post
+  * Email -> email
+
+Examples of preferred complex patterns:
+1) Podcast + video -> LinkedIn post:
+   AudioBucket->Transcription(audio), VideoBucket->Transcription(video),
+   both Transcription.transcription -> same TextGeneration.text -> End.
+2) Video transcript + text notes combined:
+   Transcription.transcription + TextBucket.text -> same TextGeneration.text.
+3) Mixed image sources for one matcher:
+   ImageBucket.images + ImageExtraction.images -> same ImageMatching.images.
+4) Multiple destinations from one pipeline:
+   Shared upstream graph -> End(linkedin_post) and End(x_post), each connected from relevant final outputs.
 
 Context:
 - mode: {mode}
@@ -518,6 +563,7 @@ Context:
             instructions,
             response_schema=schema,
             response_mime_type="application/json",
+            model=model_name,
         )
         if not isinstance(resp, dict):
             return None
@@ -554,15 +600,39 @@ def _fallback_create(
     target_channel: str | None,
 ) -> dict[str, Any]:
     lower = prompt.lower()
+    requested_channels = _infer_requested_output_channels(prompt)
+    wants_video = "video" in lower
+    wants_audio = "audio" in lower or "podcast" in lower
+
+    if wants_video and wants_audio and ("linkedin" in lower or target_channel == "linkedin"):
+        wf = _template_audio_video_to_linkedin_fanin(preset_id=preset_id)
+        _expand_workflow_to_multiple_end_channels(wf, channels=requested_channels)
+        return wf
+
+    if wants_video and wants_audio:
+        wf = _template_audio_video_to_text_fanin(preset_id=preset_id)
+        _expand_workflow_to_multiple_end_channels(wf, channels=requested_channels)
+        return wf
+
     if "video" in lower and ("linkedin" in lower or target_channel == "linkedin"):
-        return _template_video_to_linkedin(preset_id=preset_id)
+        wf = _template_video_to_linkedin(preset_id=preset_id)
+        _expand_workflow_to_multiple_end_channels(wf, channels=requested_channels)
+        return wf
     if "video" in lower:
-        return _template_video_to_text(preset_id=preset_id)
+        wf = _template_video_to_text(preset_id=preset_id)
+        _expand_workflow_to_multiple_end_channels(wf, channels=requested_channels)
+        return wf
     if "audio" in lower or "transcrib" in lower:
-        return _template_audio_to_text(preset_id=preset_id)
+        wf = _template_audio_to_text(preset_id=preset_id)
+        _expand_workflow_to_multiple_end_channels(wf, channels=requested_channels)
+        return wf
     if "image" in lower and "match" in lower:
-        return _template_image_text_match(preset_id=preset_id)
-    return _template_text_to_end(preset_id=preset_id)
+        wf = _template_image_text_match(preset_id=preset_id)
+        _expand_workflow_to_multiple_end_channels(wf, channels=requested_channels)
+        return wf
+    wf = _template_text_to_end(preset_id=preset_id)
+    _expand_workflow_to_multiple_end_channels(wf, channels=requested_channels)
+    return wf
 
 
 def _fallback_edit(
@@ -722,6 +792,69 @@ def _template_video_to_text(*, preset_id: str | None) -> dict[str, Any]:
     return wf
 
 
+def _template_audio_video_to_linkedin_fanin(*, preset_id: str | None) -> dict[str, Any]:
+    wf = {"nodes": [], "edges": []}
+    a = _add_node(wf, "AudioBucket", 120, 360)
+    v = _add_node(wf, "VideoBucket", 120, 120)
+    ta = _add_node(wf, "Transcription", 420, 360)
+    tv = _add_node(wf, "Transcription", 420, 120)
+    tg = _add_node(
+        wf,
+        "TextGeneration",
+        740,
+        240,
+        data={"preset_id": preset_id} if preset_id else {},
+    )
+    ie = _add_node(
+        wf,
+        "ImageExtraction",
+        740,
+        60,
+        data={"selection_mode": "auto", "max_frames": 10},
+    )
+    im = _add_node(
+        wf,
+        "ImageMatching",
+        1040,
+        180,
+        data={"match_count_mode": "all", "max_matches": 5},
+    )
+    e = _add_node(wf, "End", 1340, 180)
+
+    _add_edge(wf, a, "audio", ta, "audio")
+    _add_edge(wf, v, "videos", tv, "video")
+    _add_edge(wf, ta, "transcription", tg, "text")
+    _add_edge(wf, tv, "transcription", tg, "text")
+    _add_edge(wf, v, "videos", ie, "source")
+    _add_edge(wf, ie, "images", im, "images")
+    _add_edge(wf, tg, "generated_text", im, "text")
+    _add_edge(wf, tg, "generated_text", e, "end-input")
+    _add_edge(wf, im, "images", e, "end-input")
+    return wf
+
+
+def _template_audio_video_to_text_fanin(*, preset_id: str | None) -> dict[str, Any]:
+    wf = {"nodes": [], "edges": []}
+    a = _add_node(wf, "AudioBucket", 140, 300)
+    v = _add_node(wf, "VideoBucket", 140, 140)
+    ta = _add_node(wf, "Transcription", 420, 300)
+    tv = _add_node(wf, "Transcription", 420, 140)
+    tg = _add_node(
+        wf,
+        "TextGeneration",
+        740,
+        220,
+        data={"preset_id": preset_id} if preset_id else {},
+    )
+    e = _add_node(wf, "End", 1040, 220)
+    _add_edge(wf, a, "audio", ta, "audio")
+    _add_edge(wf, v, "videos", tv, "video")
+    _add_edge(wf, ta, "transcription", tg, "text")
+    _add_edge(wf, tv, "transcription", tg, "text")
+    _add_edge(wf, tg, "generated_text", e, "end-input")
+    return wf
+
+
 def _template_audio_to_text(*, preset_id: str | None) -> dict[str, Any]:
     wf = {"nodes": [], "edges": []}
     a = _add_node(wf, "AudioBucket", 140, 220)
@@ -738,6 +871,98 @@ def _template_audio_to_text(*, preset_id: str | None) -> dict[str, Any]:
     _add_edge(wf, t, "transcription", tg, "text")
     _add_edge(wf, tg, "generated_text", e, "end-input")
     return wf
+
+
+def _expand_workflow_to_multiple_end_channels(
+    workflow: dict[str, Any],
+    *,
+    channels: list[str],
+) -> None:
+    output_keys: list[str] = []
+    for channel in channels:
+        key = TARGET_CHANNEL_TO_END_OUTPUT_KEY.get(channel)
+        if key and key not in output_keys:
+            output_keys.append(key)
+    if len(output_keys) <= 1:
+        return
+
+    end_nodes = [node for node in workflow["nodes"] if node.get("type") == "End"]
+    if not end_nodes:
+        end_id = _add_node(workflow, "End", 1040, 220)
+        end_nodes = [node for node in workflow["nodes"] if node.get("id") == end_id]
+    if not end_nodes:
+        return
+
+    primary_end = end_nodes[0]
+    primary_end_id = str(primary_end.get("id") or "")
+    if not primary_end_id:
+        return
+
+    incoming_edges = [
+        edge
+        for edge in workflow["edges"]
+        if edge.get("target") == primary_end_id and edge.get("targetHandle") == "end-input"
+    ]
+    if not incoming_edges:
+        preferred_types = [
+            "ImageMatching",
+            "TextGeneration",
+            "QuoteExtraction",
+            "Transcription",
+            "ImageGeneration",
+            "ImageExtraction",
+        ]
+        source_id: str | None = None
+        source_handle: str | None = None
+        for preferred in preferred_types:
+            candidate = next((node for node in workflow["nodes"] if node.get("type") == preferred), None)
+            if not candidate:
+                continue
+            candidate_id = str(candidate.get("id") or "")
+            spec = get_node_spec(preferred)
+            if not candidate_id or not spec or not spec.outputs:
+                continue
+            source_id = candidate_id
+            source_handle = spec.outputs[0].key
+            break
+        if source_id and source_handle:
+            _add_edge(workflow, source_id, source_handle, primary_end_id, "end-input")
+            incoming_edges = [
+                edge
+                for edge in workflow["edges"]
+                if edge.get("target") == primary_end_id and edge.get("targetHandle") == "end-input"
+            ]
+
+    primary_data = primary_end.setdefault("data", {})
+    primary_data["output_key"] = output_keys[0]
+    base_pos = primary_end.get("position") if isinstance(primary_end.get("position"), dict) else {}
+    base_x = float(base_pos.get("x", 1040))
+    base_y = float(base_pos.get("y", 220))
+
+    for idx, output_key in enumerate(output_keys[1:], start=1):
+        if idx < len(end_nodes):
+            end_node = end_nodes[idx]
+            end_id = str(end_node.get("id") or "")
+        else:
+            end_id = _add_node(
+                workflow,
+                "End",
+                base_x + (220 * idx),
+                base_y + (16 * idx),
+                data={"output_key": output_key},
+            )
+            end_node = next((node for node in workflow["nodes"] if node.get("id") == end_id), None)
+            if end_node is None:
+                continue
+        end_data = end_node.setdefault("data", {})
+        end_data["output_key"] = output_key
+
+        for incoming in incoming_edges:
+            source = str(incoming.get("source") or "")
+            source_handle = str(incoming.get("sourceHandle") or "")
+            if not source or not source_handle:
+                continue
+            _add_edge(workflow, source, source_handle, end_id, "end-input")
 
 
 def _template_image_text_match(*, preset_id: str | None) -> dict[str, Any]:
@@ -1103,16 +1328,13 @@ def _runtime_types_compatible(*, src_runtime: str, tgt_runtime: str) -> bool:
 
 
 def _ensure_end_node_has_input(workflow: dict[str, Any]) -> None:
-    end_node_id = _find_first_node_id(workflow, "End")
-    if end_node_id is None:
-        end_node_id = _add_node(workflow, "End", 1200, 220)
-
-    has_end_input = any(
-        edge["target"] == end_node_id and edge.get("targetHandle") == "end-input"
-        for edge in workflow["edges"]
-    )
-    if has_end_input:
-        return
+    end_node_ids = [
+        str(node.get("id") or "")
+        for node in workflow["nodes"]
+        if node.get("type") == "End" and str(node.get("id") or "").strip()
+    ]
+    if not end_node_ids:
+        end_node_ids = [_add_node(workflow, "End", 1200, 220)]
 
     preferred_types = [
         "TextGeneration",
@@ -1137,7 +1359,7 @@ def _ensure_end_node_has_input(workflow: dict[str, Any]) -> None:
 
     if not src_id:
         for node in workflow["nodes"]:
-            if node["id"] == end_node_id:
+            if node.get("type") == "End":
                 continue
             spec = get_node_spec(node["type"])
             if spec and spec.outputs:
@@ -1146,7 +1368,14 @@ def _ensure_end_node_has_input(workflow: dict[str, Any]) -> None:
                 break
 
     if src_id and src_handle:
-        _add_edge(workflow, src_id, src_handle, end_node_id, "end-input")
+        for end_node_id in end_node_ids:
+            has_end_input = any(
+                edge["target"] == end_node_id and edge.get("targetHandle") == "end-input"
+                for edge in workflow["edges"]
+            )
+            if has_end_input:
+                continue
+            _add_edge(workflow, src_id, src_handle, end_node_id, "end-input")
 
 
 def _ensure_output_visual_connections_to_end(workflow: dict[str, Any]) -> None:
@@ -1154,9 +1383,63 @@ def _ensure_output_visual_connections_to_end(workflow: dict[str, Any]) -> None:
     UX rule: visible output-carrying nodes should also connect to End so users can
     clearly see what contributes to final output selection.
     """
-    end_node_id = _find_first_node_id(workflow, "End")
-    if end_node_id is None:
-        end_node_id = _add_node(workflow, "End", 1200, 220)
+    end_node_ids = [
+        str(node.get("id") or "")
+        for node in workflow["nodes"]
+        if node.get("type") == "End" and str(node.get("id") or "").strip()
+    ]
+    if not end_node_ids:
+        end_node_ids = [_add_node(workflow, "End", 1200, 220)]
+
+    # When multiple End nodes exist, preserve explicit planner wiring and only
+    # ensure no End node is left orphaned.
+    if len(end_node_ids) > 1:
+        incoming_by_end = {end_id: 0 for end_id in end_node_ids}
+        for edge in workflow["edges"]:
+            target = str(edge.get("target") or "")
+            if target in incoming_by_end and edge.get("targetHandle") == "end-input":
+                incoming_by_end[target] += 1
+
+        producer_candidates: list[tuple[str, str]] = []
+        for node in workflow["nodes"]:
+            node_id = str(node.get("id") or "")
+            node_type = str(node.get("type") or "")
+            if not node_id or node_type in {"ImageBucket", "AudioBucket", "VideoBucket", "TextBucket", "End"}:
+                continue
+            spec = get_node_spec(node_type)
+            if not spec or not spec.outputs:
+                continue
+            preferred_handle = (
+                "generated_text"
+                if node_type == "TextGeneration"
+                else "images"
+                if node_type == "ImageMatching"
+                else spec.outputs[0].key
+            )
+            valid_handles = {port.key for port in spec.outputs}
+            if preferred_handle not in valid_handles:
+                preferred_handle = spec.outputs[0].key
+            producer_candidates.append((node_id, preferred_handle))
+
+        if producer_candidates:
+            producer_index = 0
+            for end_id in end_node_ids:
+                if incoming_by_end.get(end_id, 0) > 0:
+                    continue
+                source_id, source_handle = producer_candidates[
+                    min(producer_index, len(producer_candidates) - 1)
+                ]
+                _add_edge(
+                    workflow,
+                    source=source_id,
+                    source_handle=source_handle,
+                    target=end_id,
+                    target_handle="end-input",
+                )
+                producer_index += 1
+        return
+
+    end_node_id = end_node_ids[0]
 
     preferred_output_ports = {
         "TextGeneration": "generated_text",
@@ -1217,11 +1500,24 @@ def _apply_end_output_key_selection(
     chosen = str(end_output_key or "").strip()
     if not chosen:
         return
-    for node in workflow.get("nodes", []):
-        if node.get("type") != "End":
-            continue
-        data = node.setdefault("data", {})
+    end_nodes = [node for node in workflow.get("nodes", []) if node.get("type") == "End"]
+    if not end_nodes:
+        return
+
+    if len(end_nodes) == 1:
+        data = end_nodes[0].setdefault("data", {})
         data["output_key"] = chosen
+        return
+
+    # Multi-End workflow: preserve explicit per-End keys from planner and only
+    # fill one missing key if needed.
+    for node in end_nodes:
+        data = node.setdefault("data", {})
+        existing = str(data.get("output_key") or "").strip()
+        if existing:
+            continue
+        data["output_key"] = chosen
+        break
 
 
 def _ensure_non_empty(workflow: dict[str, Any]) -> None:
@@ -1348,6 +1644,7 @@ def _build_guided_build_steps(
     operations: list[dict[str, Any]],
     touched_node_ids: list[str],
     request_text: str,
+    model_name: str,
 ) -> list[dict[str, Any]]:
     before_nodes_by_id = {node["id"]: node for node in before.get("nodes", [])}
     after_nodes_by_id = {node["id"]: node for node in after.get("nodes", [])}
@@ -1576,6 +1873,7 @@ def _build_guided_build_steps(
     _attach_narrations_to_steps(
         steps=steps,
         request_text=request_text,
+        model_name=model_name,
     )
     for index, step in enumerate(steps):
         step["order_index"] = index
@@ -1586,6 +1884,7 @@ def _attach_narrations_to_steps(
     *,
     steps: list[dict[str, Any]],
     request_text: str,
+    model_name: str,
 ) -> None:
     intro_steps = [step for step in steps if step.get("kind") == "node_intro"]
     if not intro_steps:
@@ -1594,6 +1893,7 @@ def _attach_narrations_to_steps(
     generated = _generate_step_narrations_with_gemini(
         request_text=request_text,
         intro_steps=intro_steps,
+        model_name=model_name,
     )
     used_normalized: set[str] = set()
     fallback_count = 0
@@ -1624,6 +1924,7 @@ def _generate_step_narrations_with_gemini(
     *,
     request_text: str,
     intro_steps: list[dict[str, Any]],
+    model_name: str,
 ) -> dict[str, str]:
     schema = {
         "type": "object",
@@ -1679,6 +1980,7 @@ Rules:
             instructions,
             response_schema=schema,
             response_mime_type="application/json",
+            model=model_name,
         )
         if not isinstance(response, dict):
             return {}
@@ -1734,6 +2036,7 @@ def _generate_closing_narration_with_gemini(
     request_text: str,
     node_count: int,
     edge_count: int,
+    model_name: str,
 ) -> str:
     schema = {
         "type": "object",
@@ -1768,6 +2071,7 @@ Rules:
             instructions,
             response_schema=schema,
             response_mime_type="application/json",
+            model=model_name,
         )
         if isinstance(response, dict):
             line = str(response.get("closing_narration") or "").strip()
@@ -1850,6 +2154,7 @@ def _resolve_text_generation_settings(
     supabase_client: Any,
     user_id: str,
     request_text: str,
+    model_name: str,
 ) -> dict[str, Any]:
     requested_variant = _infer_requested_preset_variant(request_text)
     explicit_request = _is_explicit_text_preset_request(request_text)
@@ -1864,6 +2169,7 @@ def _resolve_text_generation_settings(
             request_text=request_text,
             target_channel=target_channel,
             selected_preset=None,
+            model_name=model_name,
         )
         no_preset_overrides = _resolve_text_overrides(
             request_text=request_text,
@@ -1890,6 +2196,7 @@ def _resolve_text_generation_settings(
     gemini_choice = _select_text_preset_with_gemini(
         request_text=request_text,
         presets=deduped_presets,
+        model_name=model_name,
     )
     selected_preset: dict[str, Any] | None = None
     gemini_preset_id = (
@@ -1919,6 +2226,7 @@ def _resolve_text_generation_settings(
             request_text=request_text,
             target_channel=target_channel,
             selected_preset=selected_preset,
+            model_name=model_name,
         ),
         explicit_request=explicit_request,
     )
@@ -1966,6 +2274,7 @@ def _select_text_preset_with_gemini(
     *,
     request_text: str,
     presets: list[dict[str, Any]],
+    model_name: str,
 ) -> dict[str, Any] | None:
     if not presets:
         return None
@@ -2010,6 +2319,7 @@ Otherwise omit preset_variant or use an empty string.
             instructions,
             response_schema=schema,
             response_mime_type="application/json",
+            model=model_name,
         )
         if not isinstance(response, dict):
             return None
@@ -2030,6 +2340,7 @@ def _design_text_overrides_with_gemini(
     request_text: str,
     target_channel: str | None,
     selected_preset: dict[str, Any] | None,
+    model_name: str,
 ) -> dict[str, Any] | None:
     channel_default_tone = _default_tone_for_channel(target_channel)
     channel_default_max = _default_max_length_for_channel(target_channel)
@@ -2092,6 +2403,7 @@ Fallback defaults:
             instructions,
             response_schema=schema,
             response_mime_type="application/json",
+            model=model_name,
         )
         if not isinstance(response, dict):
             return None
@@ -2611,11 +2923,41 @@ def _infer_target_channel(prompt: str) -> str | None:
     return None
 
 
+def _infer_requested_output_channels(prompt: str) -> list[str]:
+    lower = _normalize_text(prompt)
+    channels: list[str] = []
+    if _contains_phrase(lower, "linkedin"):
+        channels.append("linkedin")
+    if (
+        _contains_phrase(lower, "x post")
+        or _contains_phrase(lower, "ex post")
+        or _contains_phrase(lower, "x thread")
+        or _contains_phrase(lower, "x-post")
+        or _contains_phrase(lower, "ex-post")
+        or _contains_phrase(lower, "twitter")
+        or _contains_phrase(lower, "tweet")
+        or _contains_phrase(lower, "x")
+    ):
+        channels.append("x")
+    if _contains_phrase(lower, "email"):
+        channels.append("email")
+    return channels
+
+
 def _resolve_end_output_key(
     *,
     request_text: str,
     target_channel_hint: str | None,
+    model_name: str,
 ) -> str | None:
+    requested_channels = _infer_requested_output_channels(request_text)
+    requested_output_channels = [
+        channel for channel in requested_channels if channel in TARGET_CHANNEL_TO_END_OUTPUT_KEY
+    ]
+    # Multi-destination requests should preserve per-End output_key assignments.
+    if len(requested_output_channels) > 1:
+        return None
+
     schema = {
         "type": "object",
         "properties": {
@@ -2645,6 +2987,7 @@ Request:
             instructions,
             response_schema=schema,
             response_mime_type="application/json",
+            model=model_name,
         )
         if isinstance(response, dict):
             output_key = str(response.get("output_key") or "").strip()
