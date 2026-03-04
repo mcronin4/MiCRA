@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { ChevronUp } from "lucide-react";
 import { ReactFlowWrapper } from "./ReactFlowWrapper";
 import { CanvasPanel } from "./CanvasPanel";
 import { MicrAIDock } from "./MicrAIDock";
@@ -38,6 +39,7 @@ const LEGACY_OUTPUT_NODE_TYPES = new Set(["LinkedIn", "TikTok", "Email"]);
 const MICRAI_GUIDED_BUILD_ENABLED =
   process.env.NEXT_PUBLIC_MICRAI_GUIDED_BUILD_ENABLED !== "false";
 const MICRAI_RELEASE_TAIL_LISTEN_MS = 380;
+const MICRAI_LOADING_DOT_BASE_COLOR = "#a894c7";
 
 interface WorkflowBuilderProps {
   autoLoadWorkflowId?: string | null;
@@ -66,12 +68,28 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
   const launcherStartRecordingPromiseRef = useRef<Promise<boolean> | null>(null);
   const launcherHoldActiveRef = useRef(false);
   const launcherPointerDownRef = useRef(false);
+  const launcherAnchorRef = useRef<HTMLDivElement | null>(null);
+  const topNavRef = useRef<HTMLDivElement | null>(null);
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const executionBarRef = useRef<HTMLDivElement | null>(null);
+  const playbackWasBusyRef = useRef(false);
+  const shellRecoveryAttemptedRef = useRef(false);
+  const [shellRecoveryKey, setShellRecoveryKey] = useState(0);
+  const [launcherDotCount, setLauncherDotCount] = useState<0 | 1 | 2 | 3>(0);
+  const [isPrePlaybackLoading, setIsPrePlaybackLoading] = useState(false);
 
   const router = useRouter();
 
   // Custom hooks for state management
   const copilot = useWorkflowCopilot();
   const playback = useMicrAIBuildPlayback();
+  const playbackIsActive = playback.isActive;
+  const playbackIsThinking = playback.isThinking;
+  const playbackIsCameraTransitioning = playback.isCameraTransitioning;
+  const shouldShowLauncherDots = playbackIsThinking || isPrePlaybackLoading;
+  const shouldShowLauncher =
+    !playbackIsActive || playbackIsThinking || isPrePlaybackLoading;
+  const clearPlaybackUi = playback.clearPlaybackUi;
   const voice = useMicrAIVoiceInput();
   const canvasOps = useCanvasOperations();
   const contextMenus = useContextMenus();
@@ -92,6 +110,64 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       }).catch(() => {}); // fire-and-forget; errors are non-critical
     });
   }, []);
+
+  useEffect(() => {
+    clearPlaybackUi();
+  }, [clearPlaybackUi]);
+
+  useEffect(() => {
+    const isBusy =
+      playbackIsActive || playbackIsThinking || playbackIsCameraTransitioning;
+    if (isBusy) {
+      playbackWasBusyRef.current = true;
+      return;
+    }
+    if (!playbackWasBusyRef.current) return;
+    playbackWasBusyRef.current = false;
+
+    const isVisible = (element: HTMLElement | null) =>
+      !!element &&
+      element.offsetWidth > 0 &&
+      element.offsetHeight > 0 &&
+      window.getComputedStyle(element).display !== "none" &&
+      window.getComputedStyle(element).visibility !== "hidden";
+
+    const topVisible = isVisible(topNavRef.current);
+    const sidebarVisible = isVisible(sidebarRef.current);
+    const barVisible = isVisible(executionBarRef.current);
+    if (topVisible && sidebarVisible && barVisible) {
+      shellRecoveryAttemptedRef.current = false;
+      return;
+    }
+    if (shellRecoveryAttemptedRef.current) return;
+
+    shellRecoveryAttemptedRef.current = true;
+    setShellRecoveryKey((prev) => prev + 1);
+    clearPlaybackUi();
+    showToast("Recovered workflow shell after playback.", "warning");
+  }, [
+    clearPlaybackUi,
+    playbackIsActive,
+    playbackIsCameraTransitioning,
+    playbackIsThinking,
+  ]);
+
+  useEffect(() => {
+    if (!shouldShowLauncherDots) {
+      setLauncherDotCount(0);
+      return;
+    }
+    const sequence: Array<0 | 1 | 2 | 3> = [1, 2, 3, 0];
+    let idx = 0;
+    setLauncherDotCount(sequence[idx]);
+    const timer = window.setInterval(() => {
+      idx = (idx + 1) % sequence.length;
+      setLauncherDotCount(sequence[idx]);
+    }, 420);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [shouldShowLauncherDots]);
 
   const handleAddPart = (partType: NodeType) => {
     // Add workflow/bucket/flow nodes directly to canvas.
@@ -269,6 +345,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     }
 
     const current = exportCurrentWorkflowForPlanning();
+    playback.startThinking();
     try {
       const response = await copilot.requestPlan({
         message,
@@ -282,6 +359,8 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       }
     } catch {
       showToast("MicrAI planning failed. Check logs and retry.", "error");
+    } finally {
+      playback.stopThinking();
     }
   };
 
@@ -398,7 +477,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     });
   };
 
-  const handleMicrAIApply = () => {
+  const applyMicrAIPlan = (withPlayback: boolean) => {
     if (playback.isActive) return;
     const plan = copilot.pendingPlan;
     if (!plan || plan.status !== "ready" || !plan.workflow_data) {
@@ -423,8 +502,9 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     copilot.clearPlan();
 
     setLastMicrAIPatchSnapshot(current);
-    if (MICRAI_GUIDED_BUILD_ENABLED && hasGuidedSteps) {
+    if (withPlayback && MICRAI_GUIDED_BUILD_ENABLED && hasGuidedSteps) {
       setIsMicrAIOpen(true);
+      setIsPrePlaybackLoading(true);
       void playback.startPlayback({
         mode: copilot.mode,
         steps: plan.build_steps ?? [],
@@ -439,11 +519,16 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
           }) ?? Promise.resolve(false),
         applyWorkflow: (workflowData) =>
           applyWorkflowToCanvas(workflowData, { fitView: false }),
+        onPlaybackVisualStart: () => {
+          setIsPrePlaybackLoading(false);
+        },
         onComplete: () => {
+          setIsPrePlaybackLoading(false);
           applyWorkflowToCanvas(laidOut, { fitView: true });
           showToast("MicrAI patch applied.", "success");
         },
         onError: (error) => {
+          setIsPrePlaybackLoading(false);
           applyWorkflowToCanvas(current, { fitView: true });
           showToast(
             `MicrAI guided build failed: ${error.message}`,
@@ -453,15 +538,34 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       });
       return;
     }
-    if (MICRAI_GUIDED_BUILD_ENABLED && !hasGuidedSteps) {
+    if (withPlayback && MICRAI_GUIDED_BUILD_ENABLED && !hasGuidedSteps) {
+      setIsPrePlaybackLoading(false);
       showToast(
         "MicrAI guided steps were missing for this plan, so it was applied instantly.",
         "warning"
       );
     }
+    if (!withPlayback) {
+      setIsPrePlaybackLoading(false);
+    }
 
     applyWorkflowToCanvas(laidOut, { fitView: true });
+    if (!withPlayback) {
+      void playback.playClosingOnly({
+        message: plan.closing_narration,
+        canvasContainerRef: contextMenus.canvasContainerRef,
+        getViewport: () => canvasOps.reactFlowInstance?.getViewport() ?? null,
+      });
+    }
     showToast("MicrAI patch applied.", "success");
+  };
+
+  const handleMicrAIApplyWithPlayback = () => {
+    applyMicrAIPlan(true);
+  };
+
+  const handleMicrAIApplySkipPlayback = () => {
+    applyMicrAIPlan(false);
   };
 
   const handleMicrAIUndoPatch = () => {
@@ -608,15 +712,19 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
   return (
     <div className="h-screen flex flex-col font-sans text-[#1d1d1f] overflow-hidden bg-white">
       {/* Top Navigation Bar */}
-      <TopNavBar
-        onSave={() => setShowSaveDialog(true)}
-        canSave={true}
-      />
+      <div ref={topNavRef} data-testid="workflow-top-nav">
+        <TopNavBar
+          onSave={() => setShowSaveDialog(true)}
+          canSave={true}
+        />
+      </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden" key={shellRecoveryKey}>
         {/* Left Sidebar */}
-        <NodeSidebar onAddNode={handleAddNodeFromSidebar} />
+        <div ref={sidebarRef} data-testid="workflow-sidebar">
+          <NodeSidebar onAddNode={handleAddNodeFromSidebar} />
+        </div>
 
         {/* Canvas Area */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
@@ -651,6 +759,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
                 }}
                 interactionMode={interactionMode}
                 isMicrAIPlaybackActive={playback.isActive}
+                isMicrAICameraTransitioning={playback.isCameraTransitioning}
                 autoLoadWorkflowId={autoLoadWorkflowId}
                 onAutoLoadComplete={onAutoLoadComplete}
               />
@@ -664,62 +773,99 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
           />
 
           {/* Bottom Execution Bar */}
-          <ExecutionBar
-            reactFlowInstance={canvasOps.reactFlowInstance}
-            showChatToggle={false}
-            onExecuteWorkflow={handleExecuteWorkflow}
-            interactionMode={interactionMode}
-            onInteractionModeChange={setInteractionMode}
-            canUndo={undoStack.length > 0}
-            canRedo={redoStack.length > 0}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            isExecuting={isExecuting}
-            executionJustCompleted={!!executionResult && !isExecuting}
-            currentWorkflowId={currentWorkflowId}
-            onCancelExecution={cancelExecution}
-            onViewResults={() => {
-              if (currentWorkflowId) router.push(`/preview/${currentWorkflowId}`);
-            }}
-          />
+          <div ref={executionBarRef} data-testid="workflow-execution-bar">
+            <ExecutionBar
+              reactFlowInstance={canvasOps.reactFlowInstance}
+              showChatToggle={false}
+              onExecuteWorkflow={handleExecuteWorkflow}
+              interactionMode={interactionMode}
+              onInteractionModeChange={setInteractionMode}
+              canUndo={undoStack.length > 0}
+              canRedo={redoStack.length > 0}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              isExecuting={isExecuting}
+              executionJustCompleted={!!executionResult && !isExecuting}
+              currentWorkflowId={currentWorkflowId}
+              onCancelExecution={cancelExecution}
+              onViewResults={() => {
+                if (currentWorkflowId) router.push(`/preview/${currentWorkflowId}`);
+              }}
+            />
+          </div>
 
-          {!playback.isActive && (
+          <div
+            ref={launcherAnchorRef}
+            data-testid="micrai-launcher-anchor"
+            className="absolute right-6 bottom-24 z-50 h-[112px] w-[112px] pointer-events-none"
+          >
+            {shouldShowLauncher && (
+              <button
+                type="button"
+                onPointerDown={handleLauncherPointerDown}
+                onPointerUp={finishLauncherPress}
+                onPointerCancel={finishLauncherPress}
+                onDragStart={(event) => event.preventDefault()}
+                draggable={false}
+                className="relative h-full w-full p-0 bg-transparent border-0 shadow-none pointer-events-auto"
+                title={isMicrAIOpen ? "Hide MicrAI" : "Open MicrAI"}
+              >
+                {voice.isRecording && (
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-xl border border-violet-200 bg-white/90 px-2 py-1 shadow-sm">
+                    <div className="flex items-end gap-[3px] h-6">
+                      {[0, 1, 2, 3, 4].map((idx) => {
+                        const spread = Math.max(0.25, 1 - Math.abs(idx - 2) * 0.22);
+                        const h = 4 + voice.level * 18 * spread;
+                        return (
+                          <span
+                            key={idx}
+                            className="w-[4px] rounded-full bg-violet-500"
+                            style={{ height: `${h}px` }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {shouldShowLauncherDots && (
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+                    {[1, 2, 3].map((idx) => (
+                      <span
+                        key={idx}
+                        className={`h-2.5 w-2.5 rounded-full saturate-[1.35] brightness-[1.2] contrast-[1.2] transition-opacity duration-150 ${
+                          launcherDotCount >= idx
+                            ? "opacity-100"
+                            : "opacity-0"
+                        }`}
+                        style={{ backgroundColor: MICRAI_LOADING_DOT_BASE_COLOR }}
+                      />
+                    ))}
+                  </div>
+                )}
+                <Image
+                  src="/robot-full-body.png"
+                  alt="MicrAI"
+                  width={112}
+                  height={112}
+                  draggable={false}
+                  onDragStart={(event) => event.preventDefault()}
+                  className="block select-none pointer-events-none saturate-[1.35] brightness-[1.2] contrast-[1.2]"
+                />
+              </button>
+            )}
+          </div>
+
+          {!isMicrAIOpen && !playback.isActive && (
             <button
               type="button"
-              onPointerDown={handleLauncherPointerDown}
-              onPointerUp={finishLauncherPress}
-              onPointerCancel={finishLauncherPress}
-              onDragStart={(event) => event.preventDefault()}
-              draggable={false}
-              className="absolute right-6 bottom-24 z-50 p-0 bg-transparent border-0 shadow-none transition-transform hover:scale-[1.03]"
-              title={isMicrAIOpen ? "Hide MicrAI" : "Open MicrAI"}
+              onClick={() => setIsMicrAIOpen(true)}
+              className="absolute left-1/2 -translate-x-1/2 bottom-24 z-40 h-8 w-28 rounded-full border border-slate-200 bg-white/95 text-slate-500 shadow-[0_6px_20px_rgba(15,23,42,0.12)] backdrop-blur-[2px] transition-colors hover:bg-white hover:text-slate-700"
+              aria-label="Open MicrAI dock"
+              title="Open MicrAI dock"
             >
-              {voice.isRecording && (
-                <div className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-xl border border-violet-200 bg-white/90 px-2 py-1 shadow-sm">
-                  <div className="flex items-end gap-[3px] h-6">
-                    {[0, 1, 2, 3, 4].map((idx) => {
-                      const spread = Math.max(0.25, 1 - Math.abs(idx - 2) * 0.22);
-                      const h = 4 + voice.level * 18 * spread;
-                      return (
-                        <span
-                          key={idx}
-                          className="w-[4px] rounded-full bg-violet-500"
-                          style={{ height: `${h}px` }}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <Image
-                src="/robot-full-body.png"
-                alt="MicrAI"
-                width={112}
-                height={112}
-                draggable={false}
-                onDragStart={(event) => event.preventDefault()}
-                className="block select-none pointer-events-none saturate-[1.35] brightness-[1.2] contrast-[1.2]"
-              />
+              <span className="flex h-full w-full items-center justify-center">
+                <ChevronUp size={16} />
+              </span>
             </button>
           )}
 
@@ -733,7 +879,8 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
               error={copilot.error}
               pendingPlan={copilot.pendingPlan}
               onPlan={handleMicrAIPlan}
-              onApply={handleMicrAIApply}
+              onApplyWithPlayback={handleMicrAIApplyWithPlayback}
+              onApplySkipPlayback={handleMicrAIApplySkipPlayback}
               onDismissPlan={copilot.clearPlan}
               onUndoPatch={handleMicrAIUndoPatch}
               canUndoPatch={!!lastMicrAIPatchSnapshot}
@@ -745,7 +892,11 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
               isVoiceBusy={voice.isTranscribing}
               voiceLevel={voice.level}
               onVoiceToggle={handleDockVoiceToggle}
-              onClose={() => setIsMicrAIOpen(false)}
+              onClose={() => {
+                setIsMicrAIOpen(false);
+                setIsPrePlaybackLoading(false);
+                playback.clearPlaybackUi();
+              }}
             />
           )}
         </div>

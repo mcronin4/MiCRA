@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import Image from "next/image";
 import type { CopilotPlanMode, CopilotPlanResponse } from "@/lib/fastapi/workflows";
-import { ChevronDown, Mic, SendHorizontal, Undo2, X } from "lucide-react";
+import { ChevronDown, Loader2, Mic, SendHorizontal, Undo2, X } from "lucide-react";
 
 interface MicrAIDockProps {
   prompt: string;
@@ -14,7 +14,8 @@ interface MicrAIDockProps {
   error: string | null;
   pendingPlan: CopilotPlanResponse | null;
   onPlan: () => void;
-  onApply: () => void;
+  onApplyWithPlayback: () => void;
+  onApplySkipPlayback: () => void;
   onDismissPlan: () => void;
   onUndoPatch: () => void;
   canUndoPatch: boolean;
@@ -38,7 +39,8 @@ export const MicrAIDock: React.FC<MicrAIDockProps> = ({
   error,
   pendingPlan,
   onPlan,
-  onApply,
+  onApplyWithPlayback,
+  onApplySkipPlayback,
   onDismissPlan,
   onUndoPatch,
   canUndoPatch,
@@ -61,7 +63,9 @@ export const MicrAIDock: React.FC<MicrAIDockProps> = ({
   }, [pendingPlan]);
 
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 bottom-16 z-30 w-[min(680px,92vw)]">
+    <div
+      className="absolute left-1/2 -translate-x-1/2 bottom-16 z-30 w-[min(680px,92vw)]"
+    >
       <div className="relative rounded-2xl border border-slate-200 bg-white overflow-visible">
         <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
           <Image
@@ -85,8 +89,8 @@ export const MicrAIDock: React.FC<MicrAIDockProps> = ({
               onChange={(e) => onModeChange(e.target.value as CopilotPlanMode)}
               className="h-8 text-[11px] border border-slate-200 rounded-lg px-2.5 bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300"
             >
-              <option value="edit">Edit current</option>
-              <option value="create">Create new</option>
+              <option value="create">Create New</option>
+              <option value="edit">Edit Current</option>
             </select>
             <button
               onClick={onUndoPatch}
@@ -193,9 +197,13 @@ export const MicrAIDock: React.FC<MicrAIDockProps> = ({
                   ? "bg-indigo-500 text-white hover:bg-indigo-600"
                   : "bg-slate-100 text-slate-300 cursor-not-allowed"
               }`}
-              title="Plan with MicrAI"
+              title={isPlanning ? "Planning with MicrAI..." : "Plan with MicrAI"}
             >
-              <SendHorizontal size={13} />
+              {isPlanning ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <SendHorizontal size={13} />
+              )}
             </button>
           </div>
 
@@ -214,7 +222,7 @@ export const MicrAIDock: React.FC<MicrAIDockProps> = ({
                   )}
                   <div className="flex items-center justify-start gap-2">
                     <button
-                      onClick={onApply}
+                      onClick={onApplyWithPlayback}
                       disabled={
                         isPlaybackActive ||
                         pendingPlan.status !== "ready" ||
@@ -228,7 +236,24 @@ export const MicrAIDock: React.FC<MicrAIDockProps> = ({
                           : "bg-slate-100 text-slate-400 cursor-not-allowed"
                       }`}
                     >
-                      Apply
+                      Apply with playback
+                    </button>
+                    <button
+                      onClick={onApplySkipPlayback}
+                      disabled={
+                        isPlaybackActive ||
+                        pendingPlan.status !== "ready" ||
+                        !pendingPlan.workflow_data
+                      }
+                      className={`rounded-lg px-3 py-1 text-[11px] font-medium transition-colors ${
+                        !isPlaybackActive &&
+                        pendingPlan.status === "ready" &&
+                        pendingPlan.workflow_data
+                          ? "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
+                          : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-100"
+                      }`}
+                    >
+                      Skip playback
                     </button>
                     <button
                       onClick={onDismissPlan}

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { Position, getBezierPath } from "@xyflow/react";
 import type {
@@ -10,8 +10,8 @@ import type {
 import { getNodeSpec } from "@/lib/nodeRegistry";
 import { synthesizeMicrAIVoice } from "@/lib/fastapi/voice";
 
-type PlaybackStatus = "idle" | "running" | "skipping" | "done" | "error";
-type RobotPose = "smile" | "talk1" | "talk2";
+type PlaybackStatus = "idle" | "thinking" | "running" | "skipping";
+type RobotPose = "smile" | "talk1" | "talk2" | "thinking" | "dock";
 type RobotVariant = "default" | "green" | "blue" | "purple" | "yellow";
 
 interface Point {
@@ -45,6 +45,7 @@ export interface MicrAIRobotState {
   y: number;
   pose: RobotPose;
   variant: RobotVariant;
+  thinkingFrame: 1 | 2 | 3 | 4 | 5;
   scale: number;
 }
 
@@ -52,6 +53,8 @@ export interface MicrAISpeechBubble {
   text: string;
   x: number;
   y: number;
+  direction: "left" | "right";
+  scale: number;
 }
 
 export interface MicrAITrailState {
@@ -73,8 +76,15 @@ interface StartPlaybackArgs {
     options?: { duration?: number }
   ) => Promise<boolean> | void;
   applyWorkflow: (workflowData: SavedWorkflowData) => void;
+  onPlaybackVisualStart?: () => void;
   onComplete: () => void;
   onError: (error: Error) => void;
+}
+
+interface PlayClosingOnlyArgs {
+  message?: string | null;
+  canvasContainerRef: RefObject<HTMLDivElement | null>;
+  getViewport?: () => { x: number; y: number; zoom: number } | null;
 }
 
 const EDGE_COLORS: Record<NonNullable<CopilotBuildStep["runtime_type"]>, string> = {
@@ -111,6 +121,7 @@ const DEFAULT_ROBOT: MicrAIRobotState = {
   y: 64,
   pose: "smile",
   variant: "purple",
+  thinkingFrame: 1,
   scale: 0.95,
 };
 
@@ -385,6 +396,7 @@ export function useMicrAIBuildPlayback() {
   const [trail, setTrail] = useState<MicrAITrailState>(DEFAULT_TRAIL);
   const [transcript, setTranscript] = useState<string[]>([]);
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1);
+  const [isCameraTransitioning, setIsCameraTransitioning] = useState(false);
   const speedRef = useRef(1);
 
   const runIdRef = useRef(0);
@@ -395,6 +407,7 @@ export function useMicrAIBuildPlayback() {
   const narrationObjectUrlRef = useRef<string | null>(null);
   const narrationAudioCtxRef = useRef<AudioContext | null>(null);
   const narrationAudioRafRef = useRef<number | null>(null);
+  const robotPoseRef = useRef<RobotPose>(DEFAULT_ROBOT.pose);
 
   const robotFlowRef = useRef<Point>({ x: 64, y: 64 });
   const trailModelRef = useRef<TrailModel>({
@@ -407,6 +420,7 @@ export function useMicrAIBuildPlayback() {
   const setRobotState = useCallback((updater: MicrAIRobotState | ((prev: MicrAIRobotState) => MicrAIRobotState)) => {
     setRobot((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
+      robotPoseRef.current = next.pose;
       return next;
     });
   }, []);
@@ -416,6 +430,10 @@ export function useMicrAIBuildPlayback() {
       window.clearInterval(speechIntervalRef.current);
       speechIntervalRef.current = null;
     }
+  }, []);
+
+  const clearThinkingIntervals = useCallback(() => {
+    // Thinking visual is rendered by WorkflowBuilder launcher dots; no internal timers.
   }, []);
 
   const clearNarrationAudio = useCallback(() => {
@@ -456,12 +474,37 @@ export function useMicrAIBuildPlayback() {
   const resetVisuals = useCallback(() => {
     stopRenderLoop();
     clearSpeechInterval();
+    clearThinkingIntervals();
     clearNarrationAudio();
     trailModelRef.current = { visible: false, cubic: null, t: 0, color: EDGE_COLORS.Text };
     setSpeech(null);
     setTrail(DEFAULT_TRAIL);
     setRobotState(DEFAULT_ROBOT);
-  }, [clearNarrationAudio, clearSpeechInterval, setRobotState, stopRenderLoop]);
+  }, [clearNarrationAudio, clearSpeechInterval, clearThinkingIntervals, setRobotState, stopRenderLoop]);
+
+  const finalizePlaybackToIdle = useCallback(
+    (options?: { clearTranscript?: boolean }) => {
+      skipRequestedRef.current = false;
+      setIsCameraTransitioning(false);
+      setStatus("idle");
+      if (options?.clearTranscript ?? true) {
+        setTranscript([]);
+      }
+      resetVisuals();
+    },
+    [resetVisuals]
+  );
+
+  useEffect(() => {
+    return () => {
+      runIdRef.current += 1;
+      skipRequestedRef.current = false;
+      stopRenderLoop();
+      clearSpeechInterval();
+      clearThinkingIntervals();
+      clearNarrationAudio();
+    };
+  }, [clearNarrationAudio, clearSpeechInterval, clearThinkingIntervals, stopRenderLoop]);
 
   const throwIfCancelled = useCallback((runId: number) => {
     if (runIdRef.current !== runId) {
@@ -602,14 +645,17 @@ export function useMicrAIBuildPlayback() {
         const containerRect = containerRef.current?.getBoundingClientRect();
         const rect = nodeElement.getBoundingClientRect();
         if (containerRect) {
-          return screenToFlow({ x: rect.right - containerRect.left - 20, y: rect.top - containerRect.top + 18 }, viewport);
+          return screenToFlow(
+            { x: rect.right - containerRect.left + 6, y: rect.top - containerRect.top - 6 },
+            viewport
+          );
         }
       }
 
       const node = workflowData.nodes.find((item) => item.id === nodeId);
       if (!node) return null;
       const { width } = getNodeDimensions(node);
-      return { x: node.position.x + width - 20, y: node.position.y + 18 };
+      return { x: node.position.x + width + 6, y: node.position.y - 6 };
     },
     [getNodeDimensions, getNodeElement, getViewport]
   );
@@ -668,7 +714,7 @@ export function useMicrAIBuildPlayback() {
     [getNodeDimensions, getWorkflowBounds]
   );
 
-  const getLauncherFlowPoint = useCallback(
+  const getCenterFlowPoint = useCallback(
     (
       containerRef: RefObject<HTMLDivElement | null>,
       getViewportFn?: () => { x: number; y: number; zoom: number } | null
@@ -679,8 +725,8 @@ export function useMicrAIBuildPlayback() {
         return robotFlowRef.current;
       }
       const screenPoint = {
-        x: container.clientWidth - 72,
-        y: container.clientHeight - 132,
+        x: container.clientWidth * 0.5,
+        y: container.clientHeight * 0.42,
       };
       return screenToFlow(screenPoint, viewport);
     },
@@ -694,7 +740,9 @@ export function useMicrAIBuildPlayback() {
     ) => {
       const viewport = getViewport(containerRef, getViewportFn);
       const robotScreen = flowToScreen(robotFlowRef.current, viewport);
-      const robotScale = clamp(0.95 * viewport.zoom, 0.6, 2.6);
+      const pose = robotPoseRef.current;
+      const isLauncherAnchored = pose === "thinking" || pose === "dock";
+      const robotScale = isLauncherAnchored ? 1 : 0.95 * viewport.zoom;
       setRobotState((prev) => {
         const next = { ...prev, x: robotScreen.x, y: robotScreen.y, scale: robotScale };
         if (Math.abs(prev.x - next.x) < 0.25 && Math.abs(prev.y - next.y) < 0.25 && Math.abs(prev.scale - next.scale) < 0.001) {
@@ -705,14 +753,27 @@ export function useMicrAIBuildPlayback() {
 
       setSpeech((prev) => {
         if (!prev) return prev;
-        const bubbleOffsetX = 20 * robotScale;
-        const bubbleOffsetY = 68 * robotScale;
+        const speechScale = isLauncherAnchored ? 1 : robotScale;
+        // Robot sprites are 600x600; antenna tip is ~231 px above center in source art.
+        const antennaX = robotScreen.x;
+        const antennaY = robotScreen.y - 51 * robotScale;
+        const pointerReachX = 10 * speechScale;
+        const pointerInsetY = 5 * speechScale;
+        const bubbleX =
+          prev.direction === "left"
+            ? antennaX - pointerReachX
+            : antennaX + pointerReachX;
         const next = {
           ...prev,
-          x: robotScreen.x + bubbleOffsetX,
-          y: robotScreen.y - bubbleOffsetY,
+          x: bubbleX,
+          y: antennaY + pointerInsetY,
+          scale: speechScale,
         };
-        if (Math.abs(prev.x - next.x) < 0.25 && Math.abs(prev.y - next.y) < 0.25) {
+        if (
+          Math.abs(prev.x - next.x) < 0.25 &&
+          Math.abs(prev.y - next.y) < 0.25 &&
+          Math.abs(prev.scale - next.scale) < 0.001
+        ) {
           return prev;
         }
         return next;
@@ -895,18 +956,29 @@ export function useMicrAIBuildPlayback() {
       anchorFlow: Point,
       text: string,
       variant: RobotVariant,
-      prefetchedAudio?: Promise<Blob | null>
+      prefetchedAudio?: Promise<Blob | null>,
+      options?: { onBeforeVisible?: () => void | Promise<void> }
     ) => {
       const message = text.trim();
       if (!message) return;
 
-      setTranscript((prev) => [...prev, message]);
-      setSpeech({ text: message, x: 0, y: 0 });
-      robotFlowRef.current = anchorFlow;
-      setRobotState((prev) => ({ ...prev, visible: true, pose: "smile", variant }));
-
       let spoke = false;
       let audioDrivenMouth = false;
+      let revealed = false;
+      const reveal = async () => {
+        if (revealed) return;
+        if (options?.onBeforeVisible) {
+          await Promise.resolve(options.onBeforeVisible());
+        }
+        throwIfCancelled(runId);
+        setTranscript((prev) => [...prev, message]);
+        setSpeech({ text: message, x: 0, y: 0, direction: "right", scale: 1 });
+        robotFlowRef.current = anchorFlow;
+        setRobotState((prev) => ({ ...prev, visible: true, pose: "smile", variant }));
+        revealed = true;
+        await nextAnimationFrame(1);
+      };
+
       try {
         let audioBlob: Blob | null = null;
         if (prefetchedAudio) {
@@ -926,6 +998,7 @@ export function useMicrAIBuildPlayback() {
         narrationAudioRef.current = audio;
         await waitForAudioReady(runId, audio);
         throwIfCancelled(runId);
+        await reveal();
         await audio.play();
         spoke = true;
         setRobotState((prev) => ({ ...prev, pose: "talk1", variant }));
@@ -1011,6 +1084,13 @@ export function useMicrAIBuildPlayback() {
         }
         console.warn("[MicrAI Voice] Gradium TTS failed during playback:", err);
         spoke = false;
+        if (!revealed) {
+          try {
+            await reveal();
+          } catch {
+            // no-op
+          }
+        }
       } finally {
         clearSpeechInterval();
         clearNarrationAudio();
@@ -1041,6 +1121,35 @@ export function useMicrAIBuildPlayback() {
       waitForAudioReady,
     ]
   );
+
+  const startThinking = useCallback(
+    () => {
+      if (status === "running" || status === "skipping") return;
+
+      runIdRef.current += 1;
+      skipRequestedRef.current = false;
+      setIsCameraTransitioning(false);
+      stopRenderLoop();
+      clearSpeechInterval();
+      clearNarrationAudio();
+      clearThinkingIntervals();
+      trailModelRef.current = { visible: false, cubic: null, t: 0, color: EDGE_COLORS.Text };
+      setTrail(DEFAULT_TRAIL);
+      setSpeech(null);
+      setRobotState(DEFAULT_ROBOT);
+      setTranscript([]);
+      setStatus("thinking");
+    },
+    [clearNarrationAudio, clearSpeechInterval, clearThinkingIntervals, setRobotState, status, stopRenderLoop]
+  );
+
+  const stopThinking = useCallback(() => {
+    clearThinkingIntervals();
+    setSpeech((prev) => (prev?.direction === "left" ? null : prev));
+    setTrail((prev) => (prev.visible ? DEFAULT_TRAIL : prev));
+    setRobotState((prev) => (prev.pose === "thinking" ? DEFAULT_ROBOT : prev));
+    setStatus((prev) => (prev === "thinking" ? "idle" : prev));
+  }, [clearThinkingIntervals, setRobotState]);
 
   const autoPanZoomToFocus = useCallback(
     async ({
@@ -1098,9 +1207,14 @@ export function useMicrAIBuildPlayback() {
         y: container.clientHeight / 2 - focus.y * targetZoom,
         zoom: targetZoom,
       };
-      await Promise.resolve(setViewportFn(nextViewport, { duration: 360 }));
-      await nextAnimationFrame(1);
-      throwIfCancelled(runId);
+      setIsCameraTransitioning(true);
+      try {
+        await Promise.resolve(setViewportFn(nextViewport, { duration: 360 }));
+        await nextAnimationFrame(1);
+        throwIfCancelled(runId);
+      } finally {
+        setIsCameraTransitioning(false);
+      }
     },
     [getViewport, throwIfCancelled]
   );
@@ -1116,14 +1230,20 @@ export function useMicrAIBuildPlayback() {
       getViewport: getViewportFn,
       setViewport: setViewportFn,
       applyWorkflow,
+      onPlaybackVisualStart,
       onComplete,
       onError,
     }: StartPlaybackArgs) => {
       const runId = runIdRef.current + 1;
       runIdRef.current = runId;
       skipRequestedRef.current = false;
+      setIsCameraTransitioning(false);
       clearSpeechInterval();
+      clearThinkingIntervals();
       clearNarrationAudio();
+      trailModelRef.current = { visible: false, cubic: null, t: 0, color: EDGE_COLORS.Text };
+      setTrail(DEFAULT_TRAIL);
+      setSpeech(null);
       setTranscript([]);
       setStatus("running");
 
@@ -1200,16 +1320,24 @@ export function useMicrAIBuildPlayback() {
       }
       robotFlowRef.current = firstAnchorFlow ?? { x: 70, y: 70 };
       setRobotState({
-        visible: true,
+        visible: false,
         x: 70,
         y: 70,
         pose: "smile",
         variant: "purple",
+        thinkingFrame: 1,
         scale: 0.95,
       });
       startRenderLoop(runId, canvasContainerRef, getViewportFn);
 
       try {
+        let didNotifyPlaybackVisualStart = false;
+        const notifyPlaybackVisualStart = () => {
+          if (didNotifyPlaybackVisualStart) return;
+          didNotifyPlaybackVisualStart = true;
+          onPlaybackVisualStart?.();
+        };
+        let hasNarratedFirstNode = false;
         for (const step of orderedSteps) {
           throwIfCancelled(runId);
 
@@ -1226,13 +1354,30 @@ export function useMicrAIBuildPlayback() {
             }
 
             const existingIndex = working.nodes.findIndex((node) => node.id === nodeId);
-            if (existingIndex >= 0) {
-              working.nodes[existingIndex] = cloneNode(finalNode);
+            const syncRevealWithNarration = !hasNarratedFirstNode;
+            if (syncRevealWithNarration) {
+              const hiddenForMeasure = cloneNode(finalNode);
+              hiddenForMeasure.style = {
+                ...(hiddenForMeasure.style ?? {}),
+                opacity: 0,
+                pointerEvents: "none",
+              };
+              if (existingIndex >= 0) {
+                working.nodes[existingIndex] = hiddenForMeasure;
+              } else {
+                working.nodes.push(hiddenForMeasure);
+              }
+              applyWorkflow(cloneWorkflowData(working));
+              await nextAnimationFrame(2);
             } else {
-              working.nodes.push(cloneNode(finalNode));
+              if (existingIndex >= 0) {
+                working.nodes[existingIndex] = cloneNode(finalNode);
+              } else {
+                working.nodes.push(cloneNode(finalNode));
+              }
+              applyWorkflow(cloneWorkflowData(working));
+              await nextAnimationFrame(2);
             }
-            applyWorkflow(cloneWorkflowData(working));
-            await nextAnimationFrame(2);
 
             const talkAnchor = getTalkAnchorFlow(canvasContainerRef, getViewportFn, working, nodeId);
             if (talkAnchor) {
@@ -1259,13 +1404,40 @@ export function useMicrAIBuildPlayback() {
                 talkAnchor,
                 step.narration?.trim() || "I am adding this node to keep your flow moving.",
                 runtimeToVariant(step.runtime_type),
-                narrationPromise
+                narrationPromise,
+                syncRevealWithNarration
+                  ? {
+                      onBeforeVisible: () => {
+                        notifyPlaybackVisualStart();
+                        const revealIndex = working.nodes.findIndex((node) => node.id === nodeId);
+                        if (revealIndex >= 0) {
+                          working.nodes[revealIndex] = cloneNode(finalNode);
+                        } else {
+                          working.nodes.push(cloneNode(finalNode));
+                        }
+                        applyWorkflow(cloneWorkflowData(working));
+                      },
+                    }
+                  : undefined
               );
+              hasNarratedFirstNode = true;
+            } else if (syncRevealWithNarration) {
+              notifyPlaybackVisualStart();
+              const revealIndex = working.nodes.findIndex((node) => node.id === nodeId);
+              if (revealIndex >= 0) {
+                working.nodes[revealIndex] = cloneNode(finalNode);
+              } else {
+                working.nodes.push(cloneNode(finalNode));
+              }
+              applyWorkflow(cloneWorkflowData(working));
+              await nextAnimationFrame(1);
+              hasNarratedFirstNode = true;
             }
             continue;
           }
 
           if (step.kind === "connect") {
+            notifyPlaybackVisualStart();
             const sourceNodeId = step.source_node_id ?? "";
             const targetNodeId = step.target_node_id ?? "";
             if (!sourceNodeId || !targetNodeId) continue;
@@ -1373,6 +1545,7 @@ export function useMicrAIBuildPlayback() {
           }
 
           if (step.kind === "backtrack") {
+            notifyPlaybackVisualStart();
             const targetNodeId = step.target_node_id ?? "";
             if (!targetNodeId) continue;
             const anchor = getTalkAnchorFlow(canvasContainerRef, getViewportFn, working, targetNodeId);
@@ -1389,6 +1562,7 @@ export function useMicrAIBuildPlayback() {
         }
 
         throwIfCancelled(runId);
+        notifyPlaybackVisualStart();
         const closeAnchor = getClosingAnchorFlow(finalWorkflow);
         const closeMoveDistance = distance(robotFlowRef.current, closeAnchor);
         if (closeMoveDistance > 6) {
@@ -1408,52 +1582,23 @@ export function useMicrAIBuildPlayback() {
           preloadedNarrationAudio.get("__closing__")
         );
 
-        const launcherFlowPoint = getLauncherFlowPoint(canvasContainerRef, getViewportFn);
-        const returnDistance = distance(robotFlowRef.current, launcherFlowPoint);
-        if (returnDistance > 4) {
-          await animateFlowArcMove(
-            runId,
-            { ...robotFlowRef.current },
-            launcherFlowPoint,
-            clamp(returnDistance / 0.72, 320, 980),
-            clamp(returnDistance * 0.12, 16, 58)
-          );
-        }
-
         applyWorkflow(cloneWorkflowData(finalWorkflow));
         await nextAnimationFrame(1);
-        trailModelRef.current = { visible: false, cubic: null, t: 0, color: EDGE_COLORS.Text };
-        setSpeech(null);
-        clearSpeechInterval();
-        clearNarrationAudio();
-        setRobotState((prev) => ({ ...prev, pose: "smile", variant: "purple", visible: false }));
-        stopRenderLoop();
-        setStatus("done");
+        finalizePlaybackToIdle();
         onComplete();
       } catch (error) {
         if (error instanceof SkipPlaybackError) {
           setStatus("skipping");
           applyWorkflow(cloneWorkflowData(finalWorkflow));
           await nextAnimationFrame(1);
-          clearSpeechInterval();
-          clearNarrationAudio();
-          trailModelRef.current = { visible: false, cubic: null, t: 0, color: EDGE_COLORS.Text };
-          setSpeech(null);
-          setRobotState((prev) => ({ ...prev, pose: "smile", variant: "purple", visible: false }));
-          stopRenderLoop();
-          setStatus("done");
+          finalizePlaybackToIdle();
           onComplete();
           return;
         }
-        clearSpeechInterval();
-        clearNarrationAudio();
-        trailModelRef.current = { visible: false, cubic: null, t: 0, color: EDGE_COLORS.Text };
-        setSpeech(null);
-        stopRenderLoop();
-        setStatus("error");
-        setRobotState((prev) => ({ ...prev, pose: "smile", visible: false }));
+        finalizePlaybackToIdle();
         onError(error instanceof Error ? error : new Error("MicrAI playback failed"));
       } finally {
+        setIsCameraTransitioning(false);
         skipRequestedRef.current = false;
       }
     },
@@ -1463,14 +1608,14 @@ export function useMicrAIBuildPlayback() {
       animateFlowArcMove,
       clearNarrationAudio,
       clearSpeechInterval,
+      clearThinkingIntervals,
+      finalizePlaybackToIdle,
       getHandleFlowPoint,
       getClosingAnchorFlow,
-      getLauncherFlowPoint,
       getTalkAnchorFlow,
       setRobotState,
       speakNarration,
       startRenderLoop,
-      stopRenderLoop,
       throwIfCancelled,
     ]
   );
@@ -1480,13 +1625,61 @@ export function useMicrAIBuildPlayback() {
     skipRequestedRef.current = true;
   }, [status]);
 
+  const playClosingOnly = useCallback(
+    async ({
+      message,
+      canvasContainerRef,
+      getViewport: getViewportFn,
+    }: PlayClosingOnlyArgs) => {
+      const runId = runIdRef.current + 1;
+      runIdRef.current = runId;
+      skipRequestedRef.current = false;
+      setIsCameraTransitioning(false);
+      clearSpeechInterval();
+      clearThinkingIntervals();
+      clearNarrationAudio();
+      trailModelRef.current = { visible: false, cubic: null, t: 0, color: EDGE_COLORS.Text };
+      setTrail(DEFAULT_TRAIL);
+      setSpeech(null);
+      setTranscript([]);
+      setStatus("running");
+
+      const closingLine = String(message || "").trim() || FALLBACK_CLOSING_LINE;
+      const centerFlowPoint = getCenterFlowPoint(canvasContainerRef, getViewportFn);
+      robotFlowRef.current = centerFlowPoint;
+      setRobotState((prev) => ({
+        ...prev,
+        visible: false,
+        pose: "smile",
+        variant: "purple",
+      }));
+      startRenderLoop(runId, canvasContainerRef, getViewportFn);
+
+      try {
+        await speakNarration(runId, centerFlowPoint, closingLine, "purple");
+      } catch {
+        // Non-blocking: fallback UX still clears overlay below.
+      } finally {
+        finalizePlaybackToIdle();
+      }
+    },
+    [
+      clearNarrationAudio,
+      clearSpeechInterval,
+      clearThinkingIntervals,
+      finalizePlaybackToIdle,
+      getCenterFlowPoint,
+      setRobotState,
+      speakNarration,
+      startRenderLoop,
+    ]
+  );
+
   const clearPlaybackUi = useCallback(() => {
     runIdRef.current += 1;
     skipRequestedRef.current = false;
-    setStatus("idle");
-    setTranscript([]);
-    resetVisuals();
-  }, [resetVisuals]);
+    finalizePlaybackToIdle();
+  }, [finalizePlaybackToIdle]);
 
   const setPlaybackSpeed = useCallback((speed: number) => {
     const next = clamp(speed, 0.5, 2);
@@ -1497,14 +1690,19 @@ export function useMicrAIBuildPlayback() {
   return {
     status,
     isActive: status === "running" || status === "skipping",
+    isThinking: status === "thinking",
+    isCameraTransitioning,
     robot,
     speech,
     trail,
     transcript,
     speedMultiplier,
     setSpeedMultiplier: setPlaybackSpeed,
+    startThinking,
+    stopThinking,
     startPlayback,
     skipPlayback,
+    playClosingOnly,
     clearPlaybackUi,
   };
 }

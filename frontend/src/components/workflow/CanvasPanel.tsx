@@ -109,6 +109,7 @@ interface CanvasPanelProps {
   onDialogClose?: () => void;
   interactionMode?: "select" | "pan";
   isMicrAIPlaybackActive?: boolean;
+  isMicrAICameraTransitioning?: boolean;
   autoLoadWorkflowId?: string | null;
   onAutoLoadComplete?: () => void;
 }
@@ -147,6 +148,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   onDialogClose,
   interactionMode = "select",
   isMicrAIPlaybackActive = false,
+  isMicrAICameraTransitioning = false,
   autoLoadWorkflowId,
   onAutoLoadComplete,
 }) => {
@@ -343,11 +345,18 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         fitView
         nodesDraggable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         nodesConnectable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
-        panOnDrag={interactionMode === "pan" ? true : [1, 2]}
+        panOnDrag={
+          isMicrAICameraTransitioning
+            ? false
+            : interactionMode === "pan"
+              ? true
+              : [1, 2]
+        }
         selectionOnDrag={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
-        zoomOnScroll={true}
-        zoomOnDoubleClick={!isLocked}
-        panOnScroll={true}
+        zoomOnScroll={!isMicrAICameraTransitioning}
+        zoomOnDoubleClick={!isLocked && !isMicrAICameraTransitioning}
+        zoomOnPinch={!isMicrAICameraTransitioning}
+        panOnScroll={!isMicrAICameraTransitioning}
       >
         <Background />
         <MiniMap position="bottom-left" />
