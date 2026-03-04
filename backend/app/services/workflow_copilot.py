@@ -8,10 +8,10 @@ proposal (ReactFlow nodes + edges). It supports both:
 
 Planner flow:
 1) Try Gemini structured planning for a full workflow graph
-2) Fall back to deterministic templates if Gemini output is unavailable/invalid
-3) Normalize graph structure and defaults
-4) Compile + auto-repair (up to MAX_REPAIR_ATTEMPTS)
-5) Return proposal + operation log + touched node IDs
+2) Normalize graph structure + defaults and compile with deterministic auto-repair
+3) If still invalid, run a Gemini repair pass focused on port wiring/compatibility
+4) If still invalid, fall back to deterministic templates and re-validate
+5) Return proposal + operation log + diagnostics
 """
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ BuildStepKind = Literal["node_intro", "connect", "backtrack"]
 RuntimePrimitive = Literal["Text", "ImageRef", "AudioRef", "VideoRef"]
 
 MAX_REPAIR_ATTEMPTS = 2
+MAX_LLM_PLAN_REPAIR_ATTEMPTS = 2
+MAX_LOGGED_WORKFLOW_CHARS = 12000
 
 DEFAULT_NODE_LABELS: dict[str, str] = {
     "ImageBucket": "Image Bucket",
@@ -289,6 +291,14 @@ def plan_workflow_with_copilot(
         or bool(text_settings.get("text_overrides"))
     )
     target_channel = _infer_target_channel(prompt)
+    requested_channels = _infer_requested_output_channels(prompt)
+    channel_text_settings_by_output_key = _resolve_text_settings_for_channels(
+        supabase_client=supabase_client,
+        user_id=user_id,
+        request_text=prompt,
+        requested_channels=requested_channels,
+        model_name=model_name,
+    )
     end_output_key = _resolve_end_output_key(
         request_text=prompt,
         target_channel_hint=target_channel,
@@ -306,7 +316,9 @@ def plan_workflow_with_copilot(
         end_output_key=end_output_key,
         model_name=model_name,
     )
+    plan_source = "gemini"
     if planned is None:
+        plan_source = "fallback"
         planned = _plan_with_fallback(
             mode=normalized_mode,
             prompt=prompt,
@@ -315,17 +327,16 @@ def plan_workflow_with_copilot(
             target_channel=target_channel,
         )
 
-    planned = _normalize_workflow_data(planned)
-    _apply_node_defaults_and_params(
-        planned,
+    planned = _prepare_planned_workflow(
+        workflow_data=planned,
         preset_id=preset_id,
         preset_variant=preset_variant,
         text_overrides=text_overrides,
         force_text_settings=force_text_settings,
+        requested_channels=requested_channels,
+        channel_text_settings_by_output_key=channel_text_settings_by_output_key,
+        end_output_key=end_output_key,
     )
-    _repair_edge_handles(planned)
-    _ensure_output_visual_connections_to_end(planned)
-    _apply_end_output_key_selection(planned, end_output_key=end_output_key)
 
     needs_text_preset = any(
         node.get("type") == "TextGeneration"
@@ -345,40 +356,141 @@ def plan_workflow_with_copilot(
             ),
         )
 
-    compile_result = compile_workflow(
-        nodes=planned["nodes"],
-        edges=planned["edges"],
-        name="MicrAI Planned Workflow",
+    compile_result, repair_attempts = _compile_workflow_with_auto_repair(
+        workflow=planned,
         created_by=user_id,
+        preset_id=preset_id,
+        preset_variant=preset_variant,
+        text_overrides=text_overrides,
+        force_text_settings=force_text_settings,
+        requested_channels=requested_channels,
+        channel_text_settings_by_output_key=channel_text_settings_by_output_key,
+        end_output_key=end_output_key,
     )
-    repair_attempts = 0
+    llm_repair_attempts = 0
+
+    if not compile_result.success and plan_source == "gemini":
+        logger.warning(
+            "MicrAI Gemini planner output failed compile. diagnostics=%s",
+            _diagnostics_for_log(compile_result.diagnostics),
+        )
+        logger.debug(
+            "MicrAI invalid Gemini workflow candidate=%s",
+            _json_log_snapshot(planned),
+        )
 
     while (
         not compile_result.success
-        and repair_attempts < MAX_REPAIR_ATTEMPTS
+        and plan_source == "gemini"
+        and llm_repair_attempts < MAX_LLM_PLAN_REPAIR_ATTEMPTS
     ):
-        repair_attempts += 1
-        _auto_repair_graph(planned, compile_result.diagnostics)
-        _apply_node_defaults_and_params(
-            planned,
+        llm_repair_attempts += 1
+        repaired = _repair_plan_with_gemini(
+            mode=normalized_mode,
+            prompt=prompt,
+            current_workflow=base_workflow,
+            candidate_workflow=planned,
+            diagnostics=compile_result.diagnostics,
+            preset_id=preset_id,
+            preset_variant=preset_variant,
+            text_overrides=text_overrides,
+            target_channel=target_channel,
+            end_output_key=end_output_key,
+            model_name=model_name,
+        )
+        if repaired is None:
+            logger.warning(
+                "MicrAI Gemini repair attempt %s/%s returned no valid workflow.",
+                llm_repair_attempts,
+                MAX_LLM_PLAN_REPAIR_ATTEMPTS,
+            )
+            continue
+
+        planned = _prepare_planned_workflow(
+            workflow_data=repaired,
             preset_id=preset_id,
             preset_variant=preset_variant,
             text_overrides=text_overrides,
             force_text_settings=force_text_settings,
+            requested_channels=requested_channels,
+            channel_text_settings_by_output_key=channel_text_settings_by_output_key,
+            end_output_key=end_output_key,
         )
-        _repair_edge_handles(planned)
-        _ensure_output_visual_connections_to_end(planned)
-        _apply_end_output_key_selection(planned, end_output_key=end_output_key)
-        compile_result = compile_workflow(
-            nodes=planned["nodes"],
-            edges=planned["edges"],
-            name="MicrAI Planned Workflow",
+        compile_result, extra_attempts = _compile_workflow_with_auto_repair(
+            workflow=planned,
             created_by=user_id,
+            preset_id=preset_id,
+            preset_variant=preset_variant,
+            text_overrides=text_overrides,
+            force_text_settings=force_text_settings,
+            requested_channels=requested_channels,
+            channel_text_settings_by_output_key=channel_text_settings_by_output_key,
+            end_output_key=end_output_key,
         )
+        repair_attempts += extra_attempts
+        if compile_result.success:
+            logger.info(
+                "MicrAI Gemini repair succeeded on attempt %s/%s.",
+                llm_repair_attempts,
+                MAX_LLM_PLAN_REPAIR_ATTEMPTS,
+            )
+        else:
+            logger.warning(
+                "MicrAI Gemini repair attempt %s/%s still invalid. diagnostics=%s",
+                llm_repair_attempts,
+                MAX_LLM_PLAN_REPAIR_ATTEMPTS,
+                _diagnostics_for_log(compile_result.diagnostics),
+            )
+
+    if not compile_result.success and plan_source == "gemini":
+        logger.warning(
+            "MicrAI switching to deterministic fallback after Gemini planning failed."
+        )
+        planned = _plan_with_fallback(
+            mode=normalized_mode,
+            prompt=prompt,
+            current_workflow=base_workflow,
+            preset_id=preset_id,
+            target_channel=target_channel,
+        )
+        plan_source = "fallback"
+        planned = _prepare_planned_workflow(
+            workflow_data=planned,
+            preset_id=preset_id,
+            preset_variant=preset_variant,
+            text_overrides=text_overrides,
+            force_text_settings=force_text_settings,
+            requested_channels=requested_channels,
+            channel_text_settings_by_output_key=channel_text_settings_by_output_key,
+            end_output_key=end_output_key,
+        )
+        compile_result, extra_attempts = _compile_workflow_with_auto_repair(
+            workflow=planned,
+            created_by=user_id,
+            preset_id=preset_id,
+            preset_variant=preset_variant,
+            text_overrides=text_overrides,
+            force_text_settings=force_text_settings,
+            requested_channels=requested_channels,
+            channel_text_settings_by_output_key=channel_text_settings_by_output_key,
+            end_output_key=end_output_key,
+        )
+        repair_attempts += extra_attempts
 
     diagnostics = [d.model_dump() for d in compile_result.diagnostics]
 
     if not compile_result.success:
+        logger.error(
+            (
+                "MicrAI planning failed after repair attempts. "
+                "source=%s auto_repair_attempts=%s llm_repair_attempts=%s diagnostics=%s workflow=%s"
+            ),
+            plan_source,
+            repair_attempts,
+            llm_repair_attempts,
+            _diagnostics_for_log(compile_result.diagnostics),
+            _json_log_snapshot(planned),
+        )
         return CopilotPlanResult(
             status="error",
             summary="MicrAI could not produce a valid workflow plan.",
@@ -391,6 +503,18 @@ def plan_workflow_with_copilot(
                 normalized_mode == "create" and len(current_workflow["nodes"]) > 0
             ),
         )
+
+    logger.info(
+        (
+            "MicrAI planning succeeded. source=%s nodes=%s edges=%s "
+            "auto_repair_attempts=%s llm_repair_attempts=%s"
+        ),
+        plan_source,
+        len(planned["nodes"]),
+        len(planned["edges"]),
+        repair_attempts,
+        llm_repair_attempts,
+    )
 
     operations, touched_node_ids = _compute_operations_and_touched_nodes(
         before=current_workflow,
@@ -439,18 +563,511 @@ def plan_workflow_with_copilot(
     )
 
 
-def _plan_with_gemini(
+def _prepare_planned_workflow(
     *,
-    mode: PlanMode,
-    prompt: str,
-    current_workflow: dict[str, Any],
+    workflow_data: dict[str, Any],
     preset_id: str | None,
     preset_variant: PresetVariant | None,
     text_overrides: dict[str, Any],
-    target_channel: str | None,
+    force_text_settings: bool,
+    requested_channels: list[str],
+    channel_text_settings_by_output_key: dict[str, dict[str, Any]],
     end_output_key: str | None,
+) -> dict[str, Any]:
+    planned = _normalize_workflow_data(workflow_data)
+    _apply_node_defaults_and_params(
+        planned,
+        preset_id=preset_id,
+        preset_variant=preset_variant,
+        text_overrides=text_overrides,
+        force_text_settings=force_text_settings,
+    )
+    _repair_edge_handles(planned)
+    _expand_workflow_to_multiple_end_channels(planned, channels=requested_channels)
+    _ensure_output_visual_connections_to_end(planned)
+    _apply_end_output_key_selection(planned, end_output_key=end_output_key)
+    _align_multi_end_routing_and_text_settings(
+        planned,
+        channel_text_settings_by_output_key=channel_text_settings_by_output_key,
+    )
+    _repair_edge_handles(planned)
+    return planned
+
+
+def _compile_workflow_with_auto_repair(
+    *,
+    workflow: dict[str, Any],
+    created_by: str,
+    preset_id: str | None,
+    preset_variant: PresetVariant | None,
+    text_overrides: dict[str, Any],
+    force_text_settings: bool,
+    requested_channels: list[str],
+    channel_text_settings_by_output_key: dict[str, dict[str, Any]],
+    end_output_key: str | None,
+) -> tuple[Any, int]:
+    compile_result = compile_workflow(
+        nodes=workflow["nodes"],
+        edges=workflow["edges"],
+        name="MicrAI Planned Workflow",
+        created_by=created_by,
+    )
+    repair_attempts = 0
+    while not compile_result.success and repair_attempts < MAX_REPAIR_ATTEMPTS:
+        logger.warning(
+            "MicrAI compile failed before auto-repair attempt %s/%s. diagnostics=%s",
+            repair_attempts + 1,
+            MAX_REPAIR_ATTEMPTS,
+            _diagnostics_for_log(compile_result.diagnostics),
+        )
+        repair_attempts += 1
+        _auto_repair_graph(workflow, compile_result.diagnostics)
+        _apply_node_defaults_and_params(
+            workflow,
+            preset_id=preset_id,
+            preset_variant=preset_variant,
+            text_overrides=text_overrides,
+            force_text_settings=force_text_settings,
+        )
+        _repair_edge_handles(workflow)
+        _expand_workflow_to_multiple_end_channels(workflow, channels=requested_channels)
+        _ensure_output_visual_connections_to_end(workflow)
+        _apply_end_output_key_selection(workflow, end_output_key=end_output_key)
+        _align_multi_end_routing_and_text_settings(
+            workflow,
+            channel_text_settings_by_output_key=channel_text_settings_by_output_key,
+        )
+        _repair_edge_handles(workflow)
+        compile_result = compile_workflow(
+            nodes=workflow["nodes"],
+            edges=workflow["edges"],
+            name="MicrAI Planned Workflow",
+            created_by=created_by,
+        )
+    if compile_result.success and repair_attempts:
+        logger.info(
+            "MicrAI auto-repair recovered workflow after %s attempt(s).",
+            repair_attempts,
+        )
+    return compile_result, repair_attempts
+
+
+def _resolve_text_settings_for_channels(
+    *,
+    supabase_client: Any,
+    user_id: str,
+    request_text: str,
+    requested_channels: list[str],
     model_name: str,
-) -> dict[str, Any] | None:
+) -> dict[str, dict[str, Any]]:
+    output_keys = []
+    for channel in requested_channels:
+        output_key = TARGET_CHANNEL_TO_END_OUTPUT_KEY.get(channel)
+        if output_key and output_key not in output_keys:
+            output_keys.append(output_key)
+    if len(output_keys) <= 1:
+        return {}
+
+    resolved: dict[str, dict[str, Any]] = {}
+    for channel in requested_channels:
+        output_key = TARGET_CHANNEL_TO_END_OUTPUT_KEY.get(channel)
+        if not output_key or output_key in resolved:
+            continue
+        scoped_request = (
+            f"{request_text}\n\n"
+            f"PRIMARY OUTPUT CHANNEL: {channel}\n"
+            "When selecting text-generation preset/settings, optimize for this channel only."
+        )
+        settings = _resolve_text_generation_settings(
+            supabase_client=supabase_client,
+            user_id=user_id,
+            request_text=scoped_request,
+            model_name=model_name,
+            target_channel_override=channel,
+        )
+        if isinstance(settings, dict):
+            resolved[output_key] = settings
+
+    if resolved:
+        logger.info(
+            "MicrAI resolved channel-specific text settings for outputs=%s",
+            sorted(resolved.keys()),
+        )
+    return resolved
+
+
+def _align_multi_end_routing_and_text_settings(
+    workflow: dict[str, Any],
+    *,
+    channel_text_settings_by_output_key: dict[str, dict[str, Any]],
+) -> None:
+    end_nodes = [node for node in workflow["nodes"] if node.get("type") == "End"]
+    if len(end_nodes) <= 1:
+        return
+
+    node_by_id = {str(node.get("id") or ""): node for node in workflow["nodes"]}
+    end_nodes = [
+        node
+        for node in end_nodes
+        if str(node.get("id") or "").strip()
+    ]
+    if len(end_nodes) <= 1:
+        return
+    end_nodes.sort(key=_node_x)
+
+    text_nodes = [node for node in workflow["nodes"] if node.get("type") == "TextGeneration"]
+    text_nodes = [
+        node
+        for node in text_nodes
+        if str(node.get("id") or "").strip()
+    ]
+    text_nodes.sort(key=_node_x)
+    text_node_ids = [str(node.get("id") or "") for node in text_nodes]
+
+    connected_text_by_end: dict[str, list[str]] = {}
+    for edge in workflow["edges"]:
+        target = str(edge.get("target") or "")
+        source = str(edge.get("source") or "")
+        if target not in node_by_id or source not in node_by_id:
+            continue
+        if edge.get("targetHandle") != "end-input":
+            continue
+        if node_by_id[target].get("type") != "End":
+            continue
+        if node_by_id[source].get("type") != "TextGeneration":
+            continue
+        connected_text_by_end.setdefault(target, []).append(source)
+
+    assignments: dict[str, str] = {}
+    used_sources: set[str] = set()
+    for end_node in end_nodes:
+        end_id = str(end_node.get("id") or "")
+        if not end_id:
+            continue
+        connected = connected_text_by_end.get(end_id, [])
+        source_id: str | None = next(
+            (candidate for candidate in connected if candidate not in used_sources),
+            None,
+        )
+        if source_id is None and connected:
+            source_id = connected[0]
+        if source_id is None and text_node_ids:
+            unassigned = [node_id for node_id in text_node_ids if node_id not in used_sources]
+            if unassigned:
+                end_x = _node_x(end_node)
+                source_id = min(
+                    unassigned,
+                    key=lambda node_id: abs(_node_x(node_by_id[node_id]) - end_x),
+                )
+        if source_id is None:
+            continue
+        assignments[end_id] = source_id
+        used_sources.add(source_id)
+
+    unassigned_end_ids = [
+        str(end_node.get("id") or "")
+        for end_node in end_nodes
+        if str(end_node.get("id") or "") and str(end_node.get("id") or "") not in assignments
+    ]
+    for end_id in unassigned_end_ids:
+        if not text_node_ids:
+            break
+        end_node = node_by_id.get(end_id)
+        if not isinstance(end_node, dict):
+            continue
+        template_id: str | None = None
+        connected = connected_text_by_end.get(end_id, [])
+        if connected:
+            template_id = connected[0]
+        if template_id is None:
+            end_x = _node_x(end_node)
+            template_id = min(
+                text_node_ids,
+                key=lambda node_id: abs(_node_x(node_by_id[node_id]) - end_x),
+            )
+        cloned_id = _clone_text_generation_node_for_end(
+            workflow,
+            template_node_id=template_id,
+            end_node_id=end_id,
+        )
+        if not cloned_id:
+            continue
+        node_by_id = {str(node.get("id") or ""): node for node in workflow["nodes"]}
+        text_node_ids.append(cloned_id)
+        assignments[end_id] = cloned_id
+
+    if assignments:
+        kept_edges: list[dict[str, Any]] = []
+        for edge in workflow["edges"]:
+            source = str(edge.get("source") or "")
+            target = str(edge.get("target") or "")
+            target_handle = edge.get("targetHandle")
+            source_type = str((node_by_id.get(source) or {}).get("type") or "")
+            target_type = str((node_by_id.get(target) or {}).get("type") or "")
+            if target_type == "End" and target_handle == "end-input" and target in assignments:
+                assigned_source = assignments.get(target)
+                if source_type == "TextGeneration":
+                    if assigned_source != source:
+                        continue
+                if source_type in {"Transcription", "QuoteExtraction", "TextBucket"}:
+                    continue
+            kept_edges.append(edge)
+        workflow["edges"] = kept_edges
+
+        for end_id, source_id in assignments.items():
+            _add_edge(
+                workflow,
+                source=source_id,
+                source_handle="generated_text",
+                target=end_id,
+                target_handle="end-input",
+            )
+
+    if assignments and channel_text_settings_by_output_key:
+        for end_node in end_nodes:
+            end_id = str(end_node.get("id") or "")
+            if not end_id:
+                continue
+            source_id = assignments.get(end_id)
+            if not source_id:
+                continue
+            end_data = end_node.get("data") if isinstance(end_node.get("data"), dict) else {}
+            output_key = str((end_data or {}).get("output_key") or "").strip()
+            if not output_key:
+                continue
+            settings = channel_text_settings_by_output_key.get(output_key)
+            if not isinstance(settings, dict):
+                continue
+            text_node = node_by_id.get(source_id)
+            if not isinstance(text_node, dict):
+                continue
+            _apply_text_settings_to_text_generation_node(text_node, settings)
+
+    image_nodes = [
+        node
+        for node in workflow["nodes"]
+        if node.get("type") == "ImageMatching" and str(node.get("id") or "").strip()
+    ]
+    if not image_nodes:
+        return
+    image_nodes.sort(key=_node_x)
+
+    for end_node in end_nodes:
+        end_id = str(end_node.get("id") or "")
+        if not end_id:
+            continue
+        has_image_connection = any(
+            str(edge.get("target") or "") == end_id
+            and edge.get("targetHandle") == "end-input"
+            and str((node_by_id.get(str(edge.get("source") or "")) or {}).get("type") or "")
+            == "ImageMatching"
+            for edge in workflow["edges"]
+        )
+        if has_image_connection:
+            continue
+        end_x = _node_x(end_node)
+        image_node = min(image_nodes, key=lambda node: abs(_node_x(node) - end_x))
+        image_id = str(image_node.get("id") or "")
+        if not image_id:
+            continue
+        _add_edge(
+            workflow,
+            source=image_id,
+            source_handle="images",
+            target=end_id,
+            target_handle="end-input",
+        )
+
+
+def _apply_text_settings_to_text_generation_node(
+    node: dict[str, Any],
+    settings: dict[str, Any],
+) -> None:
+    if str(node.get("type") or "") != "TextGeneration":
+        return
+    data = node.setdefault("data", {})
+
+    preset_id = str(settings.get("preset_id") or "").strip()
+    if preset_id:
+        data["preset_id"] = preset_id
+
+    preset_variant = str(settings.get("preset_variant") or "").strip().lower()
+    if preset_variant in {"summary", "action_items"}:
+        data["preset_variant"] = preset_variant
+
+    overrides = settings.get("text_overrides")
+    if not isinstance(overrides, dict):
+        return
+    for key in (
+        "tone_guidance_override",
+        "max_length_override",
+        "structure_template_override",
+        "prompt_template_override",
+        "output_format_override",
+    ):
+        if key not in overrides:
+            continue
+        value = overrides.get(key)
+        if value is None:
+            continue
+        data[key] = value
+
+
+def _clone_text_generation_node_for_end(
+    workflow: dict[str, Any],
+    *,
+    template_node_id: str,
+    end_node_id: str,
+) -> str | None:
+    node_by_id = {str(node.get("id") or ""): node for node in workflow["nodes"]}
+    template_node = node_by_id.get(template_node_id)
+    end_node = node_by_id.get(end_node_id)
+    if not isinstance(template_node, dict) or not isinstance(end_node, dict):
+        return None
+    if str(template_node.get("type") or "") != "TextGeneration":
+        return None
+    if str(end_node.get("type") or "") != "End":
+        return None
+
+    end_pos = end_node.get("position") if isinstance(end_node.get("position"), dict) else {}
+    end_x = float(end_pos.get("x", 1200))
+    end_y = float(end_pos.get("y", 220))
+    template_data = template_node.get("data") if isinstance(template_node.get("data"), dict) else {}
+    cloned_id = _add_node(
+        workflow,
+        "TextGeneration",
+        end_x - 320,
+        end_y,
+        data=copy.deepcopy(template_data),
+    )
+
+    upstream_pairs: list[tuple[str, str]] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    for edge in workflow["edges"]:
+        if edge.get("targetHandle") != "text":
+            continue
+        target = str(edge.get("target") or "")
+        source = str(edge.get("source") or "")
+        source_handle = str(edge.get("sourceHandle") or "")
+        target_type = str((node_by_id.get(target) or {}).get("type") or "")
+        if target_type != "TextGeneration":
+            continue
+        if not source or not source_handle:
+            continue
+        pair = (source, source_handle)
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+        upstream_pairs.append(pair)
+
+    if not upstream_pairs:
+        for edge in workflow["edges"]:
+            target = str(edge.get("target") or "")
+            if target != template_node_id:
+                continue
+            if edge.get("targetHandle") != "text":
+                continue
+            source = str(edge.get("source") or "")
+            source_handle = str(edge.get("sourceHandle") or "")
+            if not source or not source_handle:
+                continue
+            pair = (source, source_handle)
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            upstream_pairs.append(pair)
+
+    for source, source_handle in upstream_pairs:
+        _add_edge(
+            workflow,
+            source=source,
+            source_handle=source_handle,
+            target=cloned_id,
+            target_handle="text",
+        )
+    return cloned_id
+
+
+def _node_x(node: dict[str, Any]) -> float:
+    position = node.get("position")
+    if isinstance(position, dict):
+        raw = position.get("x", 0)
+        try:
+            return float(raw)
+        except Exception:
+            return 0.0
+    return 0.0
+
+
+def _diagnostics_for_log(diagnostics: list[Any]) -> list[str]:
+    out: list[str] = []
+    for diagnostic in diagnostics:
+        if isinstance(diagnostic, dict):
+            level = str(diagnostic.get("level") or "").strip()
+            node_id = str(diagnostic.get("node_id") or "").strip()
+            field = str(diagnostic.get("field") or "").strip()
+            message = str(diagnostic.get("message") or "").strip()
+        else:
+            level = str(getattr(diagnostic, "level", "") or "").strip()
+            node_id = str(getattr(diagnostic, "node_id", "") or "").strip()
+            field = str(getattr(diagnostic, "field", "") or "").strip()
+            message = str(getattr(diagnostic, "message", "") or "").strip()
+        if not message:
+            continue
+        prefix = level.upper() if level else "INFO"
+        location_parts = [part for part in (node_id, field) if part]
+        if location_parts:
+            out.append(f"{prefix} [{'.'.join(location_parts)}] {message}")
+        else:
+            out.append(f"{prefix} {message}")
+    return out
+
+
+def _json_log_snapshot(payload: Any, *, max_chars: int = MAX_LOGGED_WORKFLOW_CHARS) -> str:
+    try:
+        rendered = json.dumps(payload, ensure_ascii=True, default=str)
+    except Exception:
+        return "<unserializable-payload>"
+    if len(rendered) <= max_chars:
+        return rendered
+    omitted = len(rendered) - max_chars
+    return f"{rendered[:max_chars]}...<truncated {omitted} chars>"
+
+
+def _extract_workflow_data_from_llm_response(response: Any) -> dict[str, Any] | None:
+    if not isinstance(response, dict):
+        return None
+
+    wf = response.get("workflow_data")
+    if isinstance(wf, dict):
+        return wf
+
+    if isinstance(response.get("nodes"), list) and isinstance(response.get("edges"), list):
+        return {
+            "nodes": response.get("nodes"),
+            "edges": response.get("edges"),
+        }
+
+    content = response.get("content")
+    if isinstance(content, str):
+        try:
+            parsed = json.loads(content)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            wf_from_content = parsed.get("workflow_data")
+            if isinstance(wf_from_content, dict):
+                return wf_from_content
+            if isinstance(parsed.get("nodes"), list) and isinstance(parsed.get("edges"), list):
+                return {
+                    "nodes": parsed.get("nodes"),
+                    "edges": parsed.get("edges"),
+                }
+
+    return None
+
+
+def _build_planner_node_specs() -> list[dict[str, Any]]:
     node_specs = []
     for node_type, spec in NODE_REGISTRY.items():
         node_specs.append(
@@ -475,6 +1092,22 @@ def _plan_with_gemini(
                 ],
             }
         )
+    return node_specs
+
+
+def _plan_with_gemini(
+    *,
+    mode: PlanMode,
+    prompt: str,
+    current_workflow: dict[str, Any],
+    preset_id: str | None,
+    preset_variant: PresetVariant | None,
+    text_overrides: dict[str, Any],
+    target_channel: str | None,
+    end_output_key: str | None,
+    model_name: str,
+) -> dict[str, Any] | None:
+    node_specs = _build_planner_node_specs()
 
     schema = {
         "type": "object",
@@ -559,20 +1192,133 @@ Context:
 """
 
     try:
-        resp = query_gemini(
+        response = query_gemini(
             instructions,
             response_schema=schema,
             response_mime_type="application/json",
             model=model_name,
         )
-        if not isinstance(resp, dict):
-            return None
-        wf = resp.get("workflow_data")
-        if not isinstance(wf, dict):
-            return None
-        return wf
     except Exception:
+        logger.warning("MicrAI Gemini planning call failed.", exc_info=True)
         return None
+
+    workflow_data = _extract_workflow_data_from_llm_response(response)
+    if workflow_data is None:
+        logger.warning(
+            "MicrAI Gemini planning response missing valid workflow_data. response=%s",
+            _json_log_snapshot(response, max_chars=4000),
+        )
+        return None
+
+    normalized = _normalize_workflow_data(workflow_data)
+    logger.info(
+        "MicrAI Gemini planner returned candidate graph: nodes=%s edges=%s",
+        len(normalized["nodes"]),
+        len(normalized["edges"]),
+    )
+    logger.debug(
+        "MicrAI Gemini planner candidate workflow=%s",
+        _json_log_snapshot(normalized),
+    )
+    return workflow_data
+
+
+def _repair_plan_with_gemini(
+    *,
+    mode: PlanMode,
+    prompt: str,
+    current_workflow: dict[str, Any],
+    candidate_workflow: dict[str, Any],
+    diagnostics: list[Any],
+    preset_id: str | None,
+    preset_variant: PresetVariant | None,
+    text_overrides: dict[str, Any],
+    target_channel: str | None,
+    end_output_key: str | None,
+    model_name: str,
+) -> dict[str, Any] | None:
+    node_specs = _build_planner_node_specs()
+    schema = {
+        "type": "object",
+        "properties": {
+            "workflow_data": {
+                "type": "object",
+                "properties": {
+                    "nodes": {"type": "array"},
+                    "edges": {"type": "array"},
+                },
+                "required": ["nodes", "edges"],
+            },
+        },
+        "required": ["workflow_data"],
+    }
+
+    instructions = f"""
+You are MicrAI workflow repair specialist.
+Return ONLY JSON matching the schema.
+
+Goal:
+- Repair the candidate workflow so it compiles successfully.
+- Preserve the user intent and keep existing structure when possible.
+
+Hard constraints:
+- Use only these node types and ports: {json.dumps(node_specs)}
+- Every edge must use valid sourceHandle and targetHandle for its nodes.
+- Runtime compatibility:
+  * Text -> Text
+  * ImageRef -> ImageRef
+  * AudioRef -> AudioRef
+  * VideoRef -> VideoRef
+  * Exception: VideoRef may connect to AudioRef
+- Required inputs must be connected.
+- Bucket nodes (ImageBucket/AudioBucket/VideoBucket/TextBucket) cannot have incoming edges.
+- Transcription media routing:
+  * audio sources -> Transcription.audio
+  * video sources -> Transcription.video
+- End node:
+  * input handle must be "end-input"
+  * may accept any primitive output runtime type
+- Remove cycles and dangling edges.
+- Remove legacy output nodes (LinkedIn/TikTok/Email); End node is terminal.
+- Keep node ids stable where possible.
+- Return full workflow_data with complete nodes and edges.
+
+Context:
+- mode: {mode}
+- requested channel hint: {target_channel or "none"}
+- preferred preset_id: {preset_id or "none"}
+- preferred preset_variant: {preset_variant or "none"}
+- preferred text overrides: {json.dumps(text_overrides)}
+- preferred End output_key: {end_output_key or "none"}
+- compile diagnostics: {json.dumps(_diagnostics_for_log(diagnostics))}
+- current workflow before request: {json.dumps(current_workflow)}
+- candidate workflow to repair: {json.dumps(candidate_workflow)}
+- user request: {prompt}
+"""
+    try:
+        response = query_gemini(
+            instructions,
+            response_schema=schema,
+            response_mime_type="application/json",
+            model=model_name,
+        )
+    except Exception:
+        logger.warning("MicrAI Gemini repair call failed.", exc_info=True)
+        return None
+
+    workflow_data = _extract_workflow_data_from_llm_response(response)
+    if workflow_data is None:
+        logger.warning(
+            "MicrAI Gemini repair response missing valid workflow_data. response=%s",
+            _json_log_snapshot(response, max_chars=4000),
+        )
+        return None
+
+    logger.debug(
+        "MicrAI Gemini repair returned workflow candidate=%s",
+        _json_log_snapshot(workflow_data),
+    )
+    return workflow_data
 
 
 def _plan_with_fallback(
@@ -898,12 +1644,11 @@ def _expand_workflow_to_multiple_end_channels(
     if not primary_end_id:
         return
 
-    incoming_edges = [
-        edge
+    has_primary_input = any(
+        edge.get("target") == primary_end_id and edge.get("targetHandle") == "end-input"
         for edge in workflow["edges"]
-        if edge.get("target") == primary_end_id and edge.get("targetHandle") == "end-input"
-    ]
-    if not incoming_edges:
+    )
+    if not has_primary_input:
         preferred_types = [
             "ImageMatching",
             "TextGeneration",
@@ -927,11 +1672,6 @@ def _expand_workflow_to_multiple_end_channels(
             break
         if source_id and source_handle:
             _add_edge(workflow, source_id, source_handle, primary_end_id, "end-input")
-            incoming_edges = [
-                edge
-                for edge in workflow["edges"]
-                if edge.get("target") == primary_end_id and edge.get("targetHandle") == "end-input"
-            ]
 
     primary_data = primary_end.setdefault("data", {})
     primary_data["output_key"] = output_keys[0]
@@ -956,13 +1696,6 @@ def _expand_workflow_to_multiple_end_channels(
                 continue
         end_data = end_node.setdefault("data", {})
         end_data["output_key"] = output_key
-
-        for incoming in incoming_edges:
-            source = str(incoming.get("source") or "")
-            source_handle = str(incoming.get("sourceHandle") or "")
-            if not source or not source_handle:
-                continue
-            _add_edge(workflow, source, source_handle, end_id, "end-input")
 
 
 def _template_image_text_match(*, preset_id: str | None) -> dict[str, Any]:
@@ -1208,6 +1941,21 @@ def _remove_dangling_or_invalid_edges(workflow: dict[str, Any]) -> None:
         if tgt_spec:
             if tgt_handle not in {p.key for p in tgt_spec.inputs}:
                 continue
+        if (
+            src_spec
+            and tgt_spec
+            and isinstance(src_handle, str)
+            and isinstance(tgt_handle, str)
+            and str(tgt.get("type") or "") != "End"
+        ):
+            src_port = next((port for port in src_spec.outputs if port.key == src_handle), None)
+            tgt_port = next((port for port in tgt_spec.inputs if port.key == tgt_handle), None)
+            if src_port and tgt_port:
+                if not _runtime_types_compatible(
+                    src_runtime=src_port.runtime_type,
+                    tgt_runtime=tgt_port.runtime_type,
+                ):
+                    continue
         key = (edge["source"], src_handle, edge["target"], tgt_handle)
         if key in seen:
             continue
@@ -2155,10 +2903,15 @@ def _resolve_text_generation_settings(
     user_id: str,
     request_text: str,
     model_name: str,
+    target_channel_override: str | None = None,
 ) -> dict[str, Any]:
     requested_variant = _infer_requested_preset_variant(request_text)
     explicit_request = _is_explicit_text_preset_request(request_text)
-    target_channel = _infer_target_channel(request_text)
+    target_channel = (
+        target_channel_override
+        if target_channel_override in TARGET_CHANNEL_TO_END_OUTPUT_KEY
+        else _infer_target_channel(request_text)
+    )
 
     presets = _fetch_accessible_text_presets(
         supabase_client=supabase_client,
@@ -2208,6 +2961,12 @@ def _resolve_text_generation_settings(
         selected_preset = preset_by_id[gemini_preset_id]
         if gemini_choice.get("preset_variant") in {"summary", "action_items"}:
             requested_variant = gemini_choice["preset_variant"]
+        if target_channel_override and selected_preset is not None:
+            if not _preset_matches_channel(
+                blob=_preset_search_blob(selected_preset),
+                channel=target_channel_override,
+            ):
+                selected_preset = None
     if selected_preset is None:
         selected_preset = _pick_best_matching_preset(
             presets=deduped_presets,
