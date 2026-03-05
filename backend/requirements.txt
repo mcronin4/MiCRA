@@ -54,7 +54,6 @@ opencv-python-headless
 
 # Video processing
 scenedetect
-yt-dlp
 
 # Utilities
 tqdm
