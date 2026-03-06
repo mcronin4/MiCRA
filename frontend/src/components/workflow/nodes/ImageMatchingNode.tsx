@@ -22,9 +22,12 @@ import { useNodeConnections } from "@/hooks/useNodeConnections";
 
 type MatchCountMode = "all" | "manual";
 
+const MAX_MATCH_COUNT = 25;
+const DEFAULT_AUTO_LIMIT = 10;
+
 const clampMatchCount = (value: number) => {
   if (Number.isNaN(value)) return 5;
-  return Math.max(1, Math.min(value, 200));
+  return Math.max(1, Math.min(value, MAX_MATCH_COUNT));
 };
 
 // Config for this node type
@@ -211,7 +214,7 @@ export function ImageMatchingNode({ id }: NodeProps) {
       const limitedMatches =
         matchCountMode === "manual"
           ? matches.slice(0, clampMatchCount(maxMatches))
-          : matches;
+          : matches.slice(0, DEFAULT_AUTO_LIMIT);
       const images = limitedMatches.filter(
         (match) =>
           typeof match.image_url === "string" && match.image_url.length > 0,
@@ -269,7 +272,7 @@ export function ImageMatchingNode({ id }: NodeProps) {
             <input
               type="number"
               min={1}
-              max={200}
+              max={MAX_MATCH_COUNT}
               value={maxMatches}
               onChange={(event) =>
                 setMaxMatches(clampMatchCount(Number(event.target.value)))

@@ -22,6 +22,8 @@ import json
 import os
 import time
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel
@@ -372,121 +374,75 @@ def resolve_node_inputs(
 # ---------------------------------------------------------------------------
 
 
+async def _fetch_and_sign_bucket_files(
+    selected_file_ids: list[str],
+) -> list[str]:
+    """Shared helper: fetch file metadata from Supabase (off-thread) and sign
+    R2 URLs in parallel.  Returns a list of presigned download URLs."""
+    from app.db.supabase import get_supabase
+    from app.storage.r2 import get_r2, R2_BUCKET
+
+    if not selected_file_ids:
+        return []
+
+    supabase = get_supabase().client
+    r2 = get_r2()
+
+    result = await asyncio.to_thread(
+        lambda: supabase.table("files").select("*").in_("id", selected_file_ids).execute()
+    )
+
+    if not result.data:
+        return []
+
+    uploaded = [f for f in result.data if f.get("status") == "uploaded"]
+    if not uploaded:
+        return []
+
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        tasks = [
+            loop.run_in_executor(
+                pool,
+                partial(
+                    r2.client.generate_presigned_url,
+                    'get_object',
+                    Params={'Bucket': R2_BUCKET, 'Key': f["path"]},
+                    ExpiresIn=3600,
+                ),
+            )
+            for f in uploaded
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    urls: list[str] = []
+    for f, res in zip(uploaded, results):
+        if isinstance(res, Exception):
+            logger.warning("Failed to generate signed URL for file %s: %s", f["id"], res)
+        else:
+            urls.append(res)
+    return urls
+
+
 @executor("ImageBucket")
 async def _exec_image_bucket(params: dict, inputs: dict) -> dict[str, Any]:
     """Fetch selected images from storage and return as ImageRef list."""
-    from app.db.supabase import get_supabase
-    from app.storage.r2 import get_r2, R2_BUCKET
-    
-    selected_file_ids = params.get("selected_file_ids", [])
-    if not selected_file_ids:
-        return {"images": []}
-    
-    supabase = get_supabase().client
-    r2 = get_r2()
-    
-    # Fetch file metadata from Supabase
-    result = supabase.table("files").select("*").in_("id", selected_file_ids).execute()
-    
-    if not result.data:
-        return {"images": []}
-    
-    # Generate signed URLs for each image
-    image_refs = []
-    for file_record in result.data:
-        if file_record.get("status") == "uploaded":
-            try:
-                signed_url = r2.client.generate_presigned_url(
-                    'get_object',
-                    Params={
-                        'Bucket': R2_BUCKET,
-                        'Key': file_record["path"],
-                    },
-                    ExpiresIn=3600  # 1 hour
-                )
-                image_refs.append(signed_url)
-            except Exception as e:
-                logger.warning("Failed to generate signed URL for file %s: %s", file_record["id"], str(e))
-    
-    return {"images": image_refs}
+    urls = await _fetch_and_sign_bucket_files(params.get("selected_file_ids", []))
+    return {"images": urls}
 
 
 @executor("AudioBucket")
 async def _exec_audio_bucket(params: dict, inputs: dict) -> dict[str, Any]:
     """Fetch selected audio files from storage and return as AudioRef list."""
-    from app.db.supabase import get_supabase
-    from app.storage.r2 import get_r2, R2_BUCKET
-    
-    selected_file_ids = params.get("selected_file_ids", [])
-    if not selected_file_ids:
-        return {"audio": []}
-    
-    supabase = get_supabase().client
-    r2 = get_r2()
-    
-    # Fetch file metadata from Supabase
-    result = supabase.table("files").select("*").in_("id", selected_file_ids).execute()
-    
-    if not result.data:
-        return {"audio": []}
-    
-    # Generate signed URLs for each audio file
-    audio_refs = []
-    for file_record in result.data:
-        if file_record.get("status") == "uploaded":
-            try:
-                signed_url = r2.client.generate_presigned_url(
-                    'get_object',
-                    Params={
-                        'Bucket': R2_BUCKET,
-                        'Key': file_record["path"],
-                    },
-                    ExpiresIn=3600  # 1 hour
-                )
-                audio_refs.append(signed_url)
-            except Exception as e:
-                logger.warning("Failed to generate signed URL for file %s: %s", file_record["id"], str(e))
-    
-    return {"audio": audio_refs}
+    urls = await _fetch_and_sign_bucket_files(params.get("selected_file_ids", []))
+    return {"audio": urls}
 
 
 @executor("VideoBucket")
 async def _exec_video_bucket(params: dict, inputs: dict) -> dict[str, Any]:
     """Fetch selected video files from storage and return as VideoRef list."""
-    from app.db.supabase import get_supabase
-    from app.storage.r2 import get_r2, R2_BUCKET
-    
-    selected_file_ids = params.get("selected_file_ids", [])
-    if not selected_file_ids:
-        return {"videos": []}
-    
-    supabase = get_supabase().client
-    r2 = get_r2()
-    
-    # Fetch file metadata from Supabase
-    result = supabase.table("files").select("*").in_("id", selected_file_ids).execute()
-    
-    if not result.data:
-        return {"videos": []}
-    
-    # Generate signed URLs for each video file
-    video_refs = []
-    for file_record in result.data:
-        if file_record.get("status") == "uploaded":
-            try:
-                signed_url = r2.client.generate_presigned_url(
-                    'get_object',
-                    Params={
-                        'Bucket': R2_BUCKET,
-                        'Key': file_record["path"],
-                    },
-                    ExpiresIn=3600  # 1 hour
-                )
-                video_refs.append(signed_url)
-            except Exception as e:
-                logger.warning("Failed to generate signed URL for file %s: %s", file_record["id"], str(e))
-    
-    return {"videos": video_refs}
+    urls = await _fetch_and_sign_bucket_files(params.get("selected_file_ids", []))
+    return {"videos": urls}
 
 
 @executor("TextBucket")
@@ -495,49 +451,65 @@ async def _exec_text_bucket(params: dict, inputs: dict) -> dict[str, Any]:
     from app.db.supabase import get_supabase
     from app.storage.r2 import get_r2, R2_BUCKET
     import httpx
-    
+
     selected_file_ids = params.get("selected_file_ids", [])
     if not selected_file_ids:
         logger.info("TextBucket: No file IDs selected")
         return {"text": []}
-    
+
     logger.info("TextBucket: Processing %d selected file IDs", len(selected_file_ids))
-    
+
     supabase = get_supabase().client
     r2 = get_r2()
-    
-    # Fetch file metadata from Supabase
-    result = supabase.table("files").select("*").in_("id", selected_file_ids).execute()
-    
+
+    result = await asyncio.to_thread(
+        lambda: supabase.table("files").select("*").in_("id", selected_file_ids).execute()
+    )
+
     if not result.data:
         logger.warning("TextBucket: No files found in database for IDs: %s", selected_file_ids)
         return {"text": []}
-    
-    # Read content from each text file
-    text_contents = []
-    for file_record in result.data:
-        if file_record.get("status") == "uploaded":
-            try:
-                # Generate signed URL
-                signed_url = r2.client.generate_presigned_url(
+
+    uploaded = [f for f in result.data if f.get("status") == "uploaded"]
+    if not uploaded:
+        return {"text": []}
+
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        sign_tasks = [
+            loop.run_in_executor(
+                pool,
+                partial(
+                    r2.client.generate_presigned_url,
                     'get_object',
-                    Params={
-                        'Bucket': R2_BUCKET,
-                        'Key': file_record["path"],
-                    },
-                    ExpiresIn=3600  # 1 hour
-                )
-                # Download and read content
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(signed_url)
-                    response.raise_for_status()
-                    content = response.text
-                    text_contents.append(content)
-                    logger.debug("TextBucket: Read %d chars from file %s", len(content), file_record["id"])
+                    Params={'Bucket': R2_BUCKET, 'Key': f["path"]},
+                    ExpiresIn=3600,
+                ),
+            )
+            for f in uploaded
+        ]
+        signed_urls = await asyncio.gather(*sign_tasks, return_exceptions=True)
+
+    async with httpx.AsyncClient() as client:
+        async def _download(file_record: dict, url: str | Exception) -> str | None:
+            if isinstance(url, Exception):
+                logger.warning("Failed to sign URL for file %s: %s", file_record["id"], url)
+                return None
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                logger.debug("TextBucket: Read %d chars from file %s", len(response.text), file_record["id"])
+                return response.text
             except Exception as e:
                 logger.warning("Failed to read text file %s: %s", file_record["id"], str(e))
-    
-    logger.info("TextBucket: Returning %d text items (total %d chars)", 
+                return None
+
+        download_results = await asyncio.gather(
+            *[_download(f, url) for f, url in zip(uploaded, signed_urls)]
+        )
+
+    text_contents = [t for t in download_results if t is not None]
+    logger.info("TextBucket: Returning %d text items (total %d chars)",
                 len(text_contents), sum(len(t) for t in text_contents))
     return {"text": text_contents}
 
@@ -986,10 +958,12 @@ async def _exec_image_matching(params: dict, inputs: dict) -> dict[str, Any]:
     max_matches_raw = params.get("max_matches")
     if match_count_mode == "manual":
         try:
-            max_matches = max(1, min(int(max_matches_raw), 200))
+            max_matches = max(1, min(int(max_matches_raw), 25))
             matches = matches[:max_matches]
         except Exception:
             pass
+    else:
+        matches = matches[:10]
 
     logger.info("ImageMatching completed: %d images emitted", len(matches))
     return {"images": matches}
@@ -1049,7 +1023,7 @@ async def _exec_image_extraction(params: dict, inputs: dict) -> dict[str, Any]:
     max_frames: int | None = None
     if selection_mode == "manual" and max_frames_raw is not None:
         try:
-            max_frames = max(1, min(int(max_frames_raw), 200))
+            max_frames = max(1, min(int(max_frames_raw), 25))
         except Exception as exc:
             raise ValueError("ImageExtraction manual mode requires a valid max_frames value") from exc
 

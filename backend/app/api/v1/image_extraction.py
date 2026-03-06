@@ -65,7 +65,7 @@ def _build_pipeline_config(
     config: Dict[str, Any] = {"output_dir": str(output_dir)}
 
     if max_frames is not None:
-        max_frames = max(1, min(int(max_frames), 200))
+        max_frames = max(1, min(int(max_frames), 25))
         config["max_total_frames"] = max_frames
 
     return config

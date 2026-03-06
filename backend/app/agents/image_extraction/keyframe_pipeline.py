@@ -35,7 +35,7 @@ DEFAULT_CONFIG = {
     
     # Selection
     "per_scene_target": 2,
-    "max_total_frames": 25,
+    "max_total_frames": 10,
     
     # Deduplication
     "dedup_threshold": 8,
@@ -161,7 +161,6 @@ def extract_candidates(
         extracted.append({
             **cand,
             "frame_path": str(frame_path),
-            "frame_bgr": frame  # Keep in memory for filtering
         })
     
     return extracted
@@ -303,8 +302,12 @@ def filter_and_analyze_candidates(
     rejected_counts = {"blur": 0, "eyes_closed": 0}
     
     for cand in candidates:
-        frame_bgr = cand.get("frame_bgr")
+        frame_path = cand.get("frame_path")
+        if not frame_path:
+            continue
+        frame_bgr = cv2.imread(frame_path)
         if frame_bgr is None:
+            print(f"  [SKIP] Could not read {frame_path}")
             continue
         
         frame_height, frame_width = frame_bgr.shape[:2]
@@ -553,12 +556,12 @@ def run_keyframe_pipeline(video_path: str, config: Optional[Dict] = None) -> Dic
     selected_json = output_dir / "selected.json"
     selected_ranked_json = output_dir / "selected_ranked.json"
     
-    # Clean for JSON (remove non-serializable fields)
-    for f in filtered:
-        f.pop("frame_bgr", None)
-        f.pop("_phash", None)
-    for f in selected:
-        f.pop("_phash", None)
+    for fr in filtered:
+        fr.pop("_phash", None)
+    for fr in rejected:
+        fr.pop("_phash", None)
+    for fr in selected:
+        fr.pop("_phash", None)
     
     with open(candidates_json, "w") as f:
         json.dump(filtered, f, indent=2)
