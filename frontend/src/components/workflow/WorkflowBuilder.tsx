@@ -624,7 +624,11 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     const compilationResult = await compileRaw(workflowData);
 
     if (!compilationResult || !compilationResult.success) {
-      setShowCompilationModal(true);
+      if (compilationResult?.diagnostics && compilationResult.diagnostics.length > 0) {
+        setShowCompilationModal(true);
+      } else {
+        showToast("Failed to compile workflow — check that the backend is running", "error");
+      }
       return;
     }
 

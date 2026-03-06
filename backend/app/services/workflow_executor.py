@@ -1718,6 +1718,16 @@ async def execute_workflow_streaming(
                     "node_results": [nr.model_dump() for nr in node_results],
                 })
 
+        except asyncio.CancelledError:
+            # Client disconnected — cancel all in-flight node tasks so
+            # we don't waste compute (API calls, keyframe extraction, etc.)
+            logger.info("Workflow execution cancelled (client disconnected)")
+            for task in pending_tasks:
+                if not task.done():
+                    task.cancel()
+            if pending_tasks:
+                await asyncio.gather(*pending_tasks.keys(), return_exceptions=True)
+
         except Exception as e:
             logger.exception("Coordinator error: %s", e)
             await event_queue.put({
