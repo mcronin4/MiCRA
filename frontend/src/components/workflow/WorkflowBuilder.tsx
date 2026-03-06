@@ -20,6 +20,7 @@ import { useContextMenus } from "@/hooks/useContextMenus";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
 import { useBlueprintCompile } from "@/hooks/useBlueprintCompile";
 import type { CopilotModelTier, SavedWorkflowData } from "@/lib/fastapi/workflows";
+import { getWorkflowVersion } from "@/lib/fastapi/workflows";
 import { layoutWorkflowData } from "@/lib/workflowLayout";
 import {
   useWorkflowStore,
@@ -704,6 +705,18 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     }
   }, [executionError]);
 
+  const handleRestoreVersion = async (versionNumber: number) => {
+    if (!currentWorkflowId) return;
+    try {
+      const version = await getWorkflowVersion(currentWorkflowId, versionNumber);
+      applyWorkflowToCanvas(version.workflow_data, { fitView: true });
+      useWorkflowStore.getState().setIsDirty(true);
+      showToast(`Restored version ${versionNumber} — save to keep this as the latest version`, "success");
+    } catch {
+      showToast("Failed to restore version", "error");
+    }
+  };
+
   const handleUndo = () => {
     console.log("Undo action");
     // TODO: Implement proper undo logic
@@ -721,6 +734,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
         <TopNavBar
           onSave={() => setShowSaveDialog(true)}
           canSave={true}
+          onRestoreVersion={handleRestoreVersion}
         />
       </div>
 
