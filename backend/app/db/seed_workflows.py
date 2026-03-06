@@ -24,70 +24,28 @@ load_dotenv()
 
 TEMPLATES = [
     {
-        "name": "Image to Text Generation",
-        "description": "Match images with text descriptions, then generate content from the matches",
-        "workflow_data": {
-            "nodes": [
-                {
-                    "id": "img-bucket-1",
-                    "type": "ImageBucket",
-                    "position": {"x": 50, "y": 200},
-                    "data": {"label": "Image Bucket", "selected_file_ids": []}
-                },
-                {
-                    "id": "img-match-1",
-                    "type": "ImageMatching",
-                    "position": {"x": 250, "y": 200},
-                    "data": {"label": "Image Matching"}
-                },
-                {
-                    "id": "text-gen-1",
-                    "type": "TextGeneration",
-                    "position": {"x": 500, "y": 200},
-                    "data": {"label": "Text Generation"}
-                }
-            ],
-            "edges": [
-                {
-                    "id": "e1",
-                    "source": "img-bucket-1",
-                    "target": "img-match-1",
-                    "sourceHandle": "images",
-                    "targetHandle": "images"
-                },
-                {
-                    "id": "e2",
-                    "source": "img-match-1",
-                    "target": "text-gen-1",
-                    "sourceHandle": "captions",
-                    "targetHandle": "text"
-                }
-            ]
-        }
-    },
-    {
-        "name": "Video Transcription Pipeline",
-        "description": "Transcribe video/audio content and generate text outputs",
+        "name": "Podcast to Blog Post",
+        "description": "Transcribe a podcast or audio recording and generate a polished blog post from the transcript",
         "workflow_data": {
             "nodes": [
                 {
                     "id": "audio-bucket-1",
                     "type": "AudioBucket",
-                    "position": {"x": 50, "y": 200},
-                    "data": {"label": "Audio Bucket", "selected_file_ids": []}
+                    "position": {"x": 100, "y": 200},
+                    "data": {"label": "Audio Source", "selected_file_ids": []}
                 },
                 {
                     "id": "transcription-1",
                     "type": "Transcription",
-                    "position": {"x": 250, "y": 200},
+                    "position": {"x": 400, "y": 200},
                     "data": {"label": "Transcription"}
                 },
                 {
                     "id": "text-gen-1",
                     "type": "TextGeneration",
-                    "position": {"x": 500, "y": 200},
-                    "data": {"label": "Text Generation"}
-                }
+                    "position": {"x": 700, "y": 200},
+                    "data": {"label": "Blog Post Generator"}
+                },
             ],
             "edges": [
                 {
@@ -95,35 +53,316 @@ TEMPLATES = [
                     "source": "audio-bucket-1",
                     "target": "transcription-1",
                     "sourceHandle": "audio",
-                    "targetHandle": "audio"
+                    "targetHandle": "audio",
                 },
                 {
                     "id": "e2",
                     "source": "transcription-1",
                     "target": "text-gen-1",
                     "sourceHandle": "transcription",
-                    "targetHandle": "text"
-                }
-            ]
-        }
+                    "targetHandle": "text",
+                },
+            ],
+        },
     },
     {
-        "name": "Content Generation Starter",
-        "description": "Simple template with text bucket and text generation node ready to use",
+        "name": "Video to Visual Blog",
+        "description": "Turn a video into a blog post with matched visuals — transcribes the video, generates written content, extracts frames, and pairs the best images with the text",
+        "workflow_data": {
+            "nodes": [
+                {
+                    "id": "video-bucket-1",
+                    "type": "VideoBucket",
+                    "position": {"x": 100, "y": 300},
+                    "data": {"label": "Video Source", "selected_file_ids": []}
+                },
+                {
+                    "id": "transcription-1",
+                    "type": "Transcription",
+                    "position": {"x": 400, "y": 150},
+                    "data": {"label": "Transcription"}
+                },
+                {
+                    "id": "text-gen-1",
+                    "type": "TextGeneration",
+                    "position": {"x": 700, "y": 150},
+                    "data": {"label": "Blog Post Generator"}
+                },
+                {
+                    "id": "img-extract-1",
+                    "type": "ImageExtraction",
+                    "position": {"x": 400, "y": 450},
+                    "data": {"label": "Frame Extraction"}
+                },
+                {
+                    "id": "img-match-1",
+                    "type": "ImageMatching",
+                    "position": {"x": 1000, "y": 300},
+                    "data": {"label": "Match Images to Text"}
+                },
+            ],
+            "edges": [
+                {
+                    "id": "e1",
+                    "source": "video-bucket-1",
+                    "target": "transcription-1",
+                    "sourceHandle": "videos",
+                    "targetHandle": "video",
+                },
+                {
+                    "id": "e2",
+                    "source": "transcription-1",
+                    "target": "text-gen-1",
+                    "sourceHandle": "transcription",
+                    "targetHandle": "text",
+                },
+                {
+                    "id": "e3",
+                    "source": "video-bucket-1",
+                    "target": "img-extract-1",
+                    "sourceHandle": "videos",
+                    "targetHandle": "source",
+                },
+                {
+                    "id": "e4",
+                    "source": "img-extract-1",
+                    "target": "img-match-1",
+                    "sourceHandle": "images",
+                    "targetHandle": "images",
+                },
+                {
+                    "id": "e5",
+                    "source": "text-gen-1",
+                    "target": "img-match-1",
+                    "sourceHandle": "generated_text",
+                    "targetHandle": "text",
+                },
+            ],
+        },
+    },
+    {
+        "name": "Video to Social Media Kit",
+        "description": "Extract the most quotable moments and key frames from a video — generates social-ready captions and visual assets",
+        "workflow_data": {
+            "nodes": [
+                {
+                    "id": "video-bucket-1",
+                    "type": "VideoBucket",
+                    "position": {"x": 100, "y": 300},
+                    "data": {"label": "Video Source", "selected_file_ids": []}
+                },
+                {
+                    "id": "transcription-1",
+                    "type": "Transcription",
+                    "position": {"x": 400, "y": 150},
+                    "data": {"label": "Transcription"}
+                },
+                {
+                    "id": "quote-extract-1",
+                    "type": "QuoteExtraction",
+                    "position": {"x": 700, "y": 150},
+                    "data": {"label": "Quote Extraction"}
+                },
+                {
+                    "id": "text-gen-1",
+                    "type": "TextGeneration",
+                    "position": {"x": 1000, "y": 150},
+                    "data": {"label": "Social Caption Generator"}
+                },
+                {
+                    "id": "img-extract-1",
+                    "type": "ImageExtraction",
+                    "position": {"x": 400, "y": 450},
+                    "data": {"label": "Frame Extraction"}
+                },
+            ],
+            "edges": [
+                {
+                    "id": "e1",
+                    "source": "video-bucket-1",
+                    "target": "transcription-1",
+                    "sourceHandle": "videos",
+                    "targetHandle": "video",
+                },
+                {
+                    "id": "e2",
+                    "source": "transcription-1",
+                    "target": "quote-extract-1",
+                    "sourceHandle": "transcription",
+                    "targetHandle": "text",
+                },
+                {
+                    "id": "e3",
+                    "source": "quote-extract-1",
+                    "target": "text-gen-1",
+                    "sourceHandle": "quotes",
+                    "targetHandle": "text",
+                },
+                {
+                    "id": "e4",
+                    "source": "video-bucket-1",
+                    "target": "img-extract-1",
+                    "sourceHandle": "videos",
+                    "targetHandle": "source",
+                },
+            ],
+        },
+    },
+    {
+        "name": "Document to Social Series",
+        "description": "Turn a whitepaper, report, or long-form document into a series of social media posts by extracting key insights and expanding them into standalone posts",
         "workflow_data": {
             "nodes": [
                 {
                     "id": "text-bucket-1",
                     "type": "TextBucket",
                     "position": {"x": 100, "y": 200},
-                    "data": {"label": "Text Bucket", "selected_file_ids": []}
+                    "data": {"label": "Document Source", "selected_file_ids": []}
+                },
+                {
+                    "id": "quote-extract-1",
+                    "type": "QuoteExtraction",
+                    "position": {"x": 400, "y": 200},
+                    "data": {"label": "Key Insight Extraction"}
                 },
                 {
                     "id": "text-gen-1",
                     "type": "TextGeneration",
-                    "position": {"x": 350, "y": 200},
-                    "data": {"label": "Text Generation"}
-                }
+                    "position": {"x": 700, "y": 200},
+                    "data": {"label": "Social Post Generator"}
+                },
+            ],
+            "edges": [
+                {
+                    "id": "e1",
+                    "source": "text-bucket-1",
+                    "target": "quote-extract-1",
+                    "sourceHandle": "text",
+                    "targetHandle": "text",
+                },
+                {
+                    "id": "e2",
+                    "source": "quote-extract-1",
+                    "target": "text-gen-1",
+                    "sourceHandle": "quotes",
+                    "targetHandle": "text",
+                },
+            ],
+        },
+    },
+    {
+        "name": "Quote Card Creator",
+        "description": "Extract standout quotes from text content and generate visual quote cards — ready-to-post graphics with key messages",
+        "workflow_data": {
+            "nodes": [
+                {
+                    "id": "text-bucket-1",
+                    "type": "TextBucket",
+                    "position": {"x": 100, "y": 200},
+                    "data": {"label": "Text Source", "selected_file_ids": []}
+                },
+                {
+                    "id": "quote-extract-1",
+                    "type": "QuoteExtraction",
+                    "position": {"x": 400, "y": 200},
+                    "data": {"label": "Quote Extraction"}
+                },
+                {
+                    "id": "img-gen-1",
+                    "type": "ImageGeneration",
+                    "position": {"x": 700, "y": 200},
+                    "data": {"label": "Quote Card Generator"}
+                },
+            ],
+            "edges": [
+                {
+                    "id": "e1",
+                    "source": "text-bucket-1",
+                    "target": "quote-extract-1",
+                    "sourceHandle": "text",
+                    "targetHandle": "text",
+                },
+                {
+                    "id": "e2",
+                    "source": "quote-extract-1",
+                    "target": "img-gen-1",
+                    "sourceHandle": "quotes",
+                    "targetHandle": "prompt",
+                },
+            ],
+        },
+    },
+    {
+        "name": "Video Highlights Reel",
+        "description": "Extract the most visually compelling frames from a long video and generate a short-form highlights video",
+        "workflow_data": {
+            "nodes": [
+                {
+                    "id": "video-bucket-1",
+                    "type": "VideoBucket",
+                    "position": {"x": 100, "y": 200},
+                    "data": {"label": "Video Source", "selected_file_ids": []}
+                },
+                {
+                    "id": "img-extract-1",
+                    "type": "ImageExtraction",
+                    "position": {"x": 400, "y": 200},
+                    "data": {"label": "Frame Extraction"}
+                },
+                {
+                    "id": "video-gen-1",
+                    "type": "VideoGeneration",
+                    "position": {"x": 700, "y": 200},
+                    "data": {"label": "Highlights Video Generator"}
+                },
+            ],
+            "edges": [
+                {
+                    "id": "e1",
+                    "source": "video-bucket-1",
+                    "target": "img-extract-1",
+                    "sourceHandle": "videos",
+                    "targetHandle": "source",
+                },
+                {
+                    "id": "e2",
+                    "source": "img-extract-1",
+                    "target": "video-gen-1",
+                    "sourceHandle": "images",
+                    "targetHandle": "images",
+                },
+            ],
+        },
+    },
+    {
+        "name": "Brand Visual Storyteller",
+        "description": "Generate marketing copy from a text brief, then match the best images from your brand library to pair with the content",
+        "workflow_data": {
+            "nodes": [
+                {
+                    "id": "text-bucket-1",
+                    "type": "TextBucket",
+                    "position": {"x": 100, "y": 150},
+                    "data": {"label": "Text Brief", "selected_file_ids": []}
+                },
+                {
+                    "id": "text-gen-1",
+                    "type": "TextGeneration",
+                    "position": {"x": 400, "y": 150},
+                    "data": {"label": "Marketing Copy Generator"}
+                },
+                {
+                    "id": "img-bucket-1",
+                    "type": "ImageBucket",
+                    "position": {"x": 100, "y": 400},
+                    "data": {"label": "Brand Image Library", "selected_file_ids": []}
+                },
+                {
+                    "id": "img-match-1",
+                    "type": "ImageMatching",
+                    "position": {"x": 700, "y": 275},
+                    "data": {"label": "Match Images to Copy"}
+                },
             ],
             "edges": [
                 {
@@ -131,10 +370,24 @@ TEMPLATES = [
                     "source": "text-bucket-1",
                     "target": "text-gen-1",
                     "sourceHandle": "text",
-                    "targetHandle": "text"
-                }
-            ]
-        }
+                    "targetHandle": "text",
+                },
+                {
+                    "id": "e2",
+                    "source": "text-gen-1",
+                    "target": "img-match-1",
+                    "sourceHandle": "generated_text",
+                    "targetHandle": "text",
+                },
+                {
+                    "id": "e3",
+                    "source": "img-bucket-1",
+                    "target": "img-match-1",
+                    "sourceHandle": "images",
+                    "targetHandle": "images",
+                },
+            ],
+        },
     },
 ]
 
