@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    #test comment
     logger.info("🛑 Shutting down MiCRA application...")
     logger.info("✅ Application shutdown complete")
 
