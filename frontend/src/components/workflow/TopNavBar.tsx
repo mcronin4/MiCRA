@@ -39,6 +39,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   const workflowName = useWorkflowStore((state) => state.workflowName);
   const setWorkflowName = useWorkflowStore((state) => state.setWorkflowName);
   const currentWorkflowId = useWorkflowStore((state) => state.currentWorkflowId);
+  const isDirty = useWorkflowStore((state) => state.isDirty);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(workflowName);
 
@@ -59,11 +60,17 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     }
   };
 
+  const handleNavigateDashboard = (e: React.MouseEvent) => {
+    if (isDirty && !window.confirm("You have unsaved changes. Leave the editor? Your changes will be lost.")) {
+      e.preventDefault();
+    }
+  };
+
   return (
     <div className="h-12 bg-white border-b border-gray-100 flex items-center justify-between px-4">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <Link href="/dashboard" className="text-gray-400 hover:text-indigo-600 transition-colors">
+        <Link href="/dashboard" onClick={handleNavigateDashboard} className="text-gray-400 hover:text-indigo-600 transition-colors">
           {projectsLabel}
         </Link>
         <span className="text-gray-300">/</span>
@@ -124,6 +131,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         </button>
         <Link
           href="/dashboard"
+          onClick={handleNavigateDashboard}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
         >
           <LayoutDashboard size={14} />

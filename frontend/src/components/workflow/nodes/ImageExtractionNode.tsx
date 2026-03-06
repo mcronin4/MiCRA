@@ -14,9 +14,11 @@ import type { NodeConfig } from "@/types/workflow";
 import { X, Video, Loader2 } from "lucide-react";
 import Image from "next/image";
 
+const MAX_FRAME_COUNT = 25;
+
 const clampFrameCount = (value: number) => {
   if (Number.isNaN(value)) return 10;
-  return Math.max(1, Math.min(value, 200));
+  return Math.max(1, Math.min(value, MAX_FRAME_COUNT));
 };
 
 const config: NodeConfig = {
@@ -244,7 +246,7 @@ export function ImageExtractionNode({ id }: NodeProps) {
             <input
               type="number"
               min={1}
-              max={200}
+              max={MAX_FRAME_COUNT}
               value={maxFrames}
               onChange={(event) =>
                 setMaxFrames(clampFrameCount(Number(event.target.value)))

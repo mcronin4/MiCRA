@@ -159,9 +159,23 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   const setReactFlowState = useWorkflowStore((state) => state.setReactFlowState);
   const removeNodeFromStore = useWorkflowStore((state) => state.removeNode);
   const workflowNodes = useWorkflowStore((state) => state.nodes);
+  const setIsDirty = useWorkflowStore((state) => state.setIsDirty);
 
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>(storeReactFlowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(storeReactFlowEdges);
+
+  // Zustand persist hydrates asynchronously, so useNodesState may initialize
+  // with empty arrays before the store finishes loading from localStorage.
+  // Once hydration completes, sync the restored state into the local ReactFlow state.
+  const hydrationSynced = React.useRef(false);
+  useEffect(() => {
+    if (hydrationSynced.current || autoLoadWorkflowId) return;
+    if (storeReactFlowNodes.length > 0 && nodes.length === 0) {
+      setNodes(storeReactFlowNodes);
+      setEdges(storeReactFlowEdges);
+      hydrationSynced.current = true;
+    }
+  }, [storeReactFlowNodes, storeReactFlowEdges, nodes.length, autoLoadWorkflowId, setNodes, setEdges]);
 
   // Check if we're in auto-loading state (empty store but autoLoadWorkflowId exists)
   const hasNodes = storeReactFlowNodes.length > 0;
@@ -195,20 +209,22 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   // Wrap onNodesChange to sync deletions with Zustand store and clean up edges
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // Intercept remove changes and sync with Zustand store
       for (const change of changes) {
         if (change.type === 'remove') {
           removeNodeFromStore(change.id);
-          // Remove all edges connected to this node
           setEdges((eds) => eds.filter(
             (edge) => edge.source !== change.id && edge.target !== change.id
           ));
         }
       }
-      // Apply all changes to ReactFlow state
+      const hasStructuralChange = changes.some(
+        (c) => c.type === 'add' || c.type === 'remove' || c.type === 'replace'
+          || (c.type === 'position' && !c.dragging)
+      );
+      if (hasStructuralChange) setIsDirty(true);
       onNodesChangeBase(changes);
     },
-    [onNodesChangeBase, removeNodeFromStore, setEdges]
+    [onNodesChangeBase, removeNodeFromStore, setEdges, setIsDirty]
   );
 
   // Store setNodes in the parent's ref
@@ -230,8 +246,11 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   }, [nodes, edges, setReactFlowState]);
 
   const onConnect: OnConnect = useCallback(
-    (params) => setEdges((eds: Edge[]) => addEdge(params, eds)),
-    [setEdges, addEdge],
+    (params) => {
+      setEdges((eds: Edge[]) => addEdge(params, eds));
+      setIsDirty(true);
+    },
+    [setEdges, addEdge, setIsDirty],
   );
 
   // Right-click on an edge to remove it (simple confirm flow)
@@ -245,8 +264,9 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
       if (!shouldDelete) return;
 
       setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+      setIsDirty(true);
     },
-    [setEdges],
+    [setEdges, setIsDirty],
   );
 
   const TEST_MODE_COLOR = '#94a3b8'; // slate-400 (gray)

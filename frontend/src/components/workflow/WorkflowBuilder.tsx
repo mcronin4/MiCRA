@@ -97,6 +97,17 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
   const { execute, isExecuting, executionResult, error: executionError, cancelExecution } = useWorkflowExecution();
   const { compileRaw, diagnostics, errors: compilationErrors } = useBlueprintCompile();
   const currentWorkflowId = useWorkflowStore((s) => s.currentWorkflowId);
+  const isDirty = useWorkflowStore((s) => s.isDirty);
+
+  // Warn before browser refresh/close if there are unsaved changes
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   // Prefetch all file types on mount so backend cache is warm before any bucket is created
   useEffect(() => {
@@ -490,9 +501,9 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
 
     const current = exportCurrentWorkflowForPlanning();
     const isCreateReplace = copilot.mode === "create" && current.nodes.length > 0;
-    if (isCreateReplace && plan.requires_replace_confirmation) {
+    if (isCreateReplace && plan.requires_replace_confirmation && isDirty) {
       const confirmed = window.confirm(
-        "Apply MicrAI create plan and replace the current canvas?"
+        "You have unsaved changes. Apply MicrAI create plan and replace the current canvas?"
       );
       if (!confirmed) return;
     }

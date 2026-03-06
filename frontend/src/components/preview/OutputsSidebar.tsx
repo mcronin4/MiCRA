@@ -64,7 +64,7 @@ function itemLabel(nodeType: string, outputKey: string, index: number, item: unk
   if (item && typeof item === 'object') {
     const obj = item as Record<string, unknown>
     const score = (obj._matchScore ?? obj.similarity_score ?? obj.combined_score ?? obj.score ?? obj.similarity) as number | undefined
-    if (typeof score === 'number' && score > 0) {
+    if (typeof score === 'number' && score >= 0) {
       const pct = Math.round(score * 100)
       const caption = typeof obj._caption === 'string' && obj._caption
         ? ` - ${obj._caption.length > 25 ? obj._caption.slice(0, 22) + '...' : obj._caption}`

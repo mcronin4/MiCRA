@@ -24,7 +24,7 @@ function MatchedImagePreview({ value }: { value: Record<string, unknown> }) {
     <div className="flex items-center gap-2">
       <div className="relative shrink-0">
         <ImagePreview value={value} size="thumbnail" />
-        {typeof score === 'number' && score > 0 && (
+        {typeof score === 'number' && score >= 0 && (
           <div className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[9px] font-bold px-1 py-0.5 rounded-full min-w-[28px] text-center">
             {Math.round(score * 100)}%
           </div>
