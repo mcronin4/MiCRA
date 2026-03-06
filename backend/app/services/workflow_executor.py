@@ -1047,7 +1047,7 @@ async def _exec_image_extraction(params: dict, inputs: dict) -> dict[str, Any]:
         else params.get("frame_count")
     )
     max_frames: int | None = None
-    if selection_mode == "manual":
+    if selection_mode == "manual" and max_frames_raw is not None:
         try:
             max_frames = max(1, min(int(max_frames_raw), 200))
         except Exception as exc:

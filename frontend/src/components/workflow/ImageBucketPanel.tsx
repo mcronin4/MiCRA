@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import {
   Upload,
   Image as ImageIcon,
@@ -10,12 +10,27 @@ import {
   FileText,
   ClipboardPaste,
   X,
+  Ban,
 } from "lucide-react";
 import { useWorkflowStore, ImageBucketItem } from "@/lib/stores/workflowStore";
 import { useAuth } from "@/contexts/AuthContext";
-import { initUpload, completeUpload, checkHash, signDownload } from "@/lib/fastapi/files";
-import { uploadToPresignedUrl, calculateFileHash } from "@/lib/storage/r2";
+import {
+  initUpload,
+  completeUpload,
+  checkHash,
+  signDownload,
+  initMultipartUpload,
+  completeMultipartUpload,
+  abortMultipartUpload,
+} from "@/lib/fastapi/files";
+import { uploadToPresignedUrl, uploadMultipart, calculateFileHash } from "@/lib/storage/r2";
+import type { MultipartUploadProgress } from "@/lib/storage/r2";
 import { isHeicFile, getHeicErrorMessage } from "@/lib/storage/heicConvert";
+
+const MAX_FILE_SIZE_BYTES = 1 * 1024 * 1024 * 1024; // 1 GB
+const MULTIPART_THRESHOLD = 200 * 1024 * 1024; // 200 MB
+const MULTIPART_CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB
+const MULTIPART_CONCURRENCY = 4;
 
 export function ImageBucketPanel() {
   const imageBucket = useWorkflowStore((state) => state.imageBucket);
@@ -30,10 +45,34 @@ export function ImageBucketPanel() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<MultipartUploadProgress | null>(null);
+  const [uploadFileName, setUploadFileName] = useState<string | null>(null);
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pasteFileName, setPasteFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const multipartAbortInfoRef = useRef<{ fileId: string; uploadId: string } | null>(null);
+
+  const cancelUpload = useCallback(async () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+
+    if (multipartAbortInfoRef.current) {
+      try {
+        await abortMultipartUpload(multipartAbortInfoRef.current);
+      } catch (e) {
+        console.error("Error aborting multipart upload:", e);
+      }
+      multipartAbortInfoRef.current = null;
+    }
+
+    setIsUploading(false);
+    setUploadProgress(null);
+    setUploadFileName(null);
+    setUploadError("Upload cancelled");
+    setTimeout(() => setUploadError(null), 3000);
+  }, []);
 
   const showAuthError = () => {
     setUploadError("Please sign in to upload media");
@@ -57,56 +96,68 @@ export function ImageBucketPanel() {
     return 'media';
   };
 
+  const formatFileSize = (bytes: number): string => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${bytes} B`;
+  };
+
   const processFiles = async (files: FileList | File[]) => {
-    // Check authentication
     if (!user) {
       showAuthError();
       return;
     }
 
     const fileArray = Array.from(files);
-    console.log("Processing files:", fileArray.map(f => ({ name: f.name, type: f.type })));
-
     if (fileArray.length === 0) {
       setUploadError("No files selected");
       setTimeout(() => setUploadError(null), 5000);
       return;
     }
 
-    console.log("Processing", fileArray.length, "files");
+    // Early size validation for all files
+    const oversized = fileArray.filter(f => f.size > MAX_FILE_SIZE_BYTES);
+    if (oversized.length > 0) {
+      const names = oversized.map(f => `"${f.name}" (${formatFileSize(f.size)})`).join(', ');
+      setUploadError(`File size exceeds the 1 GB limit: ${names}`);
+      setTimeout(() => setUploadError(null), 8000);
+      return;
+    }
+
     setIsUploading(true);
-    setUploadError(null); // Clear any previous errors
-    setUploadSuccess(null); // Clear any previous success messages
+    setUploadError(null);
+    setUploadSuccess(null);
+    setUploadProgress(null);
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     const newImages: Omit<ImageBucketItem, "addedAt">[] = [];
 
     for (const rawFile of fileArray) {
+      if (abortController.signal.aborted) break;
+
       try {
-        // HEIC validation - block upload with helpful message
         if (isHeicFile(rawFile)) {
           setUploadError(getHeicErrorMessage(rawFile.name));
-          setTimeout(() => setUploadError(null), 10000); // Show longer (10s)
-          continue; // Skip this file, continue with others
+          setTimeout(() => setUploadError(null), 10000);
+          continue;
         }
 
-        console.log("Processing file:", rawFile.name);
+        setUploadFileName(rawFile.name);
 
-        // Step 1: Calculate hash for deduplication
         let contentHash: string;
         try {
           contentHash = await calculateFileHash(rawFile);
-          console.log("Hash calculated:", contentHash.substring(0, 16) + "...");
         } catch (error) {
-          console.error("Error calculating hash:", error);
           throw new Error(`Failed to calculate file hash: ${error instanceof Error ? error.message : "Unknown error"}`);
         }
 
-        // Step 2: Check if file already exists (deduplication)
         let hashCheck;
         try {
           hashCheck = await checkHash({ contentHash });
         } catch (error) {
-          console.error("Error checking hash:", error);
           throw new Error(`Failed to check if file exists: ${error instanceof Error ? error.message : "Unknown error"}`);
         }
 
@@ -114,111 +165,145 @@ export function ImageBucketPanel() {
         let signedUrl: string;
 
         if (hashCheck.exists && hashCheck.file) {
-          // File already exists, use existing file
           fileId = hashCheck.file.id;
-          // Get signed URL for display
           try {
             const downloadResponse = await signDownload({ fileId, expiresIn: 3600 });
             signedUrl = downloadResponse.signedUrl;
           } catch (error) {
-            console.error("Error signing download for existing file:", error);
             throw new Error(`Failed to get download URL: ${error instanceof Error ? error.message : "Unknown error"}`);
           }
         } else {
-          // Step 3: Initialize upload
           const contentType = rawFile.type || 'application/octet-stream';
           const fileType = getFileType(contentType);
           const bucket = getBucket(fileType);
+          const useMultipart = rawFile.size > MULTIPART_THRESHOLD;
 
-          let initResponse;
-          try {
-            initResponse = await initUpload({
-              bucket,
-              type: fileType,
-              contentType,
-              name: rawFile.name,
-              contentHash,
-              metadata: {
-                uploadedAt: new Date().toISOString(),
-              },
-            });
-          } catch (error) {
-            console.error("Error initializing upload:", error);
-            throw new Error(`Failed to initialize upload: ${error instanceof Error ? error.message : "Unknown error"}`);
+          if (useMultipart) {
+            // --- Multipart upload path ---
+            let mpResponse;
+            try {
+              mpResponse = await initMultipartUpload({
+                bucket,
+                type: fileType,
+                contentType,
+                name: rawFile.name,
+                contentHash,
+                sizeBytes: rawFile.size,
+                metadata: { uploadedAt: new Date().toISOString() },
+              });
+            } catch (error) {
+              throw new Error(`Failed to initialize multipart upload: ${error instanceof Error ? error.message : "Unknown error"}`);
+            }
+
+            fileId = mpResponse.file.id;
+            multipartAbortInfoRef.current = { fileId, uploadId: mpResponse.uploadId };
+
+            let partResults;
+            try {
+              partResults = await uploadMultipart(
+                mpResponse.parts,
+                rawFile,
+                MULTIPART_CHUNK_SIZE,
+                MULTIPART_CONCURRENCY,
+                (progress) => setUploadProgress(progress),
+                abortController.signal,
+              );
+            } catch (error) {
+              if (error instanceof DOMException && error.name === 'AbortError') {
+                throw error;
+              }
+              // Attempt abort cleanup on failure
+              try {
+                await abortMultipartUpload({ fileId, uploadId: mpResponse.uploadId });
+              } catch { /* best effort */ }
+              multipartAbortInfoRef.current = null;
+              throw new Error(`Failed to upload file: ${error instanceof Error ? error.message : "Unknown error"}`);
+            }
+
+            try {
+              await completeMultipartUpload({
+                fileId,
+                uploadId: mpResponse.uploadId,
+                parts: partResults,
+                sizeBytes: rawFile.size,
+              });
+            } catch (error) {
+              throw new Error(`Failed to complete multipart upload: ${error instanceof Error ? error.message : "Unknown error"}`);
+            }
+
+            multipartAbortInfoRef.current = null;
+            setUploadProgress(null);
+          } else {
+            // --- Standard single PUT path ---
+            let initResponse;
+            try {
+              initResponse = await initUpload({
+                bucket,
+                type: fileType,
+                contentType,
+                name: rawFile.name,
+                contentHash,
+                sizeBytes: rawFile.size,
+                metadata: { uploadedAt: new Date().toISOString() },
+              });
+            } catch (error) {
+              throw new Error(`Failed to initialize upload: ${error instanceof Error ? error.message : "Unknown error"}`);
+            }
+
+            fileId = initResponse.file.id;
+
+            try {
+              await uploadToPresignedUrl(initResponse.upload.signedUrl, rawFile, contentType);
+            } catch (error) {
+              throw new Error(`Failed to upload file to storage: ${error instanceof Error ? error.message : "Unknown error"}`);
+            }
+
+            try {
+              await completeUpload({ fileId, sizeBytes: rawFile.size });
+            } catch (error) {
+              throw new Error(`Failed to complete upload: ${error instanceof Error ? error.message : "Unknown error"}`);
+            }
           }
 
-          fileId = initResponse.file.id;
-
-          // Step 4: Upload to R2 (use the same contentType that was signed)
-          try {
-            await uploadToPresignedUrl(
-              initResponse.upload.signedUrl,
-              rawFile,
-              contentType
-            );
-          } catch (error) {
-            console.error("Error uploading to R2:", error);
-            throw new Error(`Failed to upload file to storage: ${error instanceof Error ? error.message : "Unknown error"}`);
-          }
-
-          // Step 5: Complete upload
-          try {
-            await completeUpload({
-              fileId,
-              sizeBytes: rawFile.size,
-            });
-          } catch (error) {
-            console.error("Error completing upload:", error);
-            throw new Error(`Failed to complete upload: ${error instanceof Error ? error.message : "Unknown error"}`);
-          }
-
-          // Step 6: Get signed URL for display
           try {
             const downloadResponse = await signDownload({ fileId, expiresIn: 3600 });
             signedUrl = downloadResponse.signedUrl;
           } catch (error) {
-            console.error("Error signing download:", error);
             throw new Error(`Failed to get download URL: ${error instanceof Error ? error.message : "Unknown error"}`);
           }
         }
 
-        // Add to bucket
-        newImages.push({
-          id: fileId,
-          fileId,
-          signedUrl,
-          name: rawFile.name,
-        });
-        console.log("Successfully uploaded:", rawFile.name);
+        newImages.push({ id: fileId, fileId, signedUrl, name: rawFile.name });
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          break;
+        }
         console.error("Upload error for", rawFile.name, ":", error);
         let errorMessage = "Unknown error";
         if (error instanceof Error) {
           errorMessage = error.message;
-          // Check for network errors
           if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
             errorMessage = "Network error: Check if backend is running and accessible. " + errorMessage;
           }
         }
         setUploadError(`Failed to upload ${rawFile.name}: ${errorMessage}`);
         setTimeout(() => setUploadError(null), 5000);
-        // Continue processing other files even if one fails
       }
     }
 
+    abortControllerRef.current = null;
+    multipartAbortInfoRef.current = null;
     setIsUploading(false);
+    setUploadProgress(null);
+    setUploadFileName(null);
 
     if (newImages.length > 0) {
-      console.log("Adding", newImages.length, "images to bucket");
       addImagesToBucket(newImages);
-      // Show success message briefly
       setUploadError(null);
       const successMessage = `Successfully uploaded ${newImages.length} file${newImages.length > 1 ? 's' : ''}`;
       setUploadSuccess(successMessage);
       setTimeout(() => setUploadSuccess(null), 3000);
-    } else if (fileArray.length > 0) {
-      // If we had files but none succeeded, show a generic error
-      console.error("No images were successfully uploaded");
+    } else if (fileArray.length > 0 && !abortController.signal.aborted) {
       setUploadSuccess(null);
       setUploadError("Failed to upload media. Please check your connection and try again.");
       setTimeout(() => setUploadError(null), 5000);
@@ -491,11 +576,35 @@ export function ImageBucketPanel() {
 
           {/* Loading indicator */}
           {isUploading && (
-            <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-xs text-blue-600 flex items-center gap-2">
-                <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></span>
-                Uploading media...
-              </p>
+            <div className="mt-3 p-2.5 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-blue-600 flex items-center gap-2">
+                  <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></span>
+                  {uploadProgress
+                    ? `Uploading ${uploadFileName ?? 'file'}... ${uploadProgress.completedParts}/${uploadProgress.totalParts} chunks`
+                    : `Uploading ${uploadFileName ?? 'media'}...`}
+                </p>
+                <button
+                  onClick={(e) => { e.stopPropagation(); cancelUpload(); }}
+                  className="p-1 hover:bg-blue-100 rounded transition-colors"
+                  title="Cancel upload"
+                >
+                  <Ban size={12} className="text-blue-500" />
+                </button>
+              </div>
+              {uploadProgress && (
+                <div className="w-full bg-blue-100 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.round((uploadProgress.completedParts / uploadProgress.totalParts) * 100)}%` }}
+                  />
+                </div>
+              )}
+              {uploadProgress && (
+                <p className="text-[10px] text-blue-400">
+                  {formatFileSize(uploadProgress.bytesUploaded)} / {formatFileSize(uploadProgress.totalBytes)}
+                </p>
+              )}
             </div>
           )}
 

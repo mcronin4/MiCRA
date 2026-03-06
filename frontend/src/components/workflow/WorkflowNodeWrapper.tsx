@@ -349,22 +349,25 @@ export function WorkflowNodeWrapper({
               )}
             </div>
           </div>
-          <div
-            className={`
-              flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase
-              ${statusConfig.color}
-              transition-colors duration-200
-              ${justCompleted ? 'animate-status-ripple' : ''}
-            `}
-          >
-            {StatusIcon && (
-              <StatusIcon
-                size={12}
-                className={node?.status === "running" ? "animate-spin" : ""}
-                strokeWidth={2.5}
-              />
-            )}
-            <span>{statusConfig.text}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <ManualInputToggle nodeId={nodeId} />
+            <div
+              className={`
+                flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase
+                ${statusConfig.color}
+                transition-colors duration-200
+                ${justCompleted ? 'animate-status-ripple' : ''}
+              `}
+            >
+              {StatusIcon && (
+                <StatusIcon
+                  size={12}
+                  className={node?.status === "running" ? "animate-spin" : ""}
+                  strokeWidth={2.5}
+                />
+              )}
+              <span>{statusConfig.text}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -414,9 +417,6 @@ export function WorkflowNodeWrapper({
           </div>
         );
       })}
-
-      {/* Manual Input Toggle - positioned relative to wrapper */}
-      <ManualInputToggle nodeId={nodeId} />
 
       {/* Content */}
       <div className="p-6 pt-2">
