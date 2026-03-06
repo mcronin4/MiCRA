@@ -115,6 +115,9 @@ interface PreviewStore {
 
   /** Set config from a draft (tone, platform) - does not persist, used when viewing draft */
   setConfigFromDraft: (workflowId: string, platformId: string, tone: string) => void
+
+  /** Bulk-assign auto-detected outputs; only fills slots that are still empty */
+  applyAutoAssignments: (assignments: SlotAssignment[]) => void
 }
 
 export const usePreviewStore = create<PreviewStore>((set, get) => ({
@@ -203,6 +206,27 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
     const fresh = defaultConfig(config.workflowId)
     saveConfig(fresh, activeContextId)
     set({ config: fresh })
+  },
+
+  applyAutoAssignments: (assignments) => {
+    const { config, activeContextId } = get()
+    if (!config) return
+
+    const merged = config.assignments.map((existing) => {
+      // Don't overwrite a slot that already has a source
+      if (existing.sources.length > 0) return existing
+      const auto = assignments.find((a) => a.slotId === existing.slotId)
+      if (!auto || auto.sources.length === 0) return existing
+      return { ...existing, sources: auto.sources }
+    })
+
+    const updated: PreviewConfig = {
+      ...config,
+      assignments: merged,
+      updatedAt: Date.now(),
+    }
+    saveConfig(updated, activeContextId)
+    set({ config: updated })
   },
 
   setConfigFromDraft: (workflowId, platformId, tone) => {

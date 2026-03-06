@@ -26,6 +26,7 @@ class BlueprintSnapshotNode(BaseModel):
     """A node in a blueprint snapshot (minimal structure for preview purposes)."""
     node_id: Optional[str] = None
     type: Optional[str] = None
+    params: Optional[Dict[str, Any]] = None
 
 
 class BlueprintSnapshot(BaseModel):
@@ -1256,6 +1257,104 @@ async def list_workflow_runs(
         raise HTTPException(status_code=500, detail=f"Failed to list workflow runs: {str(e)}")
 
 
+# Bucket node types whose outputs are lists of presigned R2 URLs
+_BUCKET_NODE_OUTPUT_KEY: dict[str, str] = {
+    "ImageBucket": "images",
+    "AudioBucket": "audio",
+    "VideoBucket": "videos",
+}
+
+
+def _refresh_media_urls(
+    node_outputs: Dict[str, Any],
+    blueprint_snapshot_raw: Optional[Dict[str, Any]],
+    user_id: str,
+    supabase: Client,
+) -> None:
+    """
+    Mutate *node_outputs* in-place so that all media references return fresh,
+    accessible URLs:
+
+    1. Bucket nodes (ImageBucket / AudioBucket / VideoBucket): re-sign the
+       original file IDs from the blueprint snapshot params, replacing whatever
+       (possibly-expired) URLs are currently stored.
+
+    2. ``r2://`` sentinels: sign the embedded R2 object key directly (used for
+       generated images that were offloaded by ``_offload_generated_media``).
+
+    Errors are logged and the output value is left unchanged so a partial
+    failure never crashes the endpoint.
+    """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    try:
+        from app.storage.r2 import get_r2
+        r2 = get_r2()
+    except Exception as e:
+        _log.warning("_refresh_media_urls: could not get R2 client: %s", e)
+        return
+
+    # ── 1. Re-sign bucket node outputs ───────────────────────────────────────
+    if blueprint_snapshot_raw and isinstance(blueprint_snapshot_raw, dict):
+        for node in blueprint_snapshot_raw.get("nodes") or []:
+            node_type = node.get("type", "")
+            node_id = node.get("node_id", "")
+            output_key = _BUCKET_NODE_OUTPUT_KEY.get(node_type)
+            if not output_key:
+                continue
+            if node_id not in node_outputs:
+                continue
+
+            file_ids: list = (node.get("params") or {}).get("selected_file_ids") or []
+            if not file_ids:
+                continue
+
+            try:
+                file_result = supabase.table("files").select("id, path, status").in_(
+                    "id", file_ids
+                ).eq("user_id", user_id).execute()
+
+                path_by_id = {
+                    r["id"]: r["path"]
+                    for r in (file_result.data or [])
+                    if r.get("status") == "uploaded"
+                }
+
+                fresh_urls = []
+                for fid in file_ids:
+                    path = path_by_id.get(fid)
+                    if not path:
+                        continue
+                    try:
+                        fresh_urls.append(r2.sign_path(path, expires_in=3600))
+                    except Exception as sign_err:
+                        _log.warning("Could not sign %s: %s", path, sign_err)
+
+                # Always replace the stored list (even if empty due to deleted
+                # files) so stale expired URLs are never left in place.
+                node_out = node_outputs.get(node_id)
+                if isinstance(node_out, dict):
+                    node_out[output_key] = fresh_urls
+
+            except Exception as e:
+                _log.warning(
+                    "_refresh_media_urls: failed to re-sign bucket node %s: %s", node_id, e
+                )
+
+    # ── 2. Re-sign r2:// sentinels ────────────────────────────────────────────
+    for outputs in node_outputs.values():
+        if not isinstance(outputs, dict):
+            continue
+        for key, val in outputs.items():
+            if isinstance(val, str) and val.startswith("r2://"):
+                r2_path = val[len("r2://"):]
+                try:
+                    outputs[key] = r2.sign_path(r2_path, expires_in=3600)
+                except Exception as e:
+                    _log.warning("Could not sign r2 sentinel %s: %s", val, e)
+
+
 @router.get("/{workflow_id}/runs/{execution_id}/outputs", response_model=WorkflowRunOutputsResponse)
 async def get_workflow_run_outputs(
     workflow_id: str,
@@ -1278,17 +1377,22 @@ async def get_workflow_run_outputs(
             raise HTTPException(status_code=404, detail="Persisted outputs not found for this run")
 
         row = result.data[0]
-        
-        # Parse blueprint_snapshot with validation
+
+        # Keep the raw dict for media URL refreshing (needs params, not in the
+        # validated BlueprintSnapshot model previously).
         blueprint_snapshot_raw = row.get("blueprint_snapshot")
+
+        # Refresh all media URLs (re-sign bucket URLs + sign r2:// sentinels)
+        # before building the response so callers always get working URLs.
+        node_outputs: Dict[str, Any] = row.get("node_outputs") or {}
+        _refresh_media_urls(node_outputs, blueprint_snapshot_raw, user.sub, supabase)
+
+        # Parse blueprint_snapshot with validation
         blueprint_snapshot: Optional[BlueprintSnapshot] = None
         if blueprint_snapshot_raw:
             try:
-                # Validate and parse the blueprint snapshot structure
                 blueprint_snapshot = BlueprintSnapshot.model_validate(blueprint_snapshot_raw)
             except Exception as e:
-                # If validation fails, log but don't fail the request
-                # This handles legacy data that might not match the expected structure
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(
@@ -1296,11 +1400,11 @@ async def get_workflow_run_outputs(
                     "Returning None to maintain backward compatibility."
                 )
                 blueprint_snapshot = None
-        
+
         return WorkflowRunOutputsResponse(
             execution_id=str(row["execution_id"]),
             workflow_id=str(row["workflow_id"]),
-            node_outputs=row.get("node_outputs") or {},
+            node_outputs=node_outputs,
             workflow_outputs=row.get("workflow_outputs") or {},
             blueprint_snapshot=blueprint_snapshot,
             payload_bytes=row.get("payload_bytes") or 0,

@@ -1863,6 +1863,71 @@ def _trim_list_values(value: Any, max_items: int) -> Any:
     return value
 
 
+def _offload_generated_media(node_outputs: dict[str, Any], execution_id: str) -> None:
+    """
+    Scan node_outputs for base64-encoded data URLs (e.g. generated_image from
+    ImageGeneration) and upload them to R2.  The base64 value is replaced in-place
+    with an ``r2://<path>`` sentinel so the stored payload is much smaller.
+
+    Runs synchronously inside save_execution_log.  Failures are logged and the
+    original base64 value is left unchanged so the run is never lost.
+    """
+    import base64
+    import re
+
+    try:
+        from app.storage.r2 import get_r2
+    except Exception:
+        return
+
+    try:
+        r2 = get_r2()
+    except Exception as e:
+        logger.warning("_offload_generated_media: could not get R2 client: %s", e)
+        return
+
+    EXT_MAP = {
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "image/gif": "gif",
+    }
+    DATA_URL_RE = re.compile(r"^data:([^;]+);base64,(.+)$", re.DOTALL)
+
+    for node_id, outputs in node_outputs.items():
+        if not isinstance(outputs, dict):
+            continue
+        for output_key, val in list(outputs.items()):
+            if not isinstance(val, str) or not val.startswith("data:"):
+                continue
+            match = DATA_URL_RE.match(val)
+            if not match:
+                continue
+
+            mime_type = match.group(1).strip().lower()
+            try:
+                raw_bytes = base64.b64decode(match.group(2))
+            except Exception:
+                continue
+
+            ext = EXT_MAP.get(mime_type, "jpg")
+            r2_path = f"runs/{execution_id}/{node_id}/{output_key}.{ext}"
+
+            try:
+                r2.upload_bytes(r2_path, raw_bytes, mime_type)
+                outputs[output_key] = f"r2://{r2_path}"
+                logger.info(
+                    "Offloaded %s/%s to R2 at %s (%d bytes)",
+                    node_id, output_key, r2_path, len(raw_bytes),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to offload %s/%s to R2: %s — keeping base64",
+                    node_id, output_key, e,
+                )
+
+
 def save_execution_log(
     result: WorkflowExecutionResult,
     workflow_id: str | None,
@@ -1932,7 +1997,14 @@ def save_execution_log(
         for nr in result.node_results
         if nr.outputs is not None
     }
-    persisted_node_outputs = node_outputs
+
+    # Upload any inline base64 media (e.g. ImageGeneration output) to R2 and
+    # replace the value with an r2:// sentinel.  This must happen before the
+    # payload-size check so the trimming logic sees the smaller sentinel strings.
+    _offload_generated_media(node_outputs, execution_id)
+
+    terminal_node_outputs = _build_terminal_node_outputs(node_outputs, blueprint)
+    persisted_node_outputs = terminal_node_outputs
     persisted_workflow_outputs = result.workflow_outputs
     payload_bytes = _serialized_payload_bytes(
         node_outputs=persisted_node_outputs,
@@ -1944,65 +2016,50 @@ def save_execution_log(
     if payload_bytes > max_bytes:
         full_payload_bytes = payload_bytes
 
-        terminal_node_outputs = _build_terminal_node_outputs(node_outputs, blueprint)
-        terminal_workflow_outputs = result.workflow_outputs
+        keyed_workflow_outputs = {key: None for key in result.workflow_outputs.keys()}
         payload_bytes = _serialized_payload_bytes(
             node_outputs=terminal_node_outputs,
-            workflow_outputs=terminal_workflow_outputs,
+            workflow_outputs=keyed_workflow_outputs,
             blueprint_snapshot=blueprint_snapshot,
         )
         if payload_bytes <= max_bytes:
             persisted_node_outputs = terminal_node_outputs
-            persisted_workflow_outputs = terminal_workflow_outputs
+            persisted_workflow_outputs = keyed_workflow_outputs
             warning = (
                 f"Run outputs were too large to persist in full ({full_payload_bytes} bytes exceeds "
-                f"limit of {max_bytes} bytes). Persisted terminal outputs only."
+                f"limit of {max_bytes} bytes). Persisted reduced outputs for preview."
             )
         else:
-            keyed_workflow_outputs = {key: None for key in result.workflow_outputs.keys()}
-            payload_bytes = _serialized_payload_bytes(
-                node_outputs=terminal_node_outputs,
-                workflow_outputs=keyed_workflow_outputs,
-                blueprint_snapshot=blueprint_snapshot,
-            )
-            if payload_bytes <= max_bytes:
-                persisted_node_outputs = terminal_node_outputs
-                persisted_workflow_outputs = keyed_workflow_outputs
-                warning = (
-                    f"Run outputs were too large to persist in full ({full_payload_bytes} bytes exceeds "
-                    f"limit of {max_bytes} bytes). Persisted reduced outputs for preview."
+            trimmed_outputs = terminal_node_outputs
+            trimmed_payload_bytes = payload_bytes
+            for max_items in (12, 8, 5, 3, 2, 1):
+                candidate_node_outputs = _trim_list_values(terminal_node_outputs, max_items)
+                candidate_payload_bytes = _serialized_payload_bytes(
+                    node_outputs=candidate_node_outputs,
+                    workflow_outputs=keyed_workflow_outputs,
+                    blueprint_snapshot=blueprint_snapshot,
                 )
-            else:
-                trimmed_outputs = terminal_node_outputs
-                trimmed_payload_bytes = payload_bytes
-                for max_items in (12, 8, 5, 3, 2, 1):
-                    candidate_node_outputs = _trim_list_values(terminal_node_outputs, max_items)
-                    candidate_payload_bytes = _serialized_payload_bytes(
-                        node_outputs=candidate_node_outputs,
-                        workflow_outputs=keyed_workflow_outputs,
-                        blueprint_snapshot=blueprint_snapshot,
-                    )
-                    if candidate_payload_bytes <= max_bytes:
-                        trimmed_outputs = candidate_node_outputs
-                        trimmed_payload_bytes = candidate_payload_bytes
-                        break
+                if candidate_payload_bytes <= max_bytes:
                     trimmed_outputs = candidate_node_outputs
                     trimmed_payload_bytes = candidate_payload_bytes
+                    break
+                trimmed_outputs = candidate_node_outputs
+                trimmed_payload_bytes = candidate_payload_bytes
 
-                if trimmed_payload_bytes <= max_bytes:
-                    persisted_node_outputs = trimmed_outputs
-                    persisted_workflow_outputs = keyed_workflow_outputs
-                    payload_bytes = trimmed_payload_bytes
-                    warning = (
-                        f"Run outputs were too large to persist in full ({full_payload_bytes} bytes exceeds "
-                        f"limit of {max_bytes} bytes). Persisted reduced outputs with trimmed lists."
-                    )
-                else:
-                    warning = (
-                        f"Run outputs were too large to persist ({full_payload_bytes} bytes exceeds "
-                        f"limit of {max_bytes} bytes)."
-                    )
-                    return execution_id, warning
+            if trimmed_payload_bytes <= max_bytes:
+                persisted_node_outputs = trimmed_outputs
+                persisted_workflow_outputs = keyed_workflow_outputs
+                payload_bytes = trimmed_payload_bytes
+                warning = (
+                    f"Run outputs were too large to persist in full ({full_payload_bytes} bytes exceeds "
+                    f"limit of {max_bytes} bytes). Persisted reduced outputs with trimmed lists."
+                )
+            else:
+                warning = (
+                    f"Run outputs were too large to persist ({full_payload_bytes} bytes exceeds "
+                    f"limit of {max_bytes} bytes)."
+                )
+                return execution_id, warning
 
     try:
         supabase = get_supabase().client

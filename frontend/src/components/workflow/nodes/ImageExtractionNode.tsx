@@ -11,7 +11,7 @@ import {
   type FrameSelectionMode,
 } from "@/lib/fastapi/image-extraction";
 import type { NodeConfig } from "@/types/workflow";
-import { Upload, Link, X, Image as ImageIcon } from "lucide-react";
+import { Upload, Link, X } from "lucide-react";
 import Image from "next/image";
 
 type SourceType = "file" | "url";
@@ -471,7 +471,7 @@ export function ImageExtractionNode({ id }: NodeProps) {
           </div>
         )}
 
-        {hasResults ? (
+        {showManualInputs && hasResults && (
           <div
             className="nodrag border border-slate-200 rounded-xl bg-white p-3 cursor-pointer transition-shadow hover:shadow-md"
             onClick={() => setShowGallery(true)}
@@ -506,27 +506,10 @@ export function ImageExtractionNode({ id }: NodeProps) {
                   </div>
                 </div>
               ))}
-              {topImages.length === 0 && (
-                <div className="text-xs text-slate-400">
-                  No images selected yet.
-                </div>
-              )}
             </div>
             <div className="mt-2 text-[10px] text-slate-400">
               Click to expand and download any frame
             </div>
-          </div>
-        ) : (
-          <div className="border border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center">
-            <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
-              <ImageIcon size={18} className="text-slate-400" />
-            </div>
-            <p className="text-xs font-medium text-slate-600">
-              No frames yet
-            </p>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Run extraction to populate selected frames
-            </p>
           </div>
         )}
 
