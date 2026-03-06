@@ -287,7 +287,7 @@ TEMPLATES = [
                     "source": "quote-extract-1",
                     "target": "img-gen-1",
                     "sourceHandle": "quotes",
-                    "targetHandle": "prompt",
+                    "targetHandle": "text",
                 },
             ],
         },

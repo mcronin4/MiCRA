@@ -651,8 +651,19 @@ async def _exec_image_generation(params: dict, inputs: dict) -> dict[str, Any]:
     from pathlib import Path
     import httpx
 
-    prompt_input = inputs.get("prompt", "")
-    prompt = prompt_input if isinstance(prompt_input, str) else _normalize_text_segment(prompt_input)
+    user_prompt = params.get("user_prompt", "")
+    text_input = inputs.get("text", "")
+    text = text_input if isinstance(text_input, str) else _normalize_text_segment(text_input)
+
+    if user_prompt and text:
+        prompt = f"{user_prompt.strip()}\n\nContent:\n{text.strip()}"
+    elif user_prompt:
+        prompt = user_prompt.strip()
+    elif text:
+        prompt = text.strip()
+    else:
+        prompt = ""
+
     image_input = inputs.get("image")
     aspect_ratio = params.get("aspect_ratio", "1:1")
 
@@ -1718,6 +1729,16 @@ async def execute_workflow_streaming(
                     "node_results": [nr.model_dump() for nr in node_results],
                 })
 
+        except asyncio.CancelledError:
+            # Client disconnected — cancel all in-flight node tasks so
+            # we don't waste compute (API calls, keyframe extraction, etc.)
+            logger.info("Workflow execution cancelled (client disconnected)")
+            for task in pending_tasks:
+                if not task.done():
+                    task.cancel()
+            if pending_tasks:
+                await asyncio.gather(*pending_tasks.keys(), return_exceptions=True)
+
         except Exception as e:
             logger.exception("Coordinator error: %s", e)
             await event_queue.put({
@@ -1780,9 +1801,8 @@ def _max_persisted_output_bytes() -> int:
 def _persist_run_outputs_enabled() -> bool:
     """
     Runtime switch for run output persistence.
-
-    Default is disabled so workflow execution does not depend on output-persistence writes.
-    Set WORKFLOW_PERSIST_RUN_OUTPUTS=1 to re-enable persisted run outputs.
+    Default is OFF to avoid R2 writes during local development.
+    Set WORKFLOW_PERSIST_RUN_OUTPUTS=1 in .env to enable.
     """
     raw = os.getenv("WORKFLOW_PERSIST_RUN_OUTPUTS", "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
@@ -1840,8 +1860,12 @@ def _trim_list_values(value: Any, max_items: int) -> Any:
 def _offload_generated_media(node_outputs: dict[str, Any], execution_id: str) -> None:
     """
     Scan node_outputs for base64-encoded data URLs (e.g. generated_image from
-    ImageGeneration) and upload them to R2.  The base64 value is replaced in-place
-    with an ``r2://<path>`` sentinel so the stored payload is much smaller.
+    ImageGeneration, extracted keyframes from ImageExtraction, generated videos)
+    and upload them to R2.  The base64 value is replaced in-place with an
+    ``r2://<path>`` sentinel so the stored payload is much smaller.
+
+    Handles both scalar string values and lists of strings (e.g. ImageExtraction
+    returns {"images": ["data:image/png;base64,...", ...]}).
 
     Runs synchronously inside save_execution_log.  Failures are logged and the
     original base64 value is left unchanged so the run is never lost.
@@ -1866,40 +1890,56 @@ def _offload_generated_media(node_outputs: dict[str, Any], execution_id: str) ->
         "image/png": "png",
         "image/webp": "webp",
         "image/gif": "gif",
+        "video/mp4": "mp4",
+        "video/webm": "webm",
+        "video/quicktime": "mov",
     }
     DATA_URL_RE = re.compile(r"^data:([^;]+);base64,(.+)$", re.DOTALL)
+
+    def _try_offload(data_url: str, r2_path: str) -> str | None:
+        """Upload a single data URL to R2, returning the sentinel or None on failure."""
+        match = DATA_URL_RE.match(data_url)
+        if not match:
+            return None
+        mime_type = match.group(1).strip().lower()
+        if mime_type not in EXT_MAP:
+            return None
+        try:
+            raw_bytes = base64.b64decode(match.group(2))
+        except Exception:
+            return None
+        ext = EXT_MAP[mime_type]
+        full_path = f"{r2_path}.{ext}"
+        try:
+            r2.upload_bytes(full_path, raw_bytes, mime_type)
+            logger.info("Offloaded to R2 at %s (%d bytes)", full_path, len(raw_bytes))
+            return f"r2://{full_path}"
+        except Exception as e:
+            logger.warning("Failed to offload to R2 at %s: %s — keeping base64", full_path, e)
+            return None
 
     for node_id, outputs in node_outputs.items():
         if not isinstance(outputs, dict):
             continue
         for output_key, val in list(outputs.items()):
-            if not isinstance(val, str) or not val.startswith("data:"):
-                continue
-            match = DATA_URL_RE.match(val)
-            if not match:
-                continue
+            base_path = f"runs/{execution_id}/{node_id}/{output_key}"
 
-            mime_type = match.group(1).strip().lower()
-            try:
-                raw_bytes = base64.b64decode(match.group(2))
-            except Exception:
-                continue
+            if isinstance(val, str) and val.startswith("data:"):
+                sentinel = _try_offload(val, base_path)
+                if sentinel:
+                    outputs[output_key] = sentinel
 
-            ext = EXT_MAP.get(mime_type, "jpg")
-            r2_path = f"runs/{execution_id}/{node_id}/{output_key}.{ext}"
-
-            try:
-                r2.upload_bytes(r2_path, raw_bytes, mime_type)
-                outputs[output_key] = f"r2://{r2_path}"
-                logger.info(
-                    "Offloaded %s/%s to R2 at %s (%d bytes)",
-                    node_id, output_key, r2_path, len(raw_bytes),
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to offload %s/%s to R2: %s — keeping base64",
-                    node_id, output_key, e,
-                )
+            elif isinstance(val, list):
+                updated = False
+                for idx, item in enumerate(val):
+                    if not isinstance(item, str) or not item.startswith("data:"):
+                        continue
+                    sentinel = _try_offload(item, f"{base_path}_{idx}")
+                    if sentinel:
+                        val[idx] = sentinel
+                        updated = True
+                if updated:
+                    outputs[output_key] = val
 
 
 def save_execution_log(
@@ -1960,7 +2000,7 @@ def save_execution_log(
         logger.exception("Failed to save execution log for workflow %s: %s", workflow_id, str(e))
         return None, "Execution completed but could not be saved to history."
 
-    # Persist full outputs only for saved workflows
+    # Persist full outputs only for saved workflows with persistence enabled
     if not workflow_id:
         return execution_id, None
     if not _persist_run_outputs_enabled():
@@ -2057,4 +2097,73 @@ def save_execution_log(
         )
         warning = "Run completed, but outputs could not be persisted."
 
+    _enforce_run_retention(workflow_id, user_id)
+
     return execution_id, warning
+
+
+MAX_RUNS_PER_WORKFLOW = 15
+
+
+def _enforce_run_retention(workflow_id: str, user_id: str) -> None:
+    """
+    Keep at most MAX_RUNS_PER_WORKFLOW persisted runs per workflow.
+    Deletes the oldest workflow_run_outputs rows (and their R2 media) beyond
+    the limit.  The lightweight executions rows are left intact.
+    """
+    try:
+        supabase = get_supabase().client
+
+        all_rows = (
+            supabase.table("workflow_run_outputs")
+            .select("execution_id, created_at")
+            .eq("workflow_id", workflow_id)
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        rows = all_rows.data or []
+        if len(rows) <= MAX_RUNS_PER_WORKFLOW:
+            return
+
+        stale = rows[MAX_RUNS_PER_WORKFLOW:]
+        stale_ids = [r["execution_id"] for r in stale]
+
+        supabase.table("workflow_run_outputs").delete().in_(
+            "execution_id", stale_ids
+        ).execute()
+
+        _purge_r2_run_media(stale_ids)
+
+        logger.info(
+            "Retention: pruned %d old run(s) for workflow %s",
+            len(stale_ids),
+            workflow_id,
+        )
+    except Exception as e:
+        logger.warning("Retention cleanup failed for workflow %s: %s", workflow_id, e)
+
+
+def _purge_r2_run_media(execution_ids: list[str]) -> None:
+    """Delete R2 objects under runs/{execution_id}/ for each given execution."""
+    try:
+        from app.storage.r2 import get_r2, R2_BUCKET
+        r2 = get_r2()
+    except Exception:
+        return
+
+    for eid in execution_ids:
+        prefix = f"runs/{eid}/"
+        try:
+            objects = r2.client.list_objects_v2(
+                Bucket=R2_BUCKET, Prefix=prefix
+            )
+            keys = [obj["Key"] for obj in objects.get("Contents", [])]
+            if keys:
+                r2.client.delete_objects(
+                    Bucket=R2_BUCKET,
+                    Delete={"Objects": [{"Key": k} for k in keys]},
+                )
+                logger.info("Purged %d R2 objects under %s", len(keys), prefix)
+        except Exception as e:
+            logger.warning("Failed to purge R2 media for execution %s: %s", eid, e)

@@ -316,6 +316,26 @@ export async function getWorkflowRunOutputs(
   )
 }
 
+export interface RefreshedMediaUrls {
+  node_outputs: Record<string, unknown>
+}
+
+/**
+ * Re-sign expired media URLs for a persisted run (no data transfer, just re-signing).
+ */
+export async function refreshRunMediaUrls(
+  workflowId: string,
+  executionId: string
+): Promise<RefreshedMediaUrls> {
+  return apiClient.request<RefreshedMediaUrls>(
+    `/v1/workflows/${workflowId}/runs/${executionId}/refresh-urls`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  )
+}
+
 /**
  * List preview drafts for a workflow.
  */
@@ -531,26 +551,6 @@ export async function planWorkflowWithCopilot(
 }
 
 /**
- * Execute a raw (unsaved) workflow.
- */
-export async function executeWorkflow(
-  workflowData: SavedWorkflowData,
-  workflowId?: string | null,
-  workflowName?: string | null
-): Promise<WorkflowExecutionResult> {
-  return apiClient.request<WorkflowExecutionResult>('/v1/workflows/execute', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      nodes: workflowData.nodes,
-      edges: workflowData.edges,
-      workflow_id: workflowId || null,
-      workflow_name: workflowName || null,
-    }),
-  })
-}
-
-/**
  * Execute a saved workflow by ID (uses latest version).
  */
 export async function executeWorkflowById(
@@ -590,126 +590,6 @@ function getStreamingBaseUrl(): string {
 
   // Server-side fallback (shouldn't be used for SSE, but just in case)
   return '/backend'
-}
-
-/**
- * Execute a workflow with SSE streaming using callbacks.
- * This approach ensures events are processed immediately as they arrive.
- * 
- * @param workflowData - The workflow data to execute
- * @param onEvent - Callback called for each SSE event as it arrives
- * @param workflowId - Optional workflow ID
- * @param workflowName - Optional workflow name
- * @returns Promise that resolves when the stream is complete
- */
-export async function executeWorkflowStreamingWithCallback(
-  workflowData: SavedWorkflowData,
-  onEvent: (event: StreamingExecutionEvent) => void,
-  workflowId?: string | null,
-  workflowName?: string | null,
-  signal?: AbortSignal
-): Promise<void> {
-  // Get auth token
-  const { data: { session } } = await supabase.auth.getSession()
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  }
-  if (session?.access_token) {
-    headers['Authorization'] = `Bearer ${session.access_token}`
-  }
-
-  // Use direct backend URL to bypass Next.js proxy buffering
-  const baseUrl = getStreamingBaseUrl()
-  console.log('[SSE] Starting streaming request to:', `${baseUrl}/v1/workflows/execute/stream`)
-
-  const response = await fetch(`${baseUrl}/v1/workflows/execute/stream`, {
-    method: 'POST',
-    headers,
-    signal,
-    body: JSON.stringify({
-      nodes: workflowData.nodes,
-      edges: workflowData.edges,
-      workflow_id: workflowId || null,
-      workflow_name: workflowName || null,
-    }),
-  })
-
-  if (!response.ok) {
-    let errorMessage = `HTTP error! status: ${response.status}`
-    try {
-      const errorData = await response.json()
-      if (errorData.detail) {
-        errorMessage = typeof errorData.detail === 'object'
-          ? JSON.stringify(errorData.detail)
-          : String(errorData.detail)
-      }
-    } catch {
-      // Use default error message
-    }
-    throw new Error(errorMessage)
-  }
-
-  if (!response.body) {
-    throw new Error('No response body')
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  console.log('[SSE] Stream connected, waiting for events...')
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        console.log('[SSE] Stream ended')
-        break
-      }
-
-      buffer += decoder.decode(value, { stream: true })
-
-      // Parse SSE events from buffer - process each event IMMEDIATELY
-      // Use regex to handle both \n and \r\n line endings (cross-platform)
-      const lines = buffer.split(/\r?\n/)
-      buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-      for (const line of lines) {
-        // Strip any remaining \r characters for cross-platform compatibility
-        const cleanLine = line.replace(/\r/g, '')
-        if (cleanLine.startsWith('data: ')) {
-          const jsonStr = cleanLine.slice(6).trim()
-          if (jsonStr) {
-            try {
-              const event = JSON.parse(jsonStr) as StreamingExecutionEvent
-              console.log('[SSE] Event received:', event.event, event)
-              // Call the callback immediately for each event
-              onEvent(event)
-            } catch (e) {
-              console.warn('[SSE] Failed to parse SSE event:', jsonStr, e)
-            }
-          }
-        }
-      }
-    }
-
-    // Process any remaining data in buffer
-    const cleanBuffer = buffer.replace(/\r/g, '')
-    if (cleanBuffer.startsWith('data: ')) {
-      const jsonStr = cleanBuffer.slice(6).trim()
-      if (jsonStr) {
-        try {
-          const event = JSON.parse(jsonStr) as StreamingExecutionEvent
-          console.log('[SSE] Final event from buffer:', event.event, event)
-          onEvent(event)
-        } catch {
-          // Ignore incomplete final event
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock()
-  }
 }
 
 /**
@@ -814,193 +694,3 @@ export async function executeWorkflowByIdStreamingWithCallback(
   }
 }
 
-// Keep the old async generator versions for backwards compatibility
-/**
- * @deprecated Use executeWorkflowStreamingWithCallback instead for real-time updates
- */
-export async function* executeWorkflowStreaming(
-  workflowData: SavedWorkflowData,
-  workflowId?: string | null,
-  workflowName?: string | null
-): AsyncGenerator<StreamingExecutionEvent, void, unknown> {
-  // Get auth token
-  const { data: { session } } = await supabase.auth.getSession()
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  }
-  if (session?.access_token) {
-    headers['Authorization'] = `Bearer ${session.access_token}`
-  }
-
-  // Use direct backend URL to bypass Next.js proxy buffering
-  const baseUrl = getStreamingBaseUrl()
-  const response = await fetch(`${baseUrl}/v1/workflows/execute/stream`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      nodes: workflowData.nodes,
-      edges: workflowData.edges,
-      workflow_id: workflowId || null,
-      workflow_name: workflowName || null,
-    }),
-  })
-
-  if (!response.ok) {
-    let errorMessage = `HTTP error! status: ${response.status}`
-    try {
-      const errorData = await response.json()
-      if (errorData.detail) {
-        errorMessage = typeof errorData.detail === 'object'
-          ? JSON.stringify(errorData.detail)
-          : String(errorData.detail)
-      }
-    } catch {
-      // Use default error message
-    }
-    throw new Error(errorMessage)
-  }
-
-  if (!response.body) {
-    throw new Error('No response body')
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-
-      // Parse SSE events from buffer
-      // Use regex to handle both \n and \r\n line endings (cross-platform)
-      const lines = buffer.split(/\r?\n/)
-      buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-      for (const line of lines) {
-        // Strip any remaining \r characters for cross-platform compatibility
-        const cleanLine = line.replace(/\r/g, '')
-        if (cleanLine.startsWith('data: ')) {
-          const jsonStr = cleanLine.slice(6).trim()
-          if (jsonStr) {
-            try {
-              const event = JSON.parse(jsonStr) as StreamingExecutionEvent
-              yield event
-            } catch (e) {
-              console.warn('Failed to parse SSE event:', jsonStr, e)
-            }
-          }
-        }
-      }
-    }
-
-    // Process any remaining data in buffer
-    const cleanBuffer = buffer.replace(/\r/g, '')
-    if (cleanBuffer.startsWith('data: ')) {
-      const jsonStr = cleanBuffer.slice(6).trim()
-      if (jsonStr) {
-        try {
-          const event = JSON.parse(jsonStr) as StreamingExecutionEvent
-          yield event
-        } catch {
-          // Ignore incomplete final event
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock()
-  }
-}
-
-/**
- * Execute a saved workflow by ID with SSE streaming.
- */
-export async function* executeWorkflowByIdStreaming(
-  workflowId: string
-): AsyncGenerator<StreamingExecutionEvent, void, unknown> {
-  const { data: { session } } = await supabase.auth.getSession()
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  }
-  if (session?.access_token) {
-    headers['Authorization'] = `Bearer ${session.access_token}`
-  }
-
-  // Use direct backend URL to bypass Next.js proxy buffering
-  const baseUrl = getStreamingBaseUrl()
-  const response = await fetch(`${baseUrl}/v1/workflows/${workflowId}/execute/stream`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({}),
-  })
-
-  if (!response.ok) {
-    let errorMessage = `HTTP error! status: ${response.status}`
-    try {
-      const errorData = await response.json()
-      if (errorData.detail) {
-        errorMessage = typeof errorData.detail === 'object'
-          ? JSON.stringify(errorData.detail)
-          : String(errorData.detail)
-      }
-    } catch {
-      // Use default error message
-    }
-    throw new Error(errorMessage)
-  }
-
-  if (!response.body) {
-    throw new Error('No response body')
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-
-      // Use regex to handle both \n and \r\n line endings (cross-platform)
-      const lines = buffer.split(/\r?\n/)
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        // Strip any remaining \r characters for cross-platform compatibility
-        const cleanLine = line.replace(/\r/g, '')
-        if (cleanLine.startsWith('data: ')) {
-          const jsonStr = cleanLine.slice(6).trim()
-          if (jsonStr) {
-            try {
-              const event = JSON.parse(jsonStr) as StreamingExecutionEvent
-              yield event
-            } catch (e) {
-              console.warn('Failed to parse SSE event:', jsonStr, e)
-            }
-          }
-        }
-      }
-    }
-
-    const cleanBuffer = buffer.replace(/\r/g, '')
-    if (cleanBuffer.startsWith('data: ')) {
-      const jsonStr = cleanBuffer.slice(6).trim()
-      if (jsonStr) {
-        try {
-          const event = JSON.parse(jsonStr) as StreamingExecutionEvent
-          yield event
-        } catch {
-          // Ignore
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock()
-  }
-}

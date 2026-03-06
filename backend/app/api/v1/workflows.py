@@ -737,14 +737,6 @@ async def update_workflow(
         raise HTTPException(status_code=500, detail=f"Failed to update workflow: {str(e)}")
 
 
-class ExecuteRawRequest(BaseModel):
-    """Execute a raw (unsaved) workflow."""
-    nodes: List[Dict[str, Any]]
-    edges: List[Dict[str, Any]]
-    workflow_id: Optional[str] = None
-    workflow_name: Optional[str] = None
-
-
 class ExecuteByIdRequest(BaseModel):
     """Execute a saved workflow by ID."""
     pass
@@ -772,55 +764,6 @@ def _assert_workflow_access_or_404(
             detail="You do not have permission to access this workflow",
         )
     return wf
-
-
-@router.post("/execute")
-async def execute_workflow_raw(
-    request: ExecuteRawRequest,
-    user: User = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client),
-):
-    """
-    Compile and execute a raw (unsaved) editor graph.
-    Accepts nodes and edges. Returns execution results.
-    """
-    from app.services.blueprint_compiler import compile_workflow
-    from app.services.workflow_executor import execute_workflow, save_execution_log
-
-    # Use provided workflow_id and name if available, otherwise use defaults
-    workflow_id = request.workflow_id
-    workflow_name = request.workflow_name or "Unsaved Workflow"
-    
-    result = compile_workflow(
-        nodes=request.nodes,
-        edges=request.edges,
-        name=workflow_name,
-        workflow_id=workflow_id,
-        created_by=user.sub,
-    )
-
-    if not result.success:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": "Compilation failed",
-                "diagnostics": [d.model_dump() for d in result.diagnostics],
-            },
-        )
-
-    execution_result = await execute_workflow(
-        blueprint=result.blueprint,
-    )
-
-    _, warning = save_execution_log(
-        execution_result,
-        workflow_id,
-        user.sub,
-        blueprint=result.blueprint,
-    )
-    execution_result.persistence_warning = warning
-
-    return execution_result.model_dump()
 
 
 @router.post("/compile")
@@ -974,91 +917,6 @@ async def execute_workflow_by_id(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to execute workflow: {str(e)}")
-
-
-@router.post("/execute/stream")
-async def execute_workflow_stream(
-    request: ExecuteRawRequest,
-    user: User = Depends(get_current_user),
-):
-    """
-    Compile and execute a workflow with Server-Sent Events (SSE) streaming.
-
-    Returns a stream of events as each node executes:
-    - node_start: Node is about to execute
-    - node_complete: Node finished successfully
-    - node_error: Node failed
-    - workflow_complete: All nodes finished successfully
-    - workflow_error: Execution stopped due to error
-    """
-    from app.services.blueprint_compiler import compile_workflow
-    from app.services.workflow_executor import execute_workflow_streaming, save_execution_log
-
-    # Compile first (not streamed)
-    compilation = compile_workflow(
-        nodes=request.nodes,
-        edges=request.edges,
-        workflow_id=request.workflow_id,
-        name=request.workflow_name or "Untitled",
-        created_by=user.sub,
-    )
-
-    if not compilation.success:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": "Compilation failed",
-                "diagnostics": [d.model_dump() for d in compilation.diagnostics],
-            },
-        )
-
-    async def event_generator():
-        async for event in execute_workflow_streaming(compilation.blueprint):
-            if not event.startswith("data: "):
-                yield event
-                continue
-
-            payload = event[len("data: "):].strip()
-            try:
-                parsed = json.loads(payload)
-            except Exception:
-                yield event
-                continue
-
-            event_type = parsed.get("event")
-            if event_type in ("workflow_complete", "workflow_error"):
-                from app.services.workflow_executor import WorkflowExecutionResult
-
-                node_results = parsed.get("node_results") or []
-                workflow_result = WorkflowExecutionResult(
-                    success=event_type == "workflow_complete",
-                    workflow_outputs=parsed.get("workflow_outputs") or {},
-                    node_results=node_results,
-                    total_execution_time_ms=parsed.get("total_execution_time_ms") or 0,
-                    error=parsed.get("error"),
-                )
-                _, warning = save_execution_log(
-                    workflow_result,
-                    request.workflow_id,
-                    user.sub,
-                    blueprint=compilation.blueprint,
-                )
-                if warning:
-                    parsed["persistence_warning"] = warning
-                yield f"data: {json.dumps(parsed)}\n\n"
-                continue
-
-            yield event
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-        },
-    )
 
 
 @router.post("/{workflow_id}/execute/stream")
@@ -1327,7 +1185,7 @@ def _refresh_media_urls(
                     if not path:
                         continue
                     try:
-                        fresh_urls.append(r2.sign_path(path, expires_in=3600))
+                        fresh_urls.append(r2.sign_path(path, expires_in=21600))
                     except Exception as sign_err:
                         _log.warning("Could not sign %s: %s", path, sign_err)
 
@@ -1342,17 +1200,32 @@ def _refresh_media_urls(
                     "_refresh_media_urls: failed to re-sign bucket node %s: %s", node_id, e
                 )
 
-    # ── 2. Re-sign r2:// sentinels ────────────────────────────────────────────
+    # ── 2. Re-sign r2:// sentinels (scalar strings and lists) ──────────────
+    PRESIGN_EXPIRY = 21600  # 6 hours
+
+    def _sign_sentinel(sentinel: str) -> str | None:
+        if not isinstance(sentinel, str) or not sentinel.startswith("r2://"):
+            return None
+        r2_path = sentinel[len("r2://"):]
+        try:
+            return r2.sign_path(r2_path, expires_in=PRESIGN_EXPIRY)
+        except Exception as e:
+            _log.warning("Could not sign r2 sentinel %s: %s", sentinel, e)
+            return None
+
     for outputs in node_outputs.values():
         if not isinstance(outputs, dict):
             continue
         for key, val in outputs.items():
             if isinstance(val, str) and val.startswith("r2://"):
-                r2_path = val[len("r2://"):]
-                try:
-                    outputs[key] = r2.sign_path(r2_path, expires_in=3600)
-                except Exception as e:
-                    _log.warning("Could not sign r2 sentinel %s: %s", val, e)
+                signed = _sign_sentinel(val)
+                if signed:
+                    outputs[key] = signed
+            elif isinstance(val, list):
+                for idx, item in enumerate(val):
+                    signed = _sign_sentinel(item)
+                    if signed:
+                        val[idx] = signed
 
 
 @router.get("/{workflow_id}/runs/{execution_id}/outputs", response_model=WorkflowRunOutputsResponse)
@@ -1414,6 +1287,42 @@ async def get_workflow_run_outputs(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch run outputs: {str(e)}")
+
+
+class RefreshedMediaUrls(BaseModel):
+    node_outputs: Dict[str, Any]
+
+
+@router.post("/{workflow_id}/runs/{execution_id}/refresh-urls", response_model=RefreshedMediaUrls)
+async def refresh_run_media_urls(
+    workflow_id: str,
+    execution_id: str,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """Re-sign all media URLs for a persisted run (cheap operation, no data transfer)."""
+    try:
+        _assert_workflow_access_or_404(supabase, workflow_id, user)
+
+        result = supabase.table("workflow_run_outputs")\
+            .select("node_outputs, blueprint_snapshot")\
+            .eq("workflow_id", workflow_id)\
+            .eq("execution_id", execution_id)\
+            .eq("user_id", user.sub)\
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Persisted outputs not found for this run")
+
+        row = result.data[0]
+        node_outputs: Dict[str, Any] = row.get("node_outputs") or {}
+        _refresh_media_urls(node_outputs, row.get("blueprint_snapshot"), user.sub, supabase)
+
+        return RefreshedMediaUrls(node_outputs=node_outputs)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to refresh media URLs: {str(e)}")
 
 
 @router.get("/{workflow_id}/executions", response_model=List[ExecutionLogSummary])

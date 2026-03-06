@@ -1,10 +1,9 @@
 import { useState, useCallback, useRef } from 'react'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import {
-  executeWorkflowStreamingWithCallback,
   executeWorkflowByIdStreamingWithCallback,
 } from '@/lib/fastapi/workflows'
-import type { SavedWorkflowData, StreamingExecutionEvent } from '@/lib/fastapi/workflows'
+import type { StreamingExecutionEvent } from '@/lib/fastapi/workflows'
 import type { WorkflowExecutionResult } from '@/types/workflow-execution'
 
 export function useWorkflowExecution() {
@@ -117,63 +116,6 @@ export function useWorkflowExecution() {
     [updateNode]
   )
 
-  const execute = useCallback(
-    async (
-      workflowData: SavedWorkflowData,
-      workflowId?: string | null,
-      workflowName?: string | null
-    ): Promise<WorkflowExecutionResult | null> => {
-      setIsExecuting(true)
-      setError(null)
-      setExecutionResult(null)
-      setCurrentNode(null)
-      finalResultRef.current = null
-      resetNodes()
-
-      console.log('[Execute] Starting workflow execution...')
-      const controller = new AbortController()
-      abortControllerRef.current = controller
-
-      try {
-        // Use callback-based streaming for immediate event processing
-        await executeWorkflowStreamingWithCallback(
-          workflowData,
-          handleStreamEvent,
-          workflowId,
-          workflowName,
-          controller.signal
-        )
-
-        console.log('[Execute] Stream complete, final result:', finalResultRef.current)
-        // Return the final result captured by the event handler
-        return finalResultRef.current
-      } catch (err) {
-        if (
-          controller.signal.aborted ||
-          (err instanceof Error && err.name === 'AbortError')
-        ) {
-          clearInFlightNodes()
-          setCurrentNode(null)
-          setError(null)
-          return null
-        }
-
-        const msg = err instanceof Error ? err.message : String(err)
-        console.error('[Execute] Error:', msg)
-        setError(msg)
-        resetNodes()
-        throw err
-      } finally {
-        if (abortControllerRef.current === controller) {
-          abortControllerRef.current = null
-        }
-        setIsExecuting(false)
-        setCurrentNode(null)
-      }
-    },
-    [resetNodes, handleStreamEvent, clearInFlightNodes]
-  )
-
   const executeById = useCallback(
     async (workflowId: string): Promise<WorkflowExecutionResult | null> => {
       setIsExecuting(true)
@@ -244,7 +186,6 @@ export function useWorkflowExecution() {
   }, [resetNodes])
 
   return {
-    execute,
     executeById,
     isExecuting,
     executionResult,

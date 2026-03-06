@@ -34,7 +34,7 @@ export interface ImageBucketItem {
 const CONNECTED_INPUT_KEYS: Record<string, string[]> = {
   End: ['end-input'],
   TextGeneration: ['text'],
-  ImageGeneration: ['prompt', 'image'],
+  ImageGeneration: ['text', 'image'],
   ImageMatching: ['images', 'text'],
   Transcription: ['audio', 'video'],
   ImageExtraction: ['source'],
