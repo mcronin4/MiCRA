@@ -19,30 +19,6 @@ export interface ImageExtractionResponse {
   error?: string
 }
 
-export async function extractKeyframesFromUrl(
-  url: string,
-  keepVideo = false,
-  selectionMode: FrameSelectionMode = 'auto',
-  maxFrames?: number,
-): Promise<ImageExtractionResponse> {
-  const payload: Record<string, unknown> = {
-    url,
-    keep_video: keepVideo,
-    selection_mode: selectionMode,
-  }
-  if (selectionMode === 'manual' && typeof maxFrames === 'number') {
-    payload.max_frames = maxFrames
-  }
-
-  return apiClient.request<ImageExtractionResponse>('/v1/image-extraction', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  })
-}
-
 export async function extractKeyframesFromFile(
   file: File,
   selectionMode: FrameSelectionMode = 'auto',
@@ -51,12 +27,28 @@ export async function extractKeyframesFromFile(
   const formData = new FormData()
   formData.append('file', file)
   formData.append('selection_mode', selectionMode)
-  if (selectionMode === 'manual' && typeof maxFrames === 'number') {
+  if (typeof maxFrames === 'number') {
     formData.append('max_frames', String(maxFrames))
   }
 
   return apiClient.request<ImageExtractionResponse>('/v1/image-extraction/upload', {
     method: 'POST',
     body: formData,
+  })
+}
+
+export async function extractKeyframesFromFileId(
+  fileId: string,
+  selectionMode: FrameSelectionMode = 'auto',
+  maxFrames?: number,
+): Promise<ImageExtractionResponse> {
+  return apiClient.request<ImageExtractionResponse>('/v1/image-extraction/from-file', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      file_id: fileId,
+      selection_mode: selectionMode,
+      max_frames: maxFrames,
+    }),
   })
 }

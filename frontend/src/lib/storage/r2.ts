@@ -94,6 +94,105 @@ export async function uploadToPresignedUrl(
   }
 }
 
+export interface MultipartUploadProgress {
+  completedParts: number;
+  totalParts: number;
+  bytesUploaded: number;
+  totalBytes: number;
+}
+
+export interface MultipartPartResult {
+  partNumber: number;
+  etag: string;
+}
+
+/**
+ * Upload a large file using multipart upload with concurrent chunk uploads.
+ *
+ * @param parts - Array of {partNumber, signedUrl} from initMultipartUpload
+ * @param file - The file to upload
+ * @param chunkSize - Size of each chunk in bytes (must match backend MULTIPART_CHUNK_SIZE)
+ * @param concurrency - Number of concurrent chunk uploads
+ * @param onProgress - Callback for upload progress
+ * @param signal - AbortSignal for cancellation
+ * @returns Array of {partNumber, etag} to pass to completeMultipartUpload
+ */
+export async function uploadMultipart(
+  parts: { partNumber: number; signedUrl: string }[],
+  file: File,
+  chunkSize: number,
+  concurrency: number = 4,
+  onProgress?: (progress: MultipartUploadProgress) => void,
+  signal?: AbortSignal,
+): Promise<MultipartPartResult[]> {
+  const results: MultipartPartResult[] = [];
+  let bytesUploaded = 0;
+  const totalParts = parts.length;
+
+  // Sort parts by partNumber to ensure correct slicing
+  const sortedParts = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+
+  // Upload parts with bounded concurrency
+  let partIndex = 0;
+
+  async function uploadNextPart(): Promise<void> {
+    while (partIndex < sortedParts.length) {
+      if (signal?.aborted) {
+        throw new DOMException('Upload cancelled', 'AbortError');
+      }
+
+      const currentIndex = partIndex++;
+      const part = sortedParts[currentIndex];
+
+      const start = (part.partNumber - 1) * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunk = file.slice(start, end);
+
+      const response = await fetch(part.signedUrl, {
+        method: 'PUT',
+        body: chunk,
+        signal,
+      });
+
+      if (!response.ok) {
+        let errorText = '';
+        try {
+          errorText = await response.text();
+        } catch {
+          errorText = response.statusText;
+        }
+        throw new Error(
+          `Failed to upload part ${part.partNumber}: ${response.status} ${errorText}`,
+        );
+      }
+
+      const etag = response.headers.get('ETag');
+      if (!etag) {
+        throw new Error(`No ETag returned for part ${part.partNumber}`);
+      }
+
+      results.push({ partNumber: part.partNumber, etag });
+      bytesUploaded += end - start;
+
+      onProgress?.({
+        completedParts: results.length,
+        totalParts,
+        bytesUploaded,
+        totalBytes: file.size,
+      });
+    }
+  }
+
+  // Launch `concurrency` workers
+  const workers = Array.from({ length: Math.min(concurrency, totalParts) }, () =>
+    uploadNextPart(),
+  );
+
+  await Promise.all(workers);
+
+  return results.sort((a, b) => a.partNumber - b.partNumber);
+}
+
 /**
  * Download a file from a presigned URL.
  */

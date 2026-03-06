@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -7,20 +7,16 @@ import base64
 import os
 import asyncio
 import traceback
-from typing import Literal
+
+from ...auth.dependencies import User, get_current_user
+from ...db.supabase import get_supabase
+from ...storage.r2 import get_r2, R2_BUCKET
 
 # NOTE: image_extraction depends on optional heavy deps (opencv-python-headless, etc).
 # To avoid crashing server startup when those aren't installed, we import lazily
 # inside the execution path.
 
 router = APIRouter(prefix="/image-extraction")
-
-
-class ImageExtractionRequest(BaseModel):
-    url: str
-    keep_video: Optional[bool] = False
-    selection_mode: Literal["auto", "manual"] = "auto"
-    max_frames: Optional[int] = None
 
 
 class ExtractedImage(BaseModel):
@@ -63,16 +59,12 @@ def _get_output_dir() -> Path:
 
 def _build_pipeline_config(
     *,
-    selection_mode: str = "auto",
     max_frames: Optional[int] = None,
 ) -> Dict[str, Any]:
     output_dir = _get_output_dir()
     config: Dict[str, Any] = {"output_dir": str(output_dir)}
 
-    mode = str(selection_mode or "auto").strip().lower()
-    if mode == "manual":
-        if max_frames is None:
-            raise ValueError("max_frames is required when selection_mode is 'manual'")
+    if max_frames is not None:
         max_frames = max(1, min(int(max_frames), 200))
         config["max_total_frames"] = max_frames
 
@@ -82,11 +74,9 @@ def _build_pipeline_config(
 async def _run_pipeline(
     video_path: str,
     *,
-    selection_mode: str = "auto",
     max_frames: Optional[int] = None,
 ) -> Dict[str, Any]:
     config = _build_pipeline_config(
-        selection_mode=selection_mode,
         max_frames=max_frames,
     )
     from app.agents.image_extraction.keyframe_pipeline import run_keyframe_pipeline
@@ -122,47 +112,6 @@ def _build_response(result: Dict[str, Any]) -> ImageExtractionResponse:
     )
 
 
-@router.post("", response_model=ImageExtractionResponse)
-async def extract_keyframes_from_url(request: ImageExtractionRequest):
-    video_path = None
-    download_dir = None
-    try:
-        if not request.url or not request.url.strip():
-            return ImageExtractionResponse(success=False, error="URL cannot be empty")
-
-        download_dir = tempfile.mkdtemp(prefix="micra_image_extraction_")
-        try:
-            from app.agents.image_extraction.scene_detection import download_youtube_video
-        except ImportError as exc:
-            return ImageExtractionResponse(
-                success=False,
-                error=f"yt-dlp is required for YouTube downloads: {exc}"
-            )
-
-        video_path = download_youtube_video(request.url.strip(), output_dir=download_dir)
-        result = await _run_pipeline(
-            video_path,
-            selection_mode=request.selection_mode,
-            max_frames=request.max_frames,
-        )
-        return _build_response(result)
-    except Exception as exc:
-        print(f"Image extraction error: {exc}")
-        print(traceback.format_exc())
-        return ImageExtractionResponse(success=False, error=str(exc))
-    finally:
-        if video_path and not request.keep_video and os.path.exists(video_path):
-            try:
-                os.remove(video_path)
-            except Exception:
-                pass
-        if download_dir:
-            try:
-                os.rmdir(download_dir)
-            except Exception:
-                pass
-
-
 @router.post("/upload", response_model=ImageExtractionResponse)
 async def extract_keyframes_from_file(
     file: UploadFile = File(...),
@@ -181,12 +130,65 @@ async def extract_keyframes_from_file(
 
         result = await _run_pipeline(
             video_path,
-            selection_mode=selection_mode,
             max_frames=max_frames,
         )
         return _build_response(result)
     except Exception as exc:
         print(f"Image extraction error: {exc}")
+        print(traceback.format_exc())
+        return ImageExtractionResponse(success=False, error=str(exc))
+    finally:
+        if video_path and os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+            except Exception:
+                pass
+
+
+class ExtractFromFileIdRequest(BaseModel):
+    file_id: str
+    selection_mode: str = "auto"
+    max_frames: Optional[int] = None
+
+
+@router.post("/from-file", response_model=ImageExtractionResponse)
+async def extract_keyframes_from_file_id(
+    request: ExtractFromFileIdRequest,
+    user: User = Depends(get_current_user),
+):
+    """Extract keyframes from a video already stored in R2, referenced by file ID."""
+    supabase = get_supabase().client
+    r2 = get_r2()
+
+    result = supabase.table("files").select("*").eq("id", request.file_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record = result.data[0]
+    if file_record.get("user_id") != user.sub:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if file_record["status"] != "uploaded":
+        raise HTTPException(status_code=400, detail="File not uploaded yet")
+
+    r2_path = file_record["path"]
+    ext = os.path.splitext(file_record.get("name", ""))[1] or ".mp4"
+    video_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            video_path = tmp.name
+
+        await asyncio.to_thread(
+            r2.client.download_file, R2_BUCKET, r2_path, video_path
+        )
+
+        max_frames = request.max_frames if request.selection_mode == "manual" else None
+        pipeline_result = await _run_pipeline(video_path, max_frames=max_frames)
+        return _build_response(pipeline_result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Image extraction error (from-file): {exc}")
         print(traceback.format_exc())
         return ImageExtractionResponse(success=False, error=str(exc))
     finally:

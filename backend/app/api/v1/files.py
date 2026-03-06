@@ -66,11 +66,21 @@ DOCS_CONTENT_TYPES = {
     "pdf": ["application/pdf"],
 }
 
-# Max file size: 500MB
-MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
+# Max file size: 1GB
+MAX_FILE_SIZE_BYTES = 1 * 1024 * 1024 * 1024
+
+# Multipart upload threshold: files above 200MB use multipart
+MULTIPART_THRESHOLD = 200 * 1024 * 1024
+
+# Chunk size for multipart uploads: 50MB
+MULTIPART_CHUNK_SIZE = 50 * 1024 * 1024
 
 # Presigned URL expiration (default 1 hour for uploads, configurable for downloads)
 DEFAULT_UPLOAD_EXPIRATION = 3600  # 1 hour
+
+# Retry settings for eventual consistency
+HEAD_OBJECT_MAX_RETRIES = 3
+HEAD_OBJECT_RETRY_DELAY = 1.0  # seconds
 
 
 # Pydantic Models
@@ -89,6 +99,7 @@ class InitUploadRequest(BaseModel):
     contentType: str = Field(..., alias="contentType", description="MIME content type")
     name: str = Field(..., description="File name")
     contentHash: str = Field(..., alias="contentHash", description="SHA-256 hash of file content")
+    sizeBytes: Optional[int] = Field(None, alias="sizeBytes", description="File size for early validation")
     parentId: Optional[UUID] = Field(None, alias="parentId", description="Optional parent file ID")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
     
@@ -188,6 +199,75 @@ class CompleteUploadRequest(BaseModel):
 class CompleteUploadResponse(BaseModel):
     ok: bool
     file: FileResponse
+
+
+class InitMultipartUploadRequest(BaseModel):
+    bucket: str = Field(..., description="Bucket name: 'media' or 'docs'")
+    type: str = Field(..., description="File type")
+    contentType: str = Field(..., alias="contentType")
+    name: str = Field(...)
+    contentHash: str = Field(..., alias="contentHash")
+    sizeBytes: int = Field(..., alias="sizeBytes", description="Total file size in bytes")
+    parentId: Optional[UUID] = Field(None, alias="parentId")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+    class Config:
+        populate_by_name = True
+
+    @field_validator("bucket")
+    @classmethod
+    def validate_bucket(cls, v: str) -> str:
+        if v not in ALLOWED_BUCKETS:
+            raise ValueError(f"Bucket must be one of: {', '.join(ALLOWED_BUCKETS)}")
+        return v
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        if v not in ALLOWED_TYPES:
+            raise ValueError(f"Type must be one of: {', '.join(ALLOWED_TYPES)}")
+        return v
+
+
+class PartInfo(BaseModel):
+    partNumber: int
+    signedUrl: str
+
+
+class InitMultipartUploadResponse(BaseModel):
+    file: FileResponse
+    uploadId: str
+    parts: List[PartInfo]
+
+
+class PartETag(BaseModel):
+    partNumber: int = Field(..., alias="partNumber")
+    etag: str
+
+    class Config:
+        populate_by_name = True
+
+
+class CompleteMultipartUploadRequest(BaseModel):
+    fileId: UUID = Field(..., alias="fileId")
+    uploadId: str = Field(..., alias="uploadId")
+    parts: List[PartETag]
+    sizeBytes: Optional[int] = Field(None, alias="sizeBytes")
+
+    class Config:
+        populate_by_name = True
+
+
+class AbortMultipartUploadRequest(BaseModel):
+    fileId: UUID = Field(..., alias="fileId")
+    uploadId: str = Field(..., alias="uploadId")
+
+    class Config:
+        populate_by_name = True
+
+
+class AbortMultipartUploadResponse(BaseModel):
+    ok: bool
 
 
 class SignDownloadRequest(BaseModel):
@@ -326,6 +406,15 @@ async def init_upload(
     """
     r2 = get_r2()
     user_id = user.sub
+
+    # Early size validation
+    if request.sizeBytes is not None and request.sizeBytes > MAX_FILE_SIZE_BYTES:
+        max_mb = MAX_FILE_SIZE_BYTES // (1024 * 1024)
+        file_mb = round(request.sizeBytes / (1024 * 1024), 1)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File size ({file_mb} MB) exceeds the maximum allowed size of {max_mb} MB"
+        )
 
     # Generate file ID
     file_id = uuid4()
@@ -502,10 +591,35 @@ async def complete_upload(
     file_record = result.data[0]
     path = file_record["path"]
 
-    # Verify file exists in R2 (Admin R2 client is fine here)
-    try:
-        r2.client.head_object(Bucket=R2_BUCKET, Key=path)
+    # Verify file exists in R2 with retries for eventual consistency
+    head_succeeded = False
+    last_error = None
+    for attempt in range(HEAD_OBJECT_MAX_RETRIES):
+        try:
+            r2.client.head_object(Bucket=R2_BUCKET, Key=path)
+            head_succeeded = True
+            break
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', '')
+            if error_code in ('404', 'NoSuchKey') and attempt < HEAD_OBJECT_MAX_RETRIES - 1:
+                logger.info(f"head_object 404 for {path}, retry {attempt + 1}/{HEAD_OBJECT_MAX_RETRIES}")
+                await asyncio.sleep(HEAD_OBJECT_RETRY_DELAY * (attempt + 1))
+                last_error = e
+                continue
+            last_error = e
+            break
 
+    if not head_succeeded:
+        if last_error and isinstance(last_error, ClientError):
+            error_code = last_error.response.get('Error', {}).get('Code', '')
+            if error_code in ('404', 'NoSuchKey'):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"File not found in R2 at {path}"
+                )
+        raise HTTPException(status_code=500, detail=f"Error verifying file in R2: {str(last_error)}")
+
+    try:
         # Validate size if provided
         size_bytes = request.sizeBytes
         if size_bytes is not None:
@@ -538,18 +652,266 @@ async def complete_upload(
             file=FileResponse(**update_result.data[0])
         )
 
-    except ClientError as e:
-        error_code = e.response.get('Error', {}).get('Code', '')
-        if error_code == '404' or error_code == 'NoSuchKey':
-            raise HTTPException(
-                status_code=404,
-                detail=f"File not found in R2 at {path}"
-            )
-        raise HTTPException(status_code=500, detail=f"Error verifying file in R2: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error completing upload: {str(e)}")
+
+
+@router.post("/init-multipart-upload", response_model=InitMultipartUploadResponse)
+async def init_multipart_upload(
+    request: InitMultipartUploadRequest,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Initialize a multipart upload for large files (>200MB).
+    Creates a DB record, starts an S3 multipart upload, and returns
+    presigned URLs for each part.
+    """
+    import math
+
+    r2 = get_r2()
+    user_id = user.sub
+
+    # Validate size
+    if request.sizeBytes > MAX_FILE_SIZE_BYTES:
+        max_mb = MAX_FILE_SIZE_BYTES // (1024 * 1024)
+        file_mb = round(request.sizeBytes / (1024 * 1024), 1)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File size ({file_mb} MB) exceeds the maximum allowed size of {max_mb} MB"
+        )
+
+    if request.sizeBytes <= 0:
+        raise HTTPException(status_code=400, detail="sizeBytes must be positive")
+
+    # Build storage path
+    file_id = uuid4()
+    sanitized_name = sanitize_filename(request.name)
+    extension = get_extension_from_content_type(request.contentType)
+    if not extension:
+        extension = get_extension_from_name(sanitized_name)
+    if not extension:
+        extension = "bin"
+
+    type_prefix = get_type_prefix(request.type)
+    path = f"users/{user_id}/{type_prefix}/{request.contentHash}.{extension}"
+
+    # Check for existing file (deduplication)
+    try:
+        existing = supabase.table("files").select("*").eq(
+            "user_id", user_id
+        ).eq("content_hash", request.contentHash).neq("status", "deleted").execute()
+
+        if existing.data and len(existing.data) > 0:
+            file_record = existing.data[0]
+            if file_record["status"] == "uploaded":
+                raise HTTPException(
+                    status_code=409,
+                    detail="File with this content already exists"
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Error checking for existing file: {str(e)}")
+
+    # Insert DB record
+    try:
+        file_data = {
+            "id": str(file_id),
+            "user_id": user_id,
+            "bucket": request.bucket,
+            "path": path,
+            "type": request.type,
+            "name": sanitized_name,
+            "content_type": request.contentType,
+            "content_hash": request.contentHash,
+            "status": "pending",
+            "size_bytes": request.sizeBytes,
+            "metadata": request.metadata or {},
+        }
+        if request.parentId:
+            file_data["parent_id"] = str(request.parentId)
+
+        result = supabase.table("files").insert(file_data).execute()
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to create file record")
+        file_record = result.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as insert_error:
+        error_str = str(insert_error)
+        if "duplicate key value violates unique constraint" in error_str.lower() or "23505" in error_str:
+            existing = supabase.table("files").select("*").eq("path", path).execute()
+            if existing.data and len(existing.data) > 0:
+                file_record = existing.data[0]
+            else:
+                raise HTTPException(status_code=409, detail="File already exists but could not be retrieved")
+        else:
+            raise HTTPException(status_code=500, detail=f"Error creating file record: {error_str}")
+
+    # Start multipart upload on R2
+    try:
+        mpu = r2.client.create_multipart_upload(
+            Bucket=R2_BUCKET,
+            Key=path,
+            ContentType=request.contentType,
+        )
+        upload_id = mpu["UploadId"]
+    except Exception as e:
+        # Clean up DB record
+        try:
+            supabase.table("files").delete().eq("id", str(file_record["id"])).execute()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to start multipart upload: {str(e)}")
+
+    # Generate presigned URLs for each part
+    num_parts = math.ceil(request.sizeBytes / MULTIPART_CHUNK_SIZE)
+    parts: List[PartInfo] = []
+    try:
+        for part_number in range(1, num_parts + 1):
+            signed_url = r2.client.generate_presigned_url(
+                'upload_part',
+                Params={
+                    'Bucket': R2_BUCKET,
+                    'Key': path,
+                    'UploadId': upload_id,
+                    'PartNumber': part_number,
+                },
+                ExpiresIn=DEFAULT_UPLOAD_EXPIRATION,
+            )
+            parts.append(PartInfo(partNumber=part_number, signedUrl=signed_url))
+    except Exception as e:
+        # Abort the multipart upload on failure
+        try:
+            r2.client.abort_multipart_upload(Bucket=R2_BUCKET, Key=path, UploadId=upload_id)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to generate part URLs: {str(e)}")
+
+    logger.info(f"Initiated multipart upload for {path}: uploadId={upload_id}, parts={num_parts}")
+
+    return InitMultipartUploadResponse(
+        file=FileResponse(**file_record),
+        uploadId=upload_id,
+        parts=parts,
+    )
+
+
+@router.post("/complete-multipart-upload", response_model=CompleteUploadResponse)
+async def complete_multipart_upload(
+    request: CompleteMultipartUploadRequest,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Complete a multipart upload by assembling the parts in R2.
+    """
+    r2 = get_r2()
+
+    # Fetch file record
+    result = supabase.table("files").select("*").eq(
+        "id", str(request.fileId)
+    ).eq("user_id", user.sub).execute()
+
+    if not result.data or len(result.data) == 0:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record = result.data[0]
+    path = file_record["path"]
+
+    # Complete multipart upload on R2
+    try:
+        multipart_parts = {
+            'Parts': [
+                {'PartNumber': p.partNumber, 'ETag': p.etag}
+                for p in sorted(request.parts, key=lambda x: x.partNumber)
+            ]
+        }
+
+        r2.client.complete_multipart_upload(
+            Bucket=R2_BUCKET,
+            Key=path,
+            UploadId=request.uploadId,
+            MultipartUpload=multipart_parts,
+        )
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to complete multipart upload: {str(e)}")
+
+    # Update DB record
+    try:
+        update_data = {
+            "status": "uploaded",
+            "uploaded_at": datetime.utcnow().isoformat(),
+        }
+        if request.sizeBytes is not None:
+            update_data["size_bytes"] = request.sizeBytes
+
+        update_result = supabase.table("files").update(update_data).eq(
+            "id", str(request.fileId)
+        ).execute()
+
+        if not update_result.data:
+            raise HTTPException(status_code=500, detail="Failed to update file record")
+
+        invalidate_list_cache()
+        return CompleteUploadResponse(
+            ok=True,
+            file=FileResponse(**update_result.data[0])
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error completing upload: {str(e)}")
+
+
+@router.post("/abort-multipart-upload", response_model=AbortMultipartUploadResponse)
+async def abort_multipart_upload(
+    request: AbortMultipartUploadRequest,
+    user: User = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Abort a multipart upload. Cleans up all uploaded parts in R2 and marks
+    the file record as failed.
+    """
+    r2 = get_r2()
+
+    # Fetch file record
+    result = supabase.table("files").select("*").eq(
+        "id", str(request.fileId)
+    ).eq("user_id", user.sub).execute()
+
+    if not result.data or len(result.data) == 0:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record = result.data[0]
+    path = file_record["path"]
+
+    # Abort multipart upload on R2 (cleans up all parts)
+    try:
+        r2.client.abort_multipart_upload(
+            Bucket=R2_BUCKET,
+            Key=path,
+            UploadId=request.uploadId,
+        )
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code != 'NoSuchUpload':
+            logger.warning(f"Error aborting multipart upload {request.uploadId}: {e}")
+
+    # Mark DB record as failed
+    try:
+        supabase.table("files").update({
+            "status": "failed",
+        }).eq("id", str(request.fileId)).execute()
+    except Exception as e:
+        logger.warning(f"Error updating file record after abort: {e}")
+
+    return AbortMultipartUploadResponse(ok=True)
 
 
 @router.post("/sign-download", response_model=SignDownloadResponse)
@@ -723,10 +1085,7 @@ async def list_files(
         # Order by created_at desc, paginate
         query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
 
-        # Run synchronous DB call in thread pool so it doesn't block the event loop
-        # This allows parallel requests to execute concurrently
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, query.execute)
+        result = query.execute()
         result_data = result.data or []
         _set_cached(ck, result_data)
 
@@ -751,21 +1110,18 @@ async def list_files(
         
         # Fetch thumbnail records if needed
         thumbnail_map = {}
-        loop = asyncio.get_event_loop()
         if thumbnail_ids and include_urls:
             try:
                 thumb_query = supabase.table("files").select("*").in_("id", list(thumbnail_ids))
-                thumbs_result = await loop.run_in_executor(None, thumb_query.execute)
+                thumbs_result = thumb_query.execute()
                 for thumb in thumbs_result.data:
                     thumbnail_map[thumb["id"]] = thumb
             except Exception as e:
                 print(f"Error fetching thumbnails: {e}")
 
-        # If include_urls, generate presigned URLs for R2 in parallel
         if include_urls:
-            # Use ThreadPoolExecutor for true parallelization of boto3 calls
-            # boto3 is blocking, so we need thread pool (not just asyncio.gather)
             from concurrent.futures import ThreadPoolExecutor
+            loop = asyncio.get_event_loop()
 
             # Create thread pool with max 20 workers for parallel URL generation
             with ThreadPoolExecutor(max_workers=20) as executor:

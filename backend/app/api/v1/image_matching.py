@@ -49,7 +49,7 @@ async def process_single_image(
     """Process a single image asynchronously and return result with status and temp file path."""
     temp_path = None
     try:
-        from ...agents.image_text_matching.types import ImageCandidate
+        from ...agents.image_text_matching.matching_types import ImageCandidate
         
         # Convert base64 to temp file
         temp_path = base64_to_temp_file(image_with_id.base64)
@@ -85,8 +85,8 @@ async def match_images_to_text(request: ImageMatchRequest):
     
     try:
         from ...agents.image_text_matching.vlm_analysis import ImageTextMatcherVLM
-        from ...agents.image_text_matching.types import TextSummary
-        from ...agents.image_text_matching.config_vlm import VLMConfig
+        from ...agents.image_text_matching.matching_types import TextSummary
+        from ...agents.image_text_matching.config_vlm_v2 import VLMConfig
         
         # Create text summary
         text_summary = TextSummary(summary_id="input", text_content=request.text)

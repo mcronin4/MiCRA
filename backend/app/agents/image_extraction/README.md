@@ -13,29 +13,19 @@ cd backend
 
 # From local video file
 python -m app.agents.image_extraction.run_keyframes --video path/to/video.mp4
-
-# From YouTube URL
-python -m app.agents.image_extraction.run_keyframes --url "https://youtube.com/watch?v=..."
-
-# Keep the downloaded video after processing
-python -m app.agents.image_extraction.run_keyframes --url "https://youtube.com/watch?v=..." --keep-video
 ```
 
 Or run directly:
 ```bash
 cd backend/app/agents/image_extraction
 python run_keyframes.py --video path/to/video.mp4
-python run_keyframes.py --url "https://youtube.com/watch?v=..."
 ```
 
 ### CLI Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--video`, `-v` | - | Input video path (or use `--url`) |
-| `--url`, `-u` | - | YouTube URL to download and process |
-| `--keep-video` | false | Keep downloaded video after processing |
-| `--download-dir` | `downloads` | Directory for downloaded videos |
+| `--video`, `-v` | - | Input video path |
 | `--out`, `-o` | `outputs/keyframes` | Output directory |
 | `--max_total` | 25 | Max total keyframes |
 | `--per_scene` | 2 | Target frames per scene |

@@ -48,17 +48,12 @@ fireworks-ai
 google-genai
 openai
 
-# Transcription (Faster-Whisper)
-faster-whisper
-
 # Image processing
 Pillow
 opencv-python-headless
-imagehash
 
 # Video processing
 scenedetect
-yt-dlp
 
 # Utilities
 tqdm
