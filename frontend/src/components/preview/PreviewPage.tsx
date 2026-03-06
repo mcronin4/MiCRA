@@ -84,7 +84,7 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
     return (
       <div className="h-screen flex flex-col bg-white">
         <PreviewHeader workflowName={headerName} workflowId={workflowId} />
-        <PreviewEmptyState />
+        <PreviewEmptyState workflowId={workflowId} />
       </div>
     )
   }
