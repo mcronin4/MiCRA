@@ -74,7 +74,7 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   if (isInitialLoading) {
     return (
       <div className="h-screen flex flex-col bg-white">
-        <PreviewHeader workflowName={headerName} workflowId={workflowId} />
+        <PreviewHeader workflowName={headerName} />
         <PreviewPageSkeleton />
       </div>
     )
@@ -83,15 +83,15 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   if (!hasOutputs && !isExecuting && !hasAnyRuns && !hasAnyDrafts) {
     return (
       <div className="h-screen flex flex-col bg-white">
-        <PreviewHeader workflowName={headerName} workflowId={workflowId} />
-        <PreviewEmptyState workflowId={workflowId} />
+        <PreviewHeader workflowName={headerName} />
+        <PreviewEmptyState />
       </div>
     )
   }
 
   return (
     <div className="h-screen flex flex-col bg-white">
-      <PreviewHeader workflowName={headerName} workflowId={workflowId} />
+      <PreviewHeader workflowName={headerName} />
 
       <PreviewDataProvider
         value={{
@@ -287,12 +287,12 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
   )
 }
 
-function PreviewHeader({ workflowName, workflowId }: { workflowName: string; workflowId: string }) {
+function PreviewHeader({ workflowName }: { workflowName: string }) {
   return (
     <div className="h-12 bg-white border-b border-slate-100 flex items-center justify-between px-4 shrink-0">
       <div className="flex items-center gap-3">
         <Link
-          href={`/workflow?loadWorkflow=${workflowId}`}
+          href="/workflow"
           className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors"
         >
           <ArrowLeft size={16} />
