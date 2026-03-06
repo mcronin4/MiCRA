@@ -651,8 +651,19 @@ async def _exec_image_generation(params: dict, inputs: dict) -> dict[str, Any]:
     from pathlib import Path
     import httpx
 
-    prompt_input = inputs.get("prompt", "")
-    prompt = prompt_input if isinstance(prompt_input, str) else _normalize_text_segment(prompt_input)
+    user_prompt = params.get("user_prompt", "")
+    text_input = inputs.get("text", "")
+    text = text_input if isinstance(text_input, str) else _normalize_text_segment(text_input)
+
+    if user_prompt and text:
+        prompt = f"{user_prompt.strip()}\n\nContent:\n{text.strip()}"
+    elif user_prompt:
+        prompt = user_prompt.strip()
+    elif text:
+        prompt = text.strip()
+    else:
+        prompt = ""
+
     image_input = inputs.get("image")
     aspect_ratio = params.get("aspect_ratio", "1:1")
 

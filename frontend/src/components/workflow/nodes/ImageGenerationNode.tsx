@@ -27,7 +27,7 @@ const config: NodeConfig = {
   label: "Image Generation",
   description: "Create stunning images with AI",
   inputs: [
-    { id: "prompt", label: "Prompt", type: "string" },
+    { id: "text", label: "Text", type: "string" },
     { id: "image", label: "Reference Image", type: "image" },
   ],
   outputs: [{ id: "generated_image", label: "Generated Image", type: "image" }],
@@ -52,7 +52,7 @@ export function ImageGenerationNode({ id }: NodeProps) {
   const showManualInputs = node?.manualInputEnabled ?? false;
 
   const initialPrompt =
-    typeof node?.inputs?.prompt === "string" ? node.inputs.prompt : "";
+    typeof node?.inputs?.user_prompt === "string" ? node.inputs.user_prompt : "";
   const initialAspectRatio =
     typeof node?.inputs?.aspect_ratio === "string"
       ? node.inputs.aspect_ratio
@@ -86,14 +86,15 @@ export function ImageGenerationNode({ id }: NodeProps) {
   useEffect(() => {
     if (
       node &&
-      (node.inputs.prompt !== prompt ||
+      node.inputs &&
+      (node.inputs.user_prompt !== prompt ||
         node.inputs.aspect_ratio !== aspectRatio ||
         node.inputs.selectedImageId !== selectedImageId)
     ) {
       updateNode(id, {
         inputs: {
           ...node.inputs,
-          prompt,
+          user_prompt: prompt,
           aspect_ratio: aspectRatio,
           selectedImageId: selectedImageId,
         },
@@ -142,7 +143,7 @@ export function ImageGenerationNode({ id }: NodeProps) {
           status: "completed",
           outputs: { generated_image: response.image_base64 },
           inputs: {
-            prompt,
+            user_prompt: prompt,
             aspect_ratio: aspectRatio,
             selectedImageId: selectedImageId,
           },
@@ -165,21 +166,19 @@ export function ImageGenerationNode({ id }: NodeProps) {
       theme={nodeThemes.indigo}
     >
       <div className="space-y-4">
-        {/* Prompt Section - only show in test mode */}
-        {showManualInputs && (
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-              Prompt
-            </label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe your image..."
-              className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all placeholder:text-slate-400"
-              rows={3}
-            />
-          </div>
-        )}
+        {/* Prompt — always visible as a configuration param */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">
+            Prompt
+          </label>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Describe the image you want to create..."
+            className="nodrag w-full px-3.5 py-3 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all placeholder:text-slate-400"
+            rows={3}
+          />
+        </div>
 
         {/* Aspect Ratio Pills - always show as it's a configuration, not an input */}
         <div className="space-y-2">

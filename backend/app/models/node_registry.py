@@ -75,12 +75,15 @@ NODE_REGISTRY: dict[str, NodeTypeSpec] = {
     ),
     "ImageGeneration": NodeTypeSpec(
         inputs=[
-            PortSchema(key="prompt", runtime_type="Text", shape="single"),
+            PortSchema(key="text", runtime_type="Text", shape="single", required=False),
             PortSchema(key="image", runtime_type="ImageRef", shape="single", required=False),
         ],
         outputs=[
             PortSchema(key="generated_image", runtime_type="ImageRef", shape="single"),
         ],
+        default_params={
+            "user_prompt": "",
+        },
     ),
     "ImageMatching": NodeTypeSpec(
         inputs=[
