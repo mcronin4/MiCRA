@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { NodeProps } from "@xyflow/react";
 import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
@@ -274,60 +275,63 @@ export function QuoteExtractionNode({ id }: NodeProps) {
         )}
       </div>
 
-      {showQuotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/40"
-            onClick={() => setShowQuotes(false)}
-            aria-hidden="true"
-          />
-          <div
-            className="nodrag relative w-[90vw] max-w-4xl max-h-[85vh] bg-white rounded-2xl shadow-2xl overflow-hidden"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-white">
-              <div>
-                <h4 className="text-sm font-semibold text-slate-900">
-                  Extracted Quotes
-                </h4>
-                <p className="text-xs text-slate-500">
-                  {quotes.length} quotes
-                </p>
-              </div>
-              <button
-                type="button"
-                className="nodrag p-2 rounded-full hover:bg-slate-100 transition-colors"
-                onClick={() => setShowQuotes(false)}
-                aria-label="Close quotes"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)] space-y-3">
-              {quotes.map((quote, index) => (
-                <div
-                  key={`${quote.text}-${index}`}
-                  className="border border-slate-200 rounded-xl p-3 bg-slate-50"
-                >
-                  <div className="text-[10px] text-slate-400 mb-1">
-                    Quote {index + 1}
-                  </div>
-                  <p className="text-sm text-slate-700 leading-relaxed">
-                    {quote.text}
+      {showQuotes &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/40"
+              onClick={() => setShowQuotes(false)}
+              aria-hidden="true"
+            />
+            <div
+              className="nodrag relative w-[80vw] max-w-3xl max-h-[75vh] bg-white rounded-2xl shadow-2xl overflow-hidden"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-white">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">
+                    Extracted Quotes
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    {quotes.length} quotes
                   </p>
-                  {quote.reason && (
-                    <p className="text-[11px] text-slate-500 mt-2">
-                      {quote.reason}
-                    </p>
-                  )}
                 </div>
-              ))}
+                <button
+                  type="button"
+                  className="nodrag p-2 rounded-full hover:bg-slate-100 transition-colors"
+                  onClick={() => setShowQuotes(false)}
+                  aria-label="Close quotes"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-5 overflow-y-auto max-h-[calc(65vh-72px)] space-y-3">
+                {quotes.map((quote, index) => (
+                  <div
+                    key={`${quote.text}-${index}`}
+                    className="border border-slate-200 rounded-xl p-3 bg-slate-50"
+                  >
+                    <div className="text-[10px] text-slate-400 mb-1">
+                      Quote {index + 1}
+                    </div>
+                    <p className="text-sm text-slate-700 leading-relaxed">
+                      {quote.text}
+                    </p>
+                    {quote.reason && (
+                      <p className="text-[11px] text-slate-500 mt-2">
+                        {quote.reason}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          // Render into the document body so the fixed overlay isn't clipped by transformed parents
+          (typeof document !== "undefined" && document.body) || document.documentElement,
+        )}
     </WorkflowNodeWrapper>
   );
 }

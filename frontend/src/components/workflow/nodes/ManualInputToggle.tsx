@@ -27,7 +27,7 @@ export function ManualInputToggle({
     <button
       onClick={handleToggle}
       className={`
-        absolute top-4 right-19 z-20
+        absolute top-4 right-24 z-20
         flex items-center gap-1.5
         px-2.5 py-1.5 rounded-lg
         transition-all duration-200

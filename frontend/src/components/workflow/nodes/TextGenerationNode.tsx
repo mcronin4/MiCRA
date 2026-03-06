@@ -464,6 +464,7 @@ export function TextGenerationNode({ id }: NodeProps) {
         config={config}
         onExecute={handleExecute}
         theme={nodeThemes.emerald}
+        className="w-[560px]"
       >
         <div className="space-y-4">
           {/* Text input - only show in test mode */}
@@ -569,9 +570,10 @@ export function TextGenerationNode({ id }: NodeProps) {
 
           {/* Generated output display */}
           {generatedOutput && node?.status === "completed" && (
-            <div className="mt-3 p-2 bg-gray-50 border rounded text-xs">
+            <div className="mt-3 p-2 bg-gray-50 border rounded text-xs w-full max-w-full overflow-hidden">
               <div className="font-semibold mb-1">Generated Output:</div>
-              <pre className="whitespace-pre-wrap text-xs">
+              {/* Keep the output constrained to the node width and allow wrapping/breaking of long tokens. */}
+              <pre className="whitespace-pre-wrap text-xs break-all max-w-full overflow-x-auto">
                 {JSON.stringify(generatedOutput, null, 2)}
               </pre>
             </div>
