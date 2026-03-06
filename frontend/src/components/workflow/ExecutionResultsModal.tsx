@@ -32,7 +32,7 @@ const NODE_TYPE_INFO: Record<string, { icon: React.ElementType; label: string; c
   ImageMatching: { icon: Layers, label: 'Image Matching', color: 'text-orange-600' },
   ImageExtraction: { icon: Image, label: 'Image Extraction', color: 'text-indigo-600' },
   QuoteExtraction: { icon: FileText, label: 'Quote Extraction', color: 'text-teal-600' },
-  End: { icon: Flag, label: 'End', color: 'text-slate-600' },
+  End: { icon: Flag, label: 'Output Bucket', color: 'text-slate-600' },
 };
 
 function getNodeTypeInfo(nodeType: string | null | undefined, nodeId: string) {

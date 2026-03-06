@@ -50,6 +50,23 @@ class R2Client:
             raise RuntimeError("R2 client not initialized. Check environment variables.")
         return self._client
 
+    def upload_bytes(self, path: str, data: bytes, content_type: str) -> None:
+        """Upload raw bytes to R2 at the given object key."""
+        self.client.put_object(
+            Bucket=R2_BUCKET,
+            Key=path,
+            Body=data,
+            ContentType=content_type,
+        )
+
+    def sign_path(self, path: str, expires_in: int = 3600) -> str:
+        """Generate a presigned GET URL for an object at the given R2 key."""
+        return self.client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': R2_BUCKET, 'Key': path},
+            ExpiresIn=expires_in,
+        )
+
 
 def get_r2() -> R2Client:
     """Get the R2 client singleton."""

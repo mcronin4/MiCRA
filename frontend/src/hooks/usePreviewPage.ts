@@ -18,6 +18,7 @@ import {
 } from '@/lib/fastapi/workflows'
 import {
   buildPersistedNodes,
+  buildAutoAssignments,
   buildSlotContentForDraft,
   parseDraftSlotContentByOutput,
   buildDraftSlotContentPayload,
@@ -32,6 +33,7 @@ const DEFAULT_OUTPUT_KEY = 'output_1'
 export function usePreviewPage(workflowId: string) {
   const setActiveContext = usePreviewStore((s) => s.setActiveContext)
   const setConfigFromDraft = usePreviewStore((s) => s.setConfigFromDraft)
+  const applyAutoAssignments = usePreviewStore((s) => s.applyAutoAssignments)
   const config = usePreviewStore((s) => s.config)
   const setTone = usePreviewStore((s) => s.setTone)
   const nodes = useWorkflowStore((s) => s.nodes)
@@ -198,9 +200,23 @@ export function usePreviewPage(workflowId: string) {
     getWorkflowRunOutputs(workflowId, selectedRun.execution_id)
       .then((outputs) => {
         if (cancelled) return
-        setPersistedNodes(buildPersistedNodes(outputs))
+        const nodes = buildPersistedNodes(outputs)
+        setPersistedNodes(nodes)
         setRunWorkflowOutputs(outputs.workflow_outputs ?? {})
         setRunNotice(null)
+
+        // Auto-assign on first load — only when no slot has been configured yet
+        const currentConfig = usePreviewStore.getState().config
+        const hasAnyAssignment = currentConfig?.assignments.some(
+          (a) => a.sources.length > 0
+        )
+        if (!hasAnyAssignment && currentConfig) {
+          const currentTemplate =
+            PLATFORM_TEMPLATES[currentConfig.platformId] ??
+            PLATFORM_TEMPLATES.linkedin
+          const autoAssignments = buildAutoAssignments(nodes, currentTemplate)
+          applyAutoAssignments(autoAssignments)
+        }
       })
       .catch((err) => {
         if (cancelled) return
@@ -215,7 +231,7 @@ export function usePreviewPage(workflowId: string) {
     return () => {
       cancelled = true
     }
-  }, [workflowId, selectedRun])
+  }, [workflowId, selectedRun, applyAutoAssignments])
 
   const runOutputKeys = useMemo(() => {
     const keys = Object.keys(runWorkflowOutputs)

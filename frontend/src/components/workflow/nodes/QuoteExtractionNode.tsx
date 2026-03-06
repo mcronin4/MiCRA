@@ -9,7 +9,7 @@ import {
   type QuoteItem,
 } from "@/lib/fastapi/quote-extraction";
 import type { NodeConfig } from "@/types/workflow";
-import { TextQuote, X } from "lucide-react";
+import { X } from "lucide-react";
 
 const config: NodeConfig = {
   type: "quote-extraction",
@@ -216,7 +216,7 @@ export function QuoteExtractionNode({ id }: NodeProps) {
           </div>
         </div>
 
-        {quotes.length > 0 ? (
+        {showManualInputs && quotes.length > 0 && (
           <div
             className="nodrag border border-slate-200 rounded-xl bg-white p-3 cursor-pointer transition-shadow hover:shadow-md"
             onClick={() => setShowQuotes(true)}
@@ -239,18 +239,6 @@ export function QuoteExtractionNode({ id }: NodeProps) {
             <div className="mt-2 text-[10px] text-slate-400">
               Click to view all extracted quotes
             </div>
-          </div>
-        ) : (
-          <div className="border border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center">
-            <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
-              <TextQuote size={18} className="text-slate-400" />
-            </div>
-            <p className="text-xs font-medium text-slate-600">
-              No quotes yet
-            </p>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Run extraction to populate quotes
-            </p>
           </div>
         )}
 

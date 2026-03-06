@@ -225,33 +225,6 @@ export function ImageMatchingNode({ id }: NodeProps) {
       }
     >
       <div className="space-y-4">
-        {!showManualInputs &&
-          (hasMatchResults ? (
-            <div className="border border-slate-200 rounded-xl p-4 bg-white text-center">
-              <div className="p-2.5 rounded-xl bg-amber-50 w-fit mx-auto mb-2">
-                <ImageIcon size={18} className="text-amber-500" />
-              </div>
-              <p className="text-xs font-medium text-slate-700">
-                Match results ready
-              </p>
-              <p className="text-[10px] text-slate-400 mt-1">
-                {matchedImages.length} image
-                {matchedImages.length === 1 ? "" : "s"} available
-              </p>
-            </div>
-          ) : (
-            <div className="border border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center">
-              <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
-                <ImageIcon size={18} className="text-slate-400" />
-              </div>
-              <p className="text-xs font-medium text-slate-600">
-                No matches yet
-              </p>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Run workflow to populate matched images
-              </p>
-            </div>
-          ))}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
