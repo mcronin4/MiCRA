@@ -94,7 +94,7 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
   const voice = useMicrAIVoiceInput();
   const canvasOps = useCanvasOperations();
   const contextMenus = useContextMenus();
-  const { execute, isExecuting, executionResult, error: executionError, cancelExecution } = useWorkflowExecution();
+  const { executeById, isExecuting, executionResult, error: executionError, cancelExecution } = useWorkflowExecution();
   const { compileRaw, diagnostics, errors: compilationErrors } = useBlueprintCompile();
   const currentWorkflowId = useWorkflowStore((s) => s.currentWorkflowId);
   const isDirty = useWorkflowStore((s) => s.isDirty);
@@ -594,10 +594,15 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
   };
 
   const handleExecuteWorkflow = async () => {
-    // Check if workflow is saved first
-    const { currentWorkflowId } = useWorkflowStore.getState();
+    const { currentWorkflowId, isDirty: storeIsDirty } = useWorkflowStore.getState();
     if (!currentWorkflowId) {
       showToast("Please save the workflow before executing", "warning");
+      setShowSaveDialog(true);
+      return;
+    }
+
+    if (storeIsDirty) {
+      showToast("Please save your changes before executing", "warning");
       setShowSaveDialog(true);
       return;
     }
@@ -613,14 +618,12 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       return;
     }
 
-    // Validate bucket nodes have files selected (user-friendly check before compilation)
     const bucketValidationError = validateBucketNodes(workflowData);
     if (bucketValidationError) {
       showToast(bucketValidationError, "error");
       return;
     }
 
-    // First, compile to check for errors
     const compilationResult = await compileRaw(workflowData);
 
     if (!compilationResult || !compilationResult.success) {
@@ -632,20 +635,17 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       return;
     }
 
-    // If there are warnings but no errors, show diagnostics but allow proceeding
     if (diagnostics.length > 0 && compilationErrors.length === 0) {
       setShowCompilationModal(true);
       return;
     }
 
-    // Proceed with execution
     try {
-      const { currentWorkflowId, workflowName } = useWorkflowStore.getState();
-      const result = await execute(workflowData, currentWorkflowId || undefined, workflowName || undefined);
-      const viewResultsAction =
-        currentWorkflowId
-          ? { label: "View results", onClick: () => router.push(`/preview/${currentWorkflowId}`) }
-          : undefined;
+      const result = await executeById(currentWorkflowId);
+      const viewResultsAction = {
+        label: "View results",
+        onClick: () => router.push(`/preview/${currentWorkflowId}`),
+      };
       if (result) {
         showToast(
           result.success
@@ -664,7 +664,6 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
   };
 
   const handleProceedWithExecution = async () => {
-    // Double-check workflow is saved (should already be checked in handleExecuteWorkflow)
     const { currentWorkflowId } = useWorkflowStore.getState();
     if (!currentWorkflowId) {
       showToast("Please save the workflow before executing", "warning");
@@ -673,27 +672,14 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
       return;
     }
 
-    const workflowData = prepareWorkflowForExecution();
-
-    if (!workflowData) return;
-
-    // Validate bucket nodes have files selected
-    const bucketValidationError = validateBucketNodes(workflowData);
-    if (bucketValidationError) {
-      showToast(bucketValidationError, "error");
-      setShowCompilationModal(false);
-      return;
-    }
-
     setShowCompilationModal(false);
 
     try {
-      const { currentWorkflowId } = useWorkflowStore.getState();
-      const result = await execute(workflowData);
-      const viewResultsAction =
-        currentWorkflowId
-          ? { label: "View results", onClick: () => router.push(`/preview/${currentWorkflowId}`) }
-          : undefined;
+      const result = await executeById(currentWorkflowId);
+      const viewResultsAction = {
+        label: "View results",
+        onClick: () => router.push(`/preview/${currentWorkflowId}`),
+      };
       if (result) {
         showToast(
           result.success
