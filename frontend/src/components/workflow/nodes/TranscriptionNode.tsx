@@ -6,7 +6,7 @@ import { WorkflowNodeWrapper, nodeThemes } from "../WorkflowNodeWrapper";
 import { useWorkflowStore } from "@/lib/stores/workflowStore";
 import { transcribeFile, transcribeUrl } from "@/lib/fastapi/transcription";
 import { NodeConfig } from "@/types/workflow";
-import { Upload, Link, X, Mic, Copy } from "lucide-react";
+import { Upload, Link, X, Copy } from "lucide-react";
 
 const config: NodeConfig = {
   type: "transcription",
@@ -319,7 +319,7 @@ export function TranscriptionNode({ id }: NodeProps) {
           </div>
         )}
 
-        {transcription ? (
+        {showManualInputs && transcription && (
           <div
             className="nodrag border border-slate-200 rounded-xl bg-white p-3 cursor-pointer transition-shadow hover:shadow-md"
             onClick={() => setShowTranscript(true)}
@@ -354,18 +354,6 @@ export function TranscriptionNode({ id }: NodeProps) {
             <div className="mt-2 text-[10px] text-slate-400">
               Click to expand full transcription
             </div>
-          </div>
-        ) : (
-          <div className="border border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center">
-            <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
-              <Mic size={18} className="text-slate-400" />
-            </div>
-            <p className="text-xs font-medium text-slate-600">
-              No transcription yet
-            </p>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Run transcription to generate text
-            </p>
           </div>
         )}
 

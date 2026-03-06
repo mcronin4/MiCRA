@@ -11,7 +11,7 @@ import {
 } from "@/lib/fastapi/image-extraction";
 import { listFiles, type FileListItem } from "@/lib/fastapi/files";
 import type { NodeConfig } from "@/types/workflow";
-import { X, Image as ImageIcon, Video, Loader2 } from "lucide-react";
+import { X, Video, Loader2 } from "lucide-react";
 import Image from "next/image";
 
 const clampFrameCount = (value: number) => {
@@ -373,9 +373,20 @@ export function ImageExtractionNode({ id }: NodeProps) {
           </div>
         )}
 
-        {hasResults ? (
-          <div className="border border-slate-200 rounded-xl bg-white p-3 space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-slate-500">
+        {hasResults && (
+          <div
+            className="nodrag border border-slate-200 rounded-xl bg-white p-3 cursor-pointer transition-shadow hover:shadow-md"
+            onClick={() => setShowGallery(true)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                setShowGallery(true);
+              }
+            }}
+            aria-label="Open selected frames gallery"
+          >
+            <div className="flex items-center justify-between text-[11px] text-slate-500 mb-2">
               <span className="font-semibold uppercase tracking-wide">
                 Selected frames
               </span>
@@ -406,18 +417,9 @@ export function ImageExtractionNode({ id }: NodeProps) {
                 </div>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="border border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 text-center">
-            <div className="p-2.5 rounded-xl bg-slate-100 w-fit mx-auto mb-2">
-              <ImageIcon size={18} className="text-slate-400" />
+            <div className="mt-2 text-[10px] text-slate-400">
+              Click to expand and download any frame
             </div>
-            <p className="text-xs font-medium text-slate-600">
-              No frames yet
-            </p>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Run extraction to populate selected frames
-            </p>
           </div>
         )}
 

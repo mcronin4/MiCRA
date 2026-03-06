@@ -8,6 +8,8 @@ export const useCanvasOperations = () => {
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const nextId = useRef(0);
+  // Track z-index for nodes so newly added nodes are placed in front
+  const nextZ = useRef(1);
   const setNodesRef = useRef<React.Dispatch<React.SetStateAction<Node[]>> | null>(null);
   const setEdgesRef = useRef<React.Dispatch<React.SetStateAction<Edge[]>> | null>(null);
 
@@ -66,6 +68,8 @@ export const useCanvasOperations = () => {
       type: nodeType,
       position: nodePosition, // Offset to center the node
       data: nodeData,
+      // Ensure this node is rendered above existing nodes by assigning an increasing z-index
+      style: { zIndex: nextZ.current++ },
     };
 
     setNodesRef.current((nds: Node[]) => nds.concat(newNode));

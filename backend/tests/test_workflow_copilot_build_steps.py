@@ -65,6 +65,7 @@ def test_create_build_steps_include_intro_connect_and_backtrack(monkeypatch):
         operations=operations,
         touched_node_ids=touched,
         request_text="Turn video into a LinkedIn post with matching images",
+        model_name="gemini-2.5-flash",
     )
 
     intro_nodes = [step["node_id"] for step in steps if step.get("kind") == "node_intro"]
@@ -113,6 +114,7 @@ def test_edit_build_steps_focus_on_changed_nodes_and_connectors(monkeypatch):
         operations=operations,
         touched_node_ids=touched,
         request_text="Add image matching",
+        model_name="gemini-2.5-flash",
     )
 
     intro_nodes = [step["node_id"] for step in steps if step.get("kind") == "node_intro"]
@@ -152,6 +154,7 @@ def test_build_steps_have_fallback_narration_when_gemini_unavailable(monkeypatch
         operations=operations,
         touched_node_ids=touched,
         request_text="Make an X post from article text",
+        model_name="gemini-2.5-flash",
     )
 
     intro_steps = [step for step in steps if step.get("kind") == "node_intro"]

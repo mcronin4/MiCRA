@@ -146,7 +146,7 @@ export function EndNode({ id }: NodeProps) {
         </div>
         <div>
           <h3 className="font-bold text-[15px] text-rose-900 leading-tight">
-            End
+            Output Bucket
           </h3>
           <p className="text-[11px] text-rose-600 mt-0.5 font-medium">
             {statusConfig.label}

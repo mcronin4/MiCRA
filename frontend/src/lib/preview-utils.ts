@@ -165,6 +165,82 @@ export function buildSlotContentForDraft(
   return out
 }
 
+// ---------------------------------------------------------------------------
+// Auto-assignment priority tables
+// ---------------------------------------------------------------------------
+
+type NodeOutputCandidate = {
+  nodeType: string
+  outputKey: string
+  arrayIndex?: number
+}
+
+const TEXT_PRIORITY: NodeOutputCandidate[] = [
+  { nodeType: 'TextGeneration', outputKey: 'generated_text' },
+  { nodeType: 'QuoteExtraction', outputKey: 'quotes', arrayIndex: 0 },
+  { nodeType: 'Transcription', outputKey: 'transcription' },
+]
+
+const MEDIA_PRIORITY: NodeOutputCandidate[] = [
+  { nodeType: 'ImageGeneration', outputKey: 'generated_image' },
+  { nodeType: 'ImageMatching', outputKey: 'images', arrayIndex: 0 },
+  { nodeType: 'ImageBucket', outputKey: 'images', arrayIndex: 0 },
+]
+
+/**
+ * Given the persisted nodes for a run and the active platform template,
+ * returns the best auto-assignment for each slot.
+ *
+ * Only fires on fresh runs (caller must check `hasAnyAssignment` first).
+ * Slots with no matching node output are returned with empty sources.
+ */
+export function buildAutoAssignments(
+  nodes: Record<string, PreviewNodeState>,
+  template: PlatformTemplate
+): SlotAssignment[] {
+  // Index nodes by type for fast lookup (first match wins per type)
+  const byType = new Map<string, PreviewNodeState>()
+  for (const node of Object.values(nodes)) {
+    if (!byType.has(node.type)) {
+      byType.set(node.type, node)
+    }
+  }
+
+  return template.slots.map((slot) => {
+    const isMedia =
+      slot.acceptsTypes.includes('image') || slot.acceptsTypes.includes('video')
+    const priority = isMedia ? MEDIA_PRIORITY : TEXT_PRIORITY
+
+    for (const candidate of priority) {
+      const node = byType.get(candidate.nodeType)
+      if (!node) continue
+
+      // Verify the output key actually exists on this node
+      if (!node.outputs || !(candidate.outputKey in node.outputs)) continue
+
+      // For array outputs, make sure the array isn't empty
+      if (candidate.arrayIndex !== undefined) {
+        const arr = node.outputs[candidate.outputKey]
+        if (!Array.isArray(arr) || arr.length === 0) continue
+      }
+
+      const ref: NodeOutputRef = {
+        nodeId: node.id,
+        nodeType: node.type,
+        outputKey: candidate.outputKey,
+        label: candidate.outputKey,
+        ...(candidate.arrayIndex !== undefined
+          ? { arrayIndex: candidate.arrayIndex }
+          : {}),
+      }
+      return { slotId: slot.slotId, sources: [ref] }
+    }
+
+    // No match — return empty assignment (slot stays blank)
+    return { slotId: slot.slotId, sources: [] }
+  })
+}
+
 /** Canonical icon map for slot content types */
 export const CONTENT_TYPE_ICONS: Record<SlotContentType, React.ElementType> = {
   text: FileText,

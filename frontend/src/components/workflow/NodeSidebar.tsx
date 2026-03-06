@@ -10,7 +10,6 @@ import {
   Film,
   Mic,
   Flag,
-  GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
   Layers,
@@ -36,13 +35,6 @@ const nodeCategories = [
       { type: "AudioBucket" as NodeType, label: "Audio Bucket", icon: Music },
       { type: "VideoBucket" as NodeType, label: "Video Bucket", icon: Video },
       { type: "TextBucket" as NodeType, label: "Text Bucket", icon: FileText },
-    ],
-  },
-  {
-    name: "Flow Control",
-    icon: GitBranch,
-    nodes: [
-      { type: "End" as NodeType, label: "End Flow", icon: Flag },
     ],
   },
   // "Outputs" category hidden — output composition moved to Preview page
@@ -159,6 +151,26 @@ export const NodeSidebar: React.FC<NodeSidebarProps> = ({ onAddNode }) => {
       {/* Node Categories List */}
       <div className="flex-1 overflow-y-auto py-2">
         <div className="flex flex-col gap-1 px-2">
+          {/* Output Bucket — standalone, no dropdown */}
+          <button
+            onClick={() => onAddNode("End")}
+            className={`
+              w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200
+              text-slate-600 hover:text-slate-900 hover:bg-slate-100/50
+              ${!isExpanded ? "justify-center px-0" : ""}
+            `}
+            title={!isExpanded ? "Output Bucket" : undefined}
+          >
+            <div className="p-1.5 rounded-md text-slate-500 group-hover:text-slate-700">
+              <Flag size={18} strokeWidth={2} />
+            </div>
+            {isExpanded && (
+              <span className="text-sm font-medium flex-1 text-left">
+                Output Bucket
+              </span>
+            )}
+          </button>
+
           {nodeCategories.map((category) => (
             <div key={category.name} className="group">
               <button

@@ -176,6 +176,7 @@ export interface WorkflowRunOutputs {
 
 export type CopilotPlanStatus = 'ready' | 'clarify' | 'error'
 export type CopilotPlanMode = 'create' | 'edit'
+export type CopilotModelTier = 'default' | 'pro'
 export type CopilotBuildStepKind = 'node_intro' | 'connect' | 'backtrack'
 
 export interface CopilotBuildStep {
