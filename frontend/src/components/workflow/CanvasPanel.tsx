@@ -12,6 +12,7 @@ import { ImageGenerationNode } from "./nodes/ImageGenerationNode";
 import { ImageExtractionNode } from "./nodes/ImageExtractionNode";
 import { TranscriptionNode } from "./nodes/TranscriptionNode";
 import { QuoteExtractionNode } from "./nodes/QuoteExtractionNode";
+import { VideoGenerationNode } from "./nodes/VideoGenerationNode";
 import { ImageBucketNode } from "./nodes/ImageBucketNode";
 import { AudioBucketNode } from "./nodes/AudioBucketNode";
 import { VideoBucketNode } from "./nodes/VideoBucketNode";
@@ -41,6 +42,7 @@ const nodeTypes = {
   Transcription: TranscriptionNode,
   ImageExtraction: ImageExtractionNode,
   QuoteExtraction: QuoteExtractionNode,
+  VideoGeneration: VideoGenerationNode,
   ImageBucket: ImageBucketNode,
   AudioBucket: AudioBucketNode,
   VideoBucket: VideoBucketNode,
@@ -109,6 +111,7 @@ interface CanvasPanelProps {
   onDialogClose?: () => void;
   interactionMode?: "select" | "pan";
   isMicrAIPlaybackActive?: boolean;
+  isMicrAICameraTransitioning?: boolean;
   autoLoadWorkflowId?: string | null;
   onAutoLoadComplete?: () => void;
 }
@@ -147,6 +150,7 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
   onDialogClose,
   interactionMode = "select",
   isMicrAIPlaybackActive = false,
+  isMicrAICameraTransitioning = false,
   autoLoadWorkflowId,
   onAutoLoadComplete,
 }) => {
@@ -345,11 +349,18 @@ export const CanvasPanel: React.FC<CanvasPanelProps> = ({
         defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
         nodesDraggable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
         nodesConnectable={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
-        panOnDrag={interactionMode === "pan" ? true : [1, 2]}
+        panOnDrag={
+          isMicrAICameraTransitioning
+            ? false
+            : interactionMode === "pan"
+              ? true
+              : [1, 2]
+        }
         selectionOnDrag={!isLocked && interactionMode === "select" && !isMicrAIPlaybackActive}
-        zoomOnScroll={true}
-        zoomOnDoubleClick={!isLocked}
-        panOnScroll={true}
+        zoomOnScroll={!isMicrAICameraTransitioning}
+        zoomOnDoubleClick={!isLocked && !isMicrAICameraTransitioning}
+        zoomOnPinch={!isMicrAICameraTransitioning}
+        panOnScroll={!isMicrAICameraTransitioning}
       >
         <Background />
         <MiniMap position="bottom-left" />

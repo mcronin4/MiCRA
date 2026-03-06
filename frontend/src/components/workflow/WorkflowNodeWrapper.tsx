@@ -12,6 +12,7 @@ import {
   Film,
   Mic,
   TextQuote,
+  Video,
 } from "lucide-react";
 import { useWorkflowStore, NodeStatus } from "@/lib/stores/workflowStore";
 import { NodeConfig } from "@/types/workflow";
@@ -21,7 +22,7 @@ import type { RuntimeType } from "@/types/blueprint";
 
 // Minimalist Apple-inspired theme configurations
 export interface NodeTheme {
-  id: "indigo" | "emerald" | "amber" | "sky" | "teal" | "rose";
+  id: "indigo" | "emerald" | "amber" | "sky" | "teal" | "rose" | "violet";
   // Header - minimal/white
   iconColor: string;
   iconBg: string;
@@ -102,6 +103,17 @@ export const nodeThemes: Record<string, NodeTheme> = {
     handleInput: "#fb7185",
     handleOutput: "#fda4af",
     icon: TextQuote,
+  },
+  violet: {
+    id: "violet",
+    iconColor: "text-violet-600",
+    iconBg: "bg-violet-50",
+    accentColor: "bg-violet-600",
+    accentHover: "hover:bg-violet-700",
+    accentRing: "focus:ring-violet-500/30",
+    handleInput: "#7c3aed",
+    handleOutput: "#a78bfa",
+    icon: Video,
   },
 };
 

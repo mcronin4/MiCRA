@@ -48,3 +48,10 @@ outputs/
 
 CLAUDE*
 .claude/
+
+# service account keys
+keys/
+
+# Dev-local video generation assets and artifacts
+local_test_assets/
+.artifacts/

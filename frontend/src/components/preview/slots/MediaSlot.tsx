@@ -8,7 +8,11 @@ interface MediaSlotProps {
 }
 
 function extractUrl(value: unknown): string | null {
-  if (typeof value === 'string' && value.startsWith('http')) return value
+  if (typeof value === 'string' && (
+    value.startsWith('http') ||
+    value.startsWith('data:video/') ||
+    value.startsWith('data:audio/')
+  )) return value
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const obj = value as Record<string, unknown>
     if (typeof obj.url === 'string') return obj.url

@@ -101,7 +101,21 @@ export function resolveSlotValue(
 
 /** Detect if URL points to video content */
 export function isVideoUrl(url: string): boolean {
-  return /\.(mp4|webm|mov|avi)(\?|$)/i.test(url) || /\/videos?\//i.test(url)
+  return /\.(mp4|webm|mov|avi)(\?|$)/i.test(url)
+    || /\/videos?\//i.test(url)
+    || url.startsWith('data:video/')
+}
+
+/** Check whether the value looks like it contains video content */
+export function isVideoValue(value: unknown): boolean {
+  if (typeof value === 'string') return isVideoUrl(value)
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>
+    for (const k of ['url', 'signedUrl', 'video_url']) {
+      if (typeof obj[k] === 'string' && isVideoUrl(obj[k] as string)) return true
+    }
+  }
+  return false
 }
 
 /** Extract a serializable string from a resolved value for draft storage */

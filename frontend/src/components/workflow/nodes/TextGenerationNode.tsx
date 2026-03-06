@@ -294,6 +294,7 @@ export function TextGenerationNode({ id }: NodeProps) {
     typeof node?.inputs?.prompt_template_override === "string"
       ? node.inputs.prompt_template_override
       : "";
+  const effectiveToneGuidance = toneGuidanceOverride.trim() || selectedPreset?.tone_guidance || "";
   const outputFormatOverride =
     node?.inputs?.output_format_override &&
     typeof node.inputs.output_format_override === "object" &&
@@ -464,6 +465,7 @@ export function TextGenerationNode({ id }: NodeProps) {
         config={config}
         onExecute={handleExecute}
         theme={nodeThemes.emerald}
+        className="w-[560px]"
       >
         <div className="space-y-4">
           {/* Text input - only show in test mode */}
@@ -535,9 +537,12 @@ export function TextGenerationNode({ id }: NodeProps) {
                   Max length: {typeof maxLengthOverride === "number" ? maxLengthOverride : selectedPreset.max_length} characters
                 </div>
               )}
-              {(toneGuidanceOverride.trim() || selectedPreset.tone_guidance) && (
-                <div>
-                  Tone: {toneGuidanceOverride.trim() || selectedPreset.tone_guidance}
+              {effectiveToneGuidance && (
+                <div className="flex items-start gap-1">
+                  <span className="shrink-0">Tone:</span>
+                  <span className="min-w-0 flex-1 truncate" title={effectiveToneGuidance}>
+                    {effectiveToneGuidance}
+                  </span>
                 </div>
               )}
               {structureTemplateOverride.trim() && (
@@ -569,9 +574,10 @@ export function TextGenerationNode({ id }: NodeProps) {
 
           {/* Generated output display */}
           {generatedOutput && node?.status === "completed" && (
-            <div className="mt-3 p-2 bg-gray-50 border rounded text-xs">
+            <div className="mt-3 p-2 bg-gray-50 border rounded text-xs w-full max-w-full overflow-hidden">
               <div className="font-semibold mb-1">Generated Output:</div>
-              <pre className="whitespace-pre-wrap text-xs">
+              {/* Keep the output constrained to the node width and allow wrapping/breaking of long tokens. */}
+              <pre className="whitespace-pre-wrap text-xs break-all max-w-full overflow-x-auto">
                 {JSON.stringify(generatedOutput, null, 2)}
               </pre>
             </div>
