@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, ReactNode } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { getNodeSpec } from "@/lib/nodeRegistry";
 import type { RuntimeType } from "@/types/blueprint";
@@ -8,6 +8,7 @@ import { CheckCircle2, Loader2, LucideIcon } from "lucide-react";
 import { useWorkflowStore, NodeStatus } from "@/lib/stores/workflowStore";
 import { listFiles, FileListItem } from "@/lib/fastapi/files";
 import Image from "next/image";
+import { FilePickerModal } from "./FilePickerModal";
 
 export type BucketType = "image" | "audio" | "video" | "text";
 
@@ -175,10 +176,10 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
   useEffect(() => {
     const currentStatus = node?.status;
     const prevStatus = prevStatusRef.current;
-    
+
     // Update previous status FIRST (before any early returns)
     prevStatusRef.current = currentStatus;
-    
+
     // Trigger completion animation when status changes to completed
     if (currentStatus === 'completed' && prevStatus !== 'completed' && prevStatus !== undefined) {
       setJustCompleted(true);
@@ -202,7 +203,7 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
   const [isLoadingPicker, setIsLoadingPicker] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showPicker, setShowPicker] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [pickerLoaded, setPickerLoaded] = useState(false);
 
   // Stable key for selected IDs so effect re-runs when workflow load populates node
@@ -245,7 +246,7 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
           const response = await listFiles({
             type: bucketType,
             status: "uploaded",
-            includeUrls: bucketType === "image",
+            includeUrls: bucketType === "image" || bucketType === "video",
             thumbnailsOnly: bucketType === "image",
             limit: 100,
           });
@@ -281,101 +282,15 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
     }
   }, [selectedFileIds, id, updateNode, node]);
 
-  const toggleFile = (file: FileListItem) => {
-    const fileId = file.id;
-    setSelectedFileIds((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(fileId)) {
-        newSet.delete(fileId);
-        // Update selectedFilesData: remove
-        setSelectedFilesData(prevData => prevData.filter(f => f.id !== fileId));
-      } else {
-        newSet.add(fileId);
-        // Update selectedFilesData: add if not present
-        setSelectedFilesData(prevData => {
-          if (prevData.some(f => f.id === fileId)) return prevData;
-          return [...prevData, file];
-        });
-      }
-      return newSet;
-    });
-  };
-
-  // Render file picker content based on bucket type
-  const renderFilePickerContent = (): ReactNode => {
-    if (isLoadingPicker) {
-      return (
-        <div className="col-span-4 flex justify-center py-8">
-          <Loader2 size={24} className="animate-spin text-slate-400" />
-        </div>
-      );
-    }
-
-    if (pickerFiles.length === 0) {
-      return (
-        <div className={bucketType === "image" ? "col-span-4 text-xs text-slate-500 text-center py-4" : "text-xs text-slate-500 text-center py-4"}>
-          {config.emptyText}
-        </div>
-      );
-    }
-
-    if (bucketType === "image") {
-      return pickerFiles.map((file) => (
-        <button
-          key={file.id}
-          onClick={() => toggleFile(file)}
-          className={`
-            relative aspect-square rounded-lg overflow-hidden border-2 transition-all
-            ${selectedFileIds.has(file.id)
-              ? `${theme.selectedBorder} ring-2 ring-blue-200`
-              : "border-transparent hover:border-blue-300"
-            }
-          `}
-        >
-          {file.signedUrl && (
-            <Image
-              src={file.signedUrl}
-              alt={file.name}
-              fill
-              className="object-cover"
-              unoptimized
-            />
-          )}
-          {selectedFileIds.has(file.id) && (
-            <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-              <CheckCircle2 size={10} className="text-white" strokeWidth={3} />
-            </div>
-          )}
-        </button>
-      ));
-    }
-
-    // For audio, video, and text - render as list
-    return pickerFiles.map((file) => (
-      <button
-        key={file.id}
-        onClick={() => toggleFile(file)}
-        className={`
-          w-full px-3 py-2 text-left rounded-lg transition-all flex items-center gap-2
-          ${selectedFileIds.has(file.id)
-            ? `${theme.selectedBg} border-2 ${theme.selectedBorder}`
-            : "bg-slate-50 hover:bg-slate-100 border-2 border-transparent"
-          }
-        `}
-      >
-        <Icon size={16} className={theme.iconColor} />
-        <span className="flex-1 text-xs font-medium text-slate-700 truncate">
-          {file.name}
-        </span>
-        {selectedFileIds.has(file.id) && (
-          <CheckCircle2 size={14} className={theme.iconColor} strokeWidth={2.5} />
-        )}
-      </button>
-    ));
-  };
+  // Handle confirm from modal — update both selected IDs and file data at once
+  const handleModalConfirm = useCallback((confirmedIds: Set<string>, confirmedFiles: FileListItem[]) => {
+    setSelectedFileIds(confirmedIds);
+    setSelectedFilesData(confirmedFiles);
+    setShowModal(false);
+  }, []);
 
   // Render selected files preview based on bucket type
-  const renderSelectedFilesPreview = (): ReactNode => {
+  const renderSelectedFilesPreview = (): React.ReactNode => {
     if (isLoadingPreview && selectedFilesData.length === 0) {
       return (
         <div className="flex justify-center py-2">
@@ -494,14 +409,10 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
         {/* File picker */}
         <div className="space-y-2">
           <button
-            onClick={() => setShowPicker(!showPicker)}
+            onClick={() => setShowModal(true)}
             className={`w-full px-3 py-2 text-sm bg-white/90 hover:bg-white border ${theme.buttonBorder} rounded-lg ${theme.buttonText} font-medium transition-all hover:shadow-sm active:scale-[0.98]`}
           >
-            {showPicker ? (
-              config.hideButtonText
-            ) : (
-              config.selectButtonText
-            )}
+            {config.selectButtonText}
           </button>
 
           {error && (
@@ -510,11 +421,18 @@ export function BucketNodeBase({ id, bucketType, icon: Icon }: BucketNodeBasePro
             </div>
           )}
 
-          {showPicker && (
-            <div className={`nodrag ${bucketType === "image" ? "grid grid-cols-4 gap-1.5" : "space-y-1"} p-2 border ${theme.pickerBorder} rounded-xl bg-white max-h-48 overflow-y-auto`}>
-              {renderFilePickerContent()}
-            </div>
-          )}
+          <FilePickerModal
+            isOpen={showModal}
+            onClose={() => setShowModal(false)}
+            onConfirm={handleModalConfirm}
+            bucketType={bucketType}
+            files={pickerFiles}
+            initialSelectedIds={selectedFileIds}
+            isLoading={isLoadingPicker}
+            theme={theme}
+            icon={Icon}
+            title={config.title}
+          />
 
           {renderSelectedFilesPreview()}
         </div>
