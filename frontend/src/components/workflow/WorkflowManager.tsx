@@ -80,6 +80,8 @@ export function WorkflowManager({
   const importWorkflowStructure = useWorkflowStore(
     (state) => state.importWorkflowStructure
   );
+  const isDirty = useWorkflowStore((state) => state.isDirty);
+  const setIsDirty = useWorkflowStore((state) => state.setIsDirty);
 
   // Handle external dialog triggers
   useEffect(() => {
@@ -171,8 +173,8 @@ export function WorkflowManager({
     );
 
     if (result.success) {
-      // Update store with saved workflow metadata
       setWorkflowMetadata(result.workflowId, nameToSave, localWorkflowDescription.trim() || workflowDescription || undefined);
+      setIsDirty(false);
       handleCloseSaveDialog();
       await loadWorkflows(); // Refresh list
       showToast(currentWorkflowId ? "Workflow updated" : "Workflow saved", "success");
@@ -189,6 +191,7 @@ export function WorkflowManager({
     currentWorkflowId,
     saveWorkflow,
     setWorkflowMetadata,
+    setIsDirty,
     loadWorkflows,
     handleCloseSaveDialog,
   ]);
@@ -196,30 +199,31 @@ export function WorkflowManager({
   const handleLoad = useCallback(
     async (workflow: WorkflowMetadata) => {
       if (
-        confirm(
-          `Load ${workflow.is_system ? "template" : "workflow"} "${workflow.name}"? Your current workflow will be replaced.`,
+        isDirty &&
+        !confirm(
+          `You have unsaved changes. Load ${workflow.is_system ? "template" : "workflow"} "${workflow.name}"? Your changes will be lost.`,
         )
       ) {
-        const result = await loadWorkflow(workflow.id, reactFlowInstance);
+        return;
+      }
 
-        if (result.success && result.nodes && result.edges) {
-          setNodes(result.nodes);
-          setEdges(result.edges);
-          // Update workflow metadata in store
-          // Don't set currentWorkflowId for system workflows/templates
-          // This allows users to modify and save as a new workflow
-          setWorkflowMetadata(
-            workflow.is_system ? undefined : workflow.id,
-            result.workflowName || workflow.name,
-            workflow.description || undefined,
-          );
-          handleCloseLoadDialog();
-        } else {
-          showToast(`Failed to load: ${result.error}`, "error");
-        }
+      const result = await loadWorkflow(workflow.id, reactFlowInstance);
+
+      if (result.success && result.nodes && result.edges) {
+        setNodes(result.nodes);
+        setEdges(result.edges);
+        setWorkflowMetadata(
+          workflow.is_system ? undefined : workflow.id,
+          result.workflowName || workflow.name,
+          workflow.description || undefined,
+        );
+        handleCloseLoadDialog();
+      } else {
+        showToast(`Failed to load: ${result.error}`, "error");
       }
     },
     [
+      isDirty,
       loadWorkflow,
       reactFlowInstance,
       setNodes,
@@ -274,8 +278,9 @@ export function WorkflowManager({
   const handleLoadVersion = useCallback(
     async (workflowId: string, versionNumber: number) => {
       if (
+        isDirty &&
         !confirm(
-          `Load version ${versionNumber}? Your current workflow will be replaced.`
+          `You have unsaved changes. Load version ${versionNumber}? Your changes will be lost.`
         )
       ) {
         return;
@@ -310,7 +315,7 @@ export function WorkflowManager({
         showToast(`Failed to load version: ${err instanceof Error ? err.message : 'Unknown error'}`, "error");
       }
     },
-    [reactFlowInstance, setNodes, setEdges, setWorkflowMetadata, workflows, handleCloseLoadDialog, importWorkflowStructure]
+    [isDirty, reactFlowInstance, setNodes, setEdges, setWorkflowMetadata, workflows, handleCloseLoadDialog, importWorkflowStructure]
   );
 
   // Pre-fill name when opening save dialog

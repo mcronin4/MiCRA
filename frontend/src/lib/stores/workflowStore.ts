@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { Node, Edge } from '@xyflow/react'
 import type { SavedWorkflowData, SavedWorkflowNode, SavedWorkflowEdge } from '@/lib/fastapi/workflows'
 import { getNodeSpec } from '@/lib/nodeRegistry'
@@ -122,6 +123,10 @@ interface WorkflowStore {
   reactFlowNodes: Node[]
   reactFlowEdges: Edge[]
 
+  // Unsaved-change tracking
+  isDirty: boolean
+  setIsDirty: (dirty: boolean) => void
+
   addNode: (node: WorkflowNodeState) => void
   removeNode: (nodeId: string) => void
   updateNode: (nodeId: string, updates: Partial<WorkflowNodeState>) => void
@@ -152,7 +157,9 @@ interface WorkflowStore {
   reset: () => void
 }
 
-export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
+export const useWorkflowStore = create<WorkflowStore>()(
+  persist(
+    (set, get) => ({
   nodes: {},
   imageBucket: [],
   currentWorkflowId: undefined,
@@ -160,6 +167,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   workflowDescription: undefined,
   reactFlowNodes: [],
   reactFlowEdges: [],
+  isDirty: false,
+  setIsDirty: (dirty) => set({ isDirty: dirty }),
 
   addNode: (node) => set((state) => ({
     nodes: { ...state.nodes, [node.id]: node }
@@ -408,5 +417,31 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
    * Reset workflow store to empty state.
    * Note: Does NOT clear imageBucket or workflow metadata - they persist across workflow changes
    */
-  reset: () => set({ nodes: {}, reactFlowNodes: [], reactFlowEdges: [] }),
-}))
+  reset: () => set({ nodes: {}, reactFlowNodes: [], reactFlowEdges: [], isDirty: false }),
+}),
+    {
+      name: 'micra-workflow',
+      version: 1,
+      partialize: (state) => ({
+        reactFlowNodes: state.reactFlowNodes,
+        reactFlowEdges: state.reactFlowEdges,
+        currentWorkflowId: state.currentWorkflowId,
+        workflowName: state.workflowName,
+        workflowDescription: state.workflowDescription,
+        nodes: Object.fromEntries(
+          Object.entries(state.nodes).map(([id, node]) => [
+            id,
+            {
+              id: node.id,
+              type: node.type,
+              status: 'idle' as NodeStatus,
+              inputs: node.inputs,
+              outputs: null,
+              manualInputEnabled: node.manualInputEnabled,
+            },
+          ])
+        ),
+      }),
+    },
+  ),
+)
