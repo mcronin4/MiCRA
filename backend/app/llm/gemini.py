@@ -20,7 +20,8 @@ client = genai.Client(api_key=gemini_api_key)
 def query_gemini(
     prompt: str,
     response_schema: Optional[Dict[str, Any]] = None,
-    response_mime_type: Optional[str] = None
+    response_mime_type: Optional[str] = None,
+    model: Optional[str] = None,
 ):
     """
     Query Gemini API with optional structured output support.
@@ -33,12 +34,14 @@ def query_gemini(
     Returns:
         Generated text, or parsed JSON if schema is provided
     """
+    model_name = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
     # Call the API - pass response_schema and response_mime_type directly if provided
     if response_schema is not None:
         # Try with structured output parameters
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=model_name,
                 contents=prompt,
                 response_schema=response_schema,
                 response_mime_type=response_mime_type or "application/json"
@@ -48,12 +51,12 @@ def query_gemini(
             # Add instruction to output JSON in the prompt
             json_prompt = f"{prompt}\n\nIMPORTANT: Output your response as valid JSON matching this schema: {json.dumps(response_schema)}"
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=model_name,
                 contents=json_prompt
             )
     else:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=model_name,
             contents=prompt
         )
     

@@ -294,6 +294,7 @@ export function TextGenerationNode({ id }: NodeProps) {
     typeof node?.inputs?.prompt_template_override === "string"
       ? node.inputs.prompt_template_override
       : "";
+  const effectiveToneGuidance = toneGuidanceOverride.trim() || selectedPreset?.tone_guidance || "";
   const outputFormatOverride =
     node?.inputs?.output_format_override &&
     typeof node.inputs.output_format_override === "object" &&
@@ -536,9 +537,12 @@ export function TextGenerationNode({ id }: NodeProps) {
                   Max length: {typeof maxLengthOverride === "number" ? maxLengthOverride : selectedPreset.max_length} characters
                 </div>
               )}
-              {(toneGuidanceOverride.trim() || selectedPreset.tone_guidance) && (
-                <div>
-                  Tone: {toneGuidanceOverride.trim() || selectedPreset.tone_guidance}
+              {effectiveToneGuidance && (
+                <div className="flex items-start gap-1">
+                  <span className="shrink-0">Tone:</span>
+                  <span className="min-w-0 flex-1 truncate" title={effectiveToneGuidance}>
+                    {effectiveToneGuidance}
+                  </span>
                 </div>
               )}
               {structureTemplateOverride.trim() && (

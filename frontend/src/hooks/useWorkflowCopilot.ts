@@ -15,7 +15,7 @@ interface RequestPlanArgs {
 
 export function useWorkflowCopilot() {
   const [prompt, setPrompt] = useState('')
-  const [mode, setMode] = useState<CopilotPlanMode>('edit')
+  const [mode, setMode] = useState<CopilotPlanMode>('create')
   const [isPlanning, setIsPlanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingPlan, setPendingPlan] = useState<CopilotPlanResponse | null>(null)
