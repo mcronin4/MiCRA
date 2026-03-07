@@ -19,7 +19,7 @@ import { useCanvasOperations } from "@/hooks/useCanvasOperations";
 import { useContextMenus } from "@/hooks/useContextMenus";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
 import { useBlueprintCompile } from "@/hooks/useBlueprintCompile";
-import type { CopilotModelTier, SavedWorkflowData } from "@/lib/fastapi/workflows";
+import type { CopilotModelTier, SavedWorkflowData, NodeOverrides } from "@/lib/fastapi/workflows";
 import { getWorkflowVersion } from "@/lib/fastapi/workflows";
 import { layoutWorkflowData } from "@/lib/workflowLayout";
 import {
@@ -37,10 +37,24 @@ import type {
 import { WORKFLOW_NODES, FLOW_NODES, BUCKET_NODES } from "./types";
 
 const LEGACY_OUTPUT_NODE_TYPES = new Set(["LinkedIn", "TikTok", "Email"]);
+const BUCKET_NODE_TYPES = new Set<string>(["ImageBucket", "AudioBucket", "VideoBucket", "TextBucket"]);
 const MICRAI_GUIDED_BUILD_ENABLED =
   process.env.NEXT_PUBLIC_MICRAI_GUIDED_BUILD_ENABLED !== "false";
 const MICRAI_RELEASE_TAIL_LISTEN_MS = 380;
 const MICRAI_LOADING_DOT_BASE_COLOR = "#a894c7";
+
+function collectBucketOverrides(): NodeOverrides {
+  const { nodes } = useWorkflowStore.getState();
+  const overrides: NodeOverrides = {};
+  for (const [nodeId, nodeState] of Object.entries(nodes)) {
+    if (!BUCKET_NODE_TYPES.has(nodeState.type)) continue;
+    const fileIds = nodeState.inputs?.selected_file_ids;
+    if (Array.isArray(fileIds)) {
+      overrides[nodeId] = { selected_file_ids: fileIds };
+    }
+  }
+  return overrides;
+}
 
 interface WorkflowBuilderProps {
   autoLoadWorkflowId?: string | null;
@@ -642,7 +656,8 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     }
 
     try {
-      const result = await executeById(currentWorkflowId);
+      const bucketOverrides = collectBucketOverrides();
+      const result = await executeById(currentWorkflowId, bucketOverrides);
       const viewResultsAction = {
         label: "View results",
         onClick: () => router.push(`/preview/${currentWorkflowId}`),
@@ -676,7 +691,8 @@ const WorkflowBuilder = ({ autoLoadWorkflowId, onAutoLoadComplete }: WorkflowBui
     setShowCompilationModal(false);
 
     try {
-      const result = await executeById(currentWorkflowId);
+      const bucketOverrides = collectBucketOverrides();
+      const result = await executeById(currentWorkflowId, bucketOverrides);
       const viewResultsAction = {
         label: "View results",
         onClick: () => router.push(`/preview/${currentWorkflowId}`),

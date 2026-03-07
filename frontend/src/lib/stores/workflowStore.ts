@@ -244,10 +244,10 @@ export const useWorkflowStore = create<WorkflowStore>()(
       if (nodeState?.inputs && node.type) {
         const paramKeys = getParamKeysToPersist(node.type, nodeState.inputs)
         for (const key of paramKeys) {
+          if (key === 'selected_file_ids') continue
           const value = nodeState.inputs[key]
           if (value === undefined) continue
           if (key === 'preset_id' && (value === '' || value === null)) continue
-          if (key === 'selected_file_ids' && (!Array.isArray(value) || value.length === 0)) continue
           baseData[key] = value
         }
       }
@@ -297,6 +297,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
       if (savedDataObj) {
         for (const key of Object.keys(savedDataObj)) {
           if (key === 'label') continue
+          if (key === 'selected_file_ids') continue
           inputs[key] = savedDataObj[key]
         }
       }

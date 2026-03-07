@@ -738,8 +738,41 @@ async def update_workflow(
 
 
 class ExecuteByIdRequest(BaseModel):
-    """Execute a saved workflow by ID."""
-    pass
+    """Execute a saved workflow by ID with optional runtime overrides."""
+    node_overrides: Optional[Dict[str, Dict[str, Any]]] = None
+
+
+BUCKET_NODE_TYPES = {"ImageBucket", "AudioBucket", "VideoBucket", "TextBucket"}
+
+
+def _apply_node_overrides(
+    blueprint: "Blueprint",
+    node_overrides: Dict[str, Dict[str, Any]] | None,
+) -> None:
+    """Merge runtime node_overrides into compiled blueprint params in-place.
+
+    For bucket nodes the overrides fully replace any persisted selected_file_ids
+    so that stale saved selections are never used.
+    """
+    if not node_overrides:
+        return
+    node_map = {n.node_id: n for n in blueprint.nodes}
+    for node_id, overrides in node_overrides.items():
+        bp_node = node_map.get(node_id)
+        if bp_node is None:
+            continue
+        bp_node.params.update(overrides)
+
+
+def _strip_bucket_selections(blueprint: "Blueprint") -> None:
+    """Remove any persisted selected_file_ids from bucket nodes.
+
+    Ensures stale saved selections are cleared even when the frontend
+    doesn't send overrides for a particular bucket node.
+    """
+    for bp_node in blueprint.nodes:
+        if bp_node.type in BUCKET_NODE_TYPES:
+            bp_node.params.pop("selected_file_ids", None)
 
 
 def _assert_workflow_access_or_404(
@@ -899,6 +932,9 @@ async def execute_workflow_by_id(
                 },
             )
 
+        _strip_bucket_selections(compilation.blueprint)
+        _apply_node_overrides(compilation.blueprint, request.node_overrides)
+
         execution_result = await execute_workflow(
             blueprint=compilation.blueprint,
         )
@@ -933,7 +969,6 @@ async def execute_workflow_by_id_stream(
     from app.services.workflow_executor import execute_workflow_streaming, save_execution_log
 
     try:
-        _ = request
         wf = _assert_workflow_access_or_404(supabase, workflow_id, user)
 
         version = get_latest_version(supabase, workflow_id)
@@ -959,6 +994,9 @@ async def execute_workflow_by_id_stream(
                     "diagnostics": [d.model_dump() for d in compilation.diagnostics],
                 },
             )
+
+        _strip_bucket_selections(compilation.blueprint)
+        _apply_node_overrides(compilation.blueprint, request.node_overrides)
 
         async def event_generator():
             async for event in execute_workflow_streaming(compilation.blueprint):
