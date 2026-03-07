@@ -37,7 +37,7 @@ export function usePreviewPage(workflowId: string) {
   const config = usePreviewStore((s) => s.config)
   const setTone = usePreviewStore((s) => s.setTone)
   const nodes = useWorkflowStore((s) => s.nodes)
-  const { executeById, isExecuting } = useWorkflowExecution()
+  const { isExecuting } = useWorkflowExecution()
 
   // Run selection
   const [runs, setRuns] = useState<WorkflowRunSummary[]>([])
@@ -399,18 +399,6 @@ export function usePreviewPage(workflowId: string) {
     [isViewingDraft, selectedDraftId, workflowId, platformId, setTone, setConfigFromDraft, refreshDrafts]
   )
 
-  const handleRerun = useCallback(async () => {
-    setPersistedNodes({})
-    setRunWorkflowOutputs({})
-    setRunNotice(null)
-    try {
-      await executeById(workflowId)
-      await refreshRuns(true)
-    } catch {
-      // Errors surfaced by execution hook
-    }
-  }, [workflowId, executeById, refreshRuns])
-
   const inMemoryHasOutputs = useMemo(
     () => Object.values(nodes).some((n) => n.status === 'completed' && n.outputs),
     [nodes]
@@ -485,7 +473,6 @@ export function usePreviewPage(workflowId: string) {
     handleSaveAsDraft,
     handleDeleteDraft,
     handleToneChange,
-    handleRerun,
 
     // Notices
     runNotice,

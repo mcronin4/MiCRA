@@ -501,7 +501,12 @@ async def _exec_text_bucket(params: dict, inputs: dict) -> dict[str, Any]:
                 logger.debug("TextBucket: Read %d chars from file %s", len(response.text), file_record["id"])
                 return response.text
             except Exception as e:
-                logger.warning("Failed to read text file %s: %s", file_record["id"], str(e))
+                logger.warning(
+                    "Failed to read text file %s: [%s] %s",
+                    file_record["id"],
+                    type(e).__name__,
+                    repr(e),
+                )
                 return None
 
         download_results = await asyncio.gather(

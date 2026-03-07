@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, Loader2, Save, Trash2, Check } from 'lucide-react'
+import { ArrowLeft, Loader2, Save, Trash2, Check } from 'lucide-react'
 import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import { usePreviewStore } from '@/lib/stores/previewStore'
 import { usePreviewPage } from '@/hooks/usePreviewPage'
@@ -60,7 +60,6 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
     handleSaveAsDraft,
     handleDeleteDraft,
     handleToneChange,
-    handleRerun,
     runNotice,
     config,
   } = usePreviewPage(workflowId)
@@ -150,17 +149,12 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
                     </select>
                   </div>
 
-                  <button
-                    onClick={handleRerun}
-                    disabled={isExecuting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50 shrink-0"
+                  <Link
+                    href="/workflow"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shrink-0"
                   >
-                    <RefreshCw
-                      size={12}
-                      className={isExecuting ? 'animate-spin' : ''}
-                    />
-                    {isExecuting ? 'Running...' : 'Re-run'}
-                  </button>
+                    Re-run in Editor
+                  </Link>
                 </div>
               </div>
 
@@ -263,14 +257,6 @@ export function PreviewPage({ workflowId }: PreviewPageProps) {
                   }
                 />
 
-                {isExecuting && (
-                  <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 pointer-events-none">
-                    <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md border border-slate-200">
-                      <Loader2 size={16} className="animate-spin text-indigo-500" />
-                      <span className="text-sm text-slate-600">Re-running workflow…</span>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>

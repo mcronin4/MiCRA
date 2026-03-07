@@ -3,7 +3,7 @@ import { useWorkflowStore } from '@/lib/stores/workflowStore'
 import {
   executeWorkflowByIdStreamingWithCallback,
 } from '@/lib/fastapi/workflows'
-import type { StreamingExecutionEvent } from '@/lib/fastapi/workflows'
+import type { StreamingExecutionEvent, NodeOverrides } from '@/lib/fastapi/workflows'
 import type { WorkflowExecutionResult } from '@/types/workflow-execution'
 
 export function useWorkflowExecution() {
@@ -117,7 +117,7 @@ export function useWorkflowExecution() {
   )
 
   const executeById = useCallback(
-    async (workflowId: string): Promise<WorkflowExecutionResult | null> => {
+    async (workflowId: string, nodeOverrides?: NodeOverrides): Promise<WorkflowExecutionResult | null> => {
       setIsExecuting(true)
       setError(null)
       setExecutionResult(null)
@@ -134,7 +134,8 @@ export function useWorkflowExecution() {
         await executeWorkflowByIdStreamingWithCallback(
           workflowId,
           handleStreamEvent,
-          controller.signal
+          controller.signal,
+          nodeOverrides,
         )
 
         console.log('[ExecuteById] Stream complete, final result:', finalResultRef.current)

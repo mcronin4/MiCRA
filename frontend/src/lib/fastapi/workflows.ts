@@ -593,12 +593,19 @@ function getStreamingBaseUrl(): string {
 }
 
 /**
+ * Runtime overrides sent alongside an execute-by-id request.
+ * Keys are node IDs, values are param dicts merged into compiled blueprint params.
+ */
+export type NodeOverrides = Record<string, Record<string, unknown>>
+
+/**
  * Execute a saved workflow by ID with SSE streaming using callbacks.
  */
 export async function executeWorkflowByIdStreamingWithCallback(
   workflowId: string,
   onEvent: (event: StreamingExecutionEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  nodeOverrides?: NodeOverrides,
 ): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession()
   const headers: HeadersInit = {
@@ -612,11 +619,16 @@ export async function executeWorkflowByIdStreamingWithCallback(
   const baseUrl = getStreamingBaseUrl()
   console.log('[SSE] Starting streaming request to:', `${baseUrl}/v1/workflows/${workflowId}/execute/stream`)
 
+  const body: Record<string, unknown> = {}
+  if (nodeOverrides && Object.keys(nodeOverrides).length > 0) {
+    body.node_overrides = nodeOverrides
+  }
+
   const response = await fetch(`${baseUrl}/v1/workflows/${workflowId}/execute/stream`, {
     method: 'POST',
     headers,
     signal,
-    body: JSON.stringify({}),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
