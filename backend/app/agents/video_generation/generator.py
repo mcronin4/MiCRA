@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+import json
 from pathlib import Path
 from typing import Any
 
@@ -39,12 +40,36 @@ def _build_vertex_client():
     """
     Build a Vertex AI client when service-account credentials are configured.
 
-      1. GOOGLE_APPLICATION_CREDENTIALS → Vertex AI mode
-      2. GEMINI_API_KEY → Gemini API mode
+    Priority:
+      1. GCP_JSON_KEY (JSON string in env) → Vertex AI mode
+      2. GOOGLE_APPLICATION_CREDENTIALS (file path) → Vertex AI mode
+      3. GEMINI_API_KEY → Gemini API mode
     """
     from google import genai
 
     sa_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    gcp_json = os.getenv("GCP_JSON_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if gcp_json:
+        from google.oauth2 import service_account as _sa
+        creds_info = json.loads(gcp_json)
+        project = os.getenv("GOOGLE_CLOUD_PROJECT", creds_info.get("project_id"))
+        location = os.getenv("VERTEX_AI_LOCATION", "us-central1")
+        creds = _sa.Credentials.from_service_account_info(
+            creds_info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        logger.info(
+            "Using Vertex AI auth via GCP_JSON_KEY (project=%s, location=%s)",
+            project, location,
+        )
+        return genai.Client(
+            vertexai=True,
+            project=project,
+            location=location,
+            credentials=creds,
+        )
 
     if sa_path:
         # Vertex AI mode with service-account credentials
@@ -59,10 +84,15 @@ def _build_vertex_client():
             project=project,
             location=location,
         )
-    raise RuntimeError(
-        "No Vertex AI credentials configured. Set GOOGLE_APPLICATION_CREDENTIALS "
-        "to use Veo with service-account auth."
-    )
+    elif api_key:
+        logger.info("Using Gemini API key auth")
+        return genai.Client(api_key=api_key)
+    else:
+        raise RuntimeError(
+            "No auth configured. Set GCP_JSON_KEY (inline JSON), "
+            "GOOGLE_APPLICATION_CREDENTIALS (service-account file path), "
+            "or GEMINI_API_KEY."
+        )
 
 
 def _is_live() -> bool:
@@ -170,11 +200,19 @@ def _execute_generate_video_with_client(
             import requests as _requests
 
             sa_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            gcp_json = os.getenv("GCP_JSON_KEY")
             headers = {}
-            if sa_path:
-                from google.auth.transport.requests import Request as _Req
-                from google.oauth2 import service_account as _sa
-
+            from google.oauth2 import service_account as _sa
+            from google.auth.transport.requests import Request as _Req
+            if gcp_json:
+                creds_info = json.loads(gcp_json)
+                creds = _sa.Credentials.from_service_account_info(
+                    creds_info,
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                )
+                creds.refresh(_Req())
+                headers["Authorization"] = f"Bearer {creds.token}"
+            elif sa_path:
                 creds = _sa.Credentials.from_service_account_file(
                     sa_path,
                     scopes=["https://www.googleapis.com/auth/cloud-platform"],
