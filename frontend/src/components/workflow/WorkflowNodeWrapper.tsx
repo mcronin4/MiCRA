@@ -19,6 +19,7 @@ import { NodeConfig } from "@/types/workflow";
 import { ManualInputToggle } from "./nodes/ManualInputToggle";
 import { getNodeSpec } from "@/lib/nodeRegistry";
 import type { RuntimeType } from "@/types/blueprint";
+import { DEFAULT_WORKFLOW_NODE_WIDTH } from "@/lib/workflowNodeSizing";
 
 // Minimalist Apple-inspired theme configurations
 export interface NodeTheme {
@@ -128,8 +129,9 @@ interface Props {
   getOutputLabel?: (outputId: string, defaultLabel: string) => string;
   getOutputDataType?: (outputId: string, defaultDataType: string) => string;
   onOutputHandleDoubleClick?: (outputId: string) => void;
-  // Optional extra className to customize the outer wrapper (e.g., per-node width)
+  // Optional extra className to customize the outer wrapper chrome.
   className?: string;
+  widthPx?: number;
 }
 
 // Tooltip component for handles
@@ -250,6 +252,7 @@ export function WorkflowNodeWrapper({
   getOutputDataType,
   onOutputHandleDoubleClick,
   className,
+  widthPx = DEFAULT_WORKFLOW_NODE_WIDTH,
 }: Props) {
   const node = useWorkflowStore((state) => state.nodes[nodeId]);
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
@@ -308,7 +311,7 @@ export function WorkflowNodeWrapper({
         rounded-2xl 
         shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)]
         border border-slate-200/60
-        min-w-[340px]
+        box-border
         overflow-visible
         transition-all duration-300 ease-out
         hover:shadow-[0_8px_30px_-8px_rgba(0,0,0,0.12)]
@@ -317,11 +320,12 @@ export function WorkflowNodeWrapper({
         ${justCompleted ? 'animate-node-complete' : ''}
         ${isRunning ? 'animate-running-glow border-blue-300' : ''}
       ${className ?? ''}`}
+      style={{ width: widthPx, minWidth: widthPx, maxWidth: widthPx }}
     >
       {/* Minimalist header */}
       <div className="px-6 py-5 pb-2">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-3.5">
             <div
               className={`
               p-2.5 rounded-xl 
@@ -338,12 +342,12 @@ export function WorkflowNodeWrapper({
                 <ThemeIcon size={20} />
               )}
             </div>
-            <div>
-              <h3 className="font-semibold text-[16px] text-slate-900 leading-tight">
+            <div className="min-w-0 flex-1">
+              <h3 className="break-words font-semibold text-[16px] text-slate-900 leading-tight">
                 {config.label}
               </h3>
               {config.description && (
-                <p className="text-[13px] text-slate-500 mt-1 leading-relaxed">
+                <p className="mt-1 break-words text-[13px] text-slate-500 leading-relaxed">
                   {config.description}
                 </p>
               )}
@@ -419,7 +423,7 @@ export function WorkflowNodeWrapper({
       })}
 
       {/* Content */}
-      <div className="p-6 pt-2">
+      <div className="min-w-0 p-6 pt-2">
         {children}
 
         {node?.error && (

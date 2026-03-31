@@ -1,4 +1,10 @@
 import type { SavedWorkflowData, SavedWorkflowNode } from '@/lib/fastapi/workflows'
+import {
+  DEFAULT_WORKFLOW_NODE_COLUMN_GAP,
+  DEFAULT_WORKFLOW_NODE_ROW_GAP,
+  WORKFLOW_NODE_COLLISION_X,
+  WORKFLOW_NODE_COLLISION_Y,
+} from './workflowNodeSizing'
 
 export type WorkflowLayoutMode = 'full' | 'touched'
 
@@ -13,10 +19,10 @@ export interface WorkflowLayoutOptions {
 
 const DEFAULT_ORIGIN_X = 160
 const DEFAULT_ORIGIN_Y = 120
-const DEFAULT_COL_GAP = 560
-const DEFAULT_ROW_GAP = 340
-const COLLISION_X = 420
-const COLLISION_Y = 280
+const DEFAULT_COL_GAP = DEFAULT_WORKFLOW_NODE_COLUMN_GAP
+const DEFAULT_ROW_GAP = DEFAULT_WORKFLOW_NODE_ROW_GAP
+const COLLISION_X = WORKFLOW_NODE_COLLISION_X
+const COLLISION_Y = WORKFLOW_NODE_COLLISION_Y
 
 export function layoutWorkflowData(
   workflowData: SavedWorkflowData,

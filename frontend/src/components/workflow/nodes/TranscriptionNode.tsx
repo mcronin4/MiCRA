@@ -294,7 +294,7 @@ export function TranscriptionNode({ id }: NodeProps) {
                   <Upload size={18} strokeWidth={2} />
                 </div>
                 <p
-                  className={`text-sm font-medium ${
+                  className={`break-all text-sm font-medium ${
                     isDragging ? "text-teal-700" : "text-slate-700"
                   }`}
                 >
