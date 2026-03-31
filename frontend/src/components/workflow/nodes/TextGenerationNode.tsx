@@ -492,7 +492,7 @@ export function TextGenerationNode({ id }: NodeProps) {
               </label>
               <button
                 onClick={handleCreatePreset}
-                className="nodrag flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors"
+                className="nodrag shrink-0 flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors"
               >
                 <Plus size={14} strokeWidth={2} />
                 New
@@ -503,11 +503,11 @@ export function TextGenerationNode({ id }: NodeProps) {
                 Loading presets...
               </div>
             ) : (
-              <div className="flex gap-2">
+              <div className="min-w-0 flex gap-2">
                 <select
                   value={selectedPresetOptionValue}
                   onChange={(e) => setSelectedPresetOptionValue(e.target.value)}
-                  className="nodrag flex-1 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all"
+                  className="nodrag min-w-0 flex-1 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all"
                 >
                   <option value="">Select a preset...</option>
                   {presetOptions.map((option) => (
@@ -531,7 +531,7 @@ export function TextGenerationNode({ id }: NodeProps) {
 
           {/* Preset info */}
           {selectedPreset && (
-            <div className="text-xs text-gray-500 space-y-1">
+            <div className="break-words text-xs text-gray-500 space-y-1">
               {(typeof maxLengthOverride === "number" ? maxLengthOverride : selectedPreset.max_length) && (
                 <div>
                   Max length: {typeof maxLengthOverride === "number" ? maxLengthOverride : selectedPreset.max_length} characters

@@ -290,6 +290,7 @@ def plan_workflow_with_copilot(
         or bool(text_settings.get("explicit_preset_request"))
         or bool(text_settings.get("text_overrides"))
     )
+    single_output_request = not _request_explicitly_mentions_multiple_outputs(prompt)
     target_channel = _infer_target_channel(prompt)
     requested_channels = _infer_requested_output_channels(prompt)
     channel_text_settings_by_output_key = _resolve_text_settings_for_channels(
@@ -329,6 +330,9 @@ def plan_workflow_with_copilot(
 
     planned = _prepare_planned_workflow(
         workflow_data=planned,
+        request_text=prompt,
+        target_channel=target_channel,
+        single_output_request=single_output_request,
         preset_id=preset_id,
         preset_variant=preset_variant,
         text_overrides=text_overrides,
@@ -366,6 +370,9 @@ def plan_workflow_with_copilot(
         requested_channels=requested_channels,
         channel_text_settings_by_output_key=channel_text_settings_by_output_key,
         end_output_key=end_output_key,
+        request_text=prompt,
+        target_channel=target_channel,
+        single_output_request=single_output_request,
     )
     llm_repair_attempts = 0
 
@@ -408,6 +415,9 @@ def plan_workflow_with_copilot(
 
         planned = _prepare_planned_workflow(
             workflow_data=repaired,
+            request_text=prompt,
+            target_channel=target_channel,
+            single_output_request=single_output_request,
             preset_id=preset_id,
             preset_variant=preset_variant,
             text_overrides=text_overrides,
@@ -426,6 +436,9 @@ def plan_workflow_with_copilot(
             requested_channels=requested_channels,
             channel_text_settings_by_output_key=channel_text_settings_by_output_key,
             end_output_key=end_output_key,
+            request_text=prompt,
+            target_channel=target_channel,
+            single_output_request=single_output_request,
         )
         repair_attempts += extra_attempts
         if compile_result.success:
@@ -456,6 +469,9 @@ def plan_workflow_with_copilot(
         plan_source = "fallback"
         planned = _prepare_planned_workflow(
             workflow_data=planned,
+            request_text=prompt,
+            target_channel=target_channel,
+            single_output_request=single_output_request,
             preset_id=preset_id,
             preset_variant=preset_variant,
             text_overrides=text_overrides,
@@ -474,6 +490,9 @@ def plan_workflow_with_copilot(
             requested_channels=requested_channels,
             channel_text_settings_by_output_key=channel_text_settings_by_output_key,
             end_output_key=end_output_key,
+            request_text=prompt,
+            target_channel=target_channel,
+            single_output_request=single_output_request,
         )
         repair_attempts += extra_attempts
 
@@ -566,6 +585,9 @@ def plan_workflow_with_copilot(
 def _prepare_planned_workflow(
     *,
     workflow_data: dict[str, Any],
+    request_text: str,
+    target_channel: str | None,
+    single_output_request: bool,
     preset_id: str | None,
     preset_variant: PresetVariant | None,
     text_overrides: dict[str, Any],
@@ -575,6 +597,14 @@ def _prepare_planned_workflow(
     end_output_key: str | None,
 ) -> dict[str, Any]:
     planned = _normalize_workflow_data(workflow_data)
+    _apply_request_graph_preferences(
+        planned,
+        request_text=request_text,
+        target_channel=target_channel,
+        end_output_key=end_output_key,
+        preset_id=preset_id,
+        single_output_request=single_output_request,
+    )
     _apply_node_defaults_and_params(
         planned,
         preset_id=preset_id,
@@ -585,7 +615,11 @@ def _prepare_planned_workflow(
     _repair_edge_handles(planned)
     _expand_workflow_to_multiple_end_channels(planned, channels=requested_channels)
     _ensure_output_visual_connections_to_end(planned)
-    _apply_end_output_key_selection(planned, end_output_key=end_output_key)
+    _apply_end_output_key_selection(
+        planned,
+        end_output_key=end_output_key,
+        overwrite_all_ends=single_output_request,
+    )
     _align_multi_end_routing_and_text_settings(
         planned,
         channel_text_settings_by_output_key=channel_text_settings_by_output_key,
@@ -605,6 +639,9 @@ def _compile_workflow_with_auto_repair(
     requested_channels: list[str],
     channel_text_settings_by_output_key: dict[str, dict[str, Any]],
     end_output_key: str | None,
+    request_text: str,
+    target_channel: str | None,
+    single_output_request: bool,
 ) -> tuple[Any, int]:
     compile_result = compile_workflow(
         nodes=workflow["nodes"],
@@ -622,6 +659,14 @@ def _compile_workflow_with_auto_repair(
         )
         repair_attempts += 1
         _auto_repair_graph(workflow, compile_result.diagnostics)
+        _apply_request_graph_preferences(
+            workflow,
+            request_text=request_text,
+            target_channel=target_channel,
+            end_output_key=end_output_key,
+            preset_id=preset_id,
+            single_output_request=single_output_request,
+        )
         _apply_node_defaults_and_params(
             workflow,
             preset_id=preset_id,
@@ -632,7 +677,11 @@ def _compile_workflow_with_auto_repair(
         _repair_edge_handles(workflow)
         _expand_workflow_to_multiple_end_channels(workflow, channels=requested_channels)
         _ensure_output_visual_connections_to_end(workflow)
-        _apply_end_output_key_selection(workflow, end_output_key=end_output_key)
+        _apply_end_output_key_selection(
+            workflow,
+            end_output_key=end_output_key,
+            overwrite_all_ends=single_output_request,
+        )
         _align_multi_end_routing_and_text_settings(
             workflow,
             channel_text_settings_by_output_key=channel_text_settings_by_output_key,
@@ -1140,6 +1189,14 @@ Rules:
   * TextGeneration.generated_text -> End.end-input
   * ImageMatching.images -> End.end-input
   when those nodes are present.
+- For a single post/email request that also asks for images from a video:
+  * use exactly one TextGeneration node for that output
+  * use exactly one End node for that output
+  * connect VideoBucket -> Transcription -> TextGeneration
+  * connect VideoBucket -> ImageExtraction -> ImageMatching
+  * connect TextGeneration.generated_text -> ImageMatching.text
+  * never connect Transcription.transcription directly to ImageMatching.text
+  * do not create a separate "...with images" End/output_key; images belong on the same final End node
 - TextGeneration nodes must include data.preset_id when available.
 - TextGeneration runtime overrides are applied by MicrAI post-processing,
   so planner output may omit:
@@ -1901,6 +1958,160 @@ def _apply_node_defaults_and_params(
                     data.setdefault(key, value)
 
 
+def _apply_request_graph_preferences(
+    workflow: dict[str, Any],
+    *,
+    request_text: str,
+    target_channel: str | None,
+    end_output_key: str | None,
+    preset_id: str | None,
+    single_output_request: bool,
+) -> None:
+    if _should_canonicalize_video_social_post_with_images(
+        workflow=workflow,
+        request_text=request_text,
+        target_channel=target_channel,
+        single_output_request=single_output_request,
+    ):
+        _canonicalize_video_social_post_with_images(
+            workflow,
+            preset_id=preset_id,
+            end_output_key=end_output_key,
+        )
+
+    if single_output_request:
+        _collapse_extra_end_nodes(workflow)
+
+
+def _should_canonicalize_video_social_post_with_images(
+    *,
+    workflow: dict[str, Any],
+    request_text: str,
+    target_channel: str | None,
+    single_output_request: bool,
+) -> bool:
+    if not single_output_request:
+        return False
+    normalized = _normalize_text(request_text)
+    has_video_signal = _contains_phrase(normalized, "video") or any(
+        node.get("type") == "VideoBucket" for node in workflow.get("nodes", [])
+    )
+    has_image_signal = any(
+        _contains_phrase(normalized, phrase)
+        for phrase in (
+            "with images",
+            "matching images",
+            "matched images",
+            "images",
+            "image",
+            "photos",
+            "visuals",
+        )
+    )
+    has_post_signal = (
+        target_channel in {"linkedin", "x", "email"}
+        or _contains_phrase(normalized, "post")
+        or _contains_phrase(normalized, "email")
+    )
+    return has_video_signal and has_image_signal and has_post_signal
+
+
+def _canonicalize_video_social_post_with_images(
+    workflow: dict[str, Any],
+    *,
+    preset_id: str | None,
+    end_output_key: str | None,
+) -> None:
+    video_bucket_id = _find_first_node_id(workflow, "VideoBucket")
+    if video_bucket_id is None:
+        video_bucket_id = _add_node(workflow, "VideoBucket", 120, 220)
+
+    transcription_id = _find_first_node_id(workflow, "Transcription")
+    if transcription_id is None:
+        transcription_id = _add_node(workflow, "Transcription", 420, 360)
+
+    image_extraction_id = _find_first_node_id(workflow, "ImageExtraction")
+    if image_extraction_id is None:
+        image_extraction_id = _add_node(
+            workflow,
+            "ImageExtraction",
+            420,
+            120,
+            data={"selection_mode": "auto", "max_frames": 10},
+        )
+
+    text_generation_id = _find_first_node_id(workflow, "TextGeneration")
+    if text_generation_id is None:
+        text_generation_id = _add_node(
+            workflow,
+            "TextGeneration",
+            720,
+            360,
+            data={"preset_id": preset_id} if preset_id else {},
+        )
+
+    image_matching_id = _find_first_node_id(workflow, "ImageMatching")
+    if image_matching_id is None:
+        image_matching_id = _add_node(
+            workflow,
+            "ImageMatching",
+            1020,
+            220,
+            data={"match_count_mode": "all", "max_matches": 5},
+        )
+
+    end_id = _find_first_node_id(workflow, "End")
+    if end_id is None:
+        end_id = _add_node(
+            workflow,
+            "End",
+            1320,
+            220,
+            data={"output_key": end_output_key} if end_output_key else {},
+        )
+
+    _remove_extra_nodes_of_type_keep_first(workflow, "TextGeneration", text_generation_id)
+    _remove_extra_nodes_of_type_keep_first(workflow, "ImageMatching", image_matching_id)
+    _remove_extra_nodes_of_type_keep_first(workflow, "End", end_id)
+
+    workflow["edges"] = [
+        edge
+        for edge in workflow["edges"]
+        if not (
+            edge.get("target") == text_generation_id
+            and edge.get("targetHandle") == "text"
+            and not (
+                edge.get("source") == transcription_id
+                and edge.get("sourceHandle") == "transcription"
+            )
+        )
+        and not (
+            edge.get("target") == image_matching_id
+            and edge.get("targetHandle") == "text"
+            and not (
+                edge.get("source") == text_generation_id
+                and edge.get("sourceHandle") == "generated_text"
+            )
+        )
+        and not (
+            edge.get("target") == end_id
+            and edge.get("targetHandle") == "end-input"
+            and not (
+                (edge.get("source") == text_generation_id and edge.get("sourceHandle") == "generated_text")
+                or (edge.get("source") == image_matching_id and edge.get("sourceHandle") == "images")
+            )
+        )
+    ]
+
+    _add_edge(workflow, video_bucket_id, "videos", transcription_id, "video")
+    _add_edge(workflow, transcription_id, "transcription", text_generation_id, "text")
+    _add_edge(workflow, video_bucket_id, "videos", image_extraction_id, "source")
+    _add_edge(workflow, image_extraction_id, "images", image_matching_id, "images")
+    _add_edge(workflow, text_generation_id, "generated_text", image_matching_id, "text")
+    _add_edge(workflow, text_generation_id, "generated_text", end_id, "end-input")
+    _add_edge(workflow, image_matching_id, "images", end_id, "end-input")
+
+
 def _repair_edge_handles(workflow: dict[str, Any]) -> None:
     node_by_id = {node["id"]: node for node in workflow["nodes"]}
     for edge in workflow["edges"]:
@@ -2244,17 +2455,21 @@ def _apply_end_output_key_selection(
     workflow: dict[str, Any],
     *,
     end_output_key: str | None,
+    overwrite_all_ends: bool = True,
 ) -> None:
     chosen = str(end_output_key or "").strip()
     if not chosen:
         return
-    end_nodes = [node for node in workflow.get("nodes", []) if node.get("type") == "End"]
+    end_nodes = [
+        node for node in workflow.get("nodes", [])
+        if node.get("type") == "End"
+    ]
     if not end_nodes:
         return
-
-    if len(end_nodes) == 1:
-        data = end_nodes[0].setdefault("data", {})
-        data["output_key"] = chosen
+    if len(end_nodes) == 1 or overwrite_all_ends:
+        for node in end_nodes:
+            data = node.setdefault("data", {})
+            data["output_key"] = chosen
         return
 
     # Multi-End workflow: preserve explicit per-End keys from planner and only
@@ -3703,6 +3918,15 @@ def _infer_requested_output_channels(prompt: str) -> list[str]:
     return channels
 
 
+def _request_explicitly_mentions_multiple_outputs(request_text: str) -> bool:
+    requested_output_channels = [
+        channel
+        for channel in _infer_requested_output_channels(request_text)
+        if channel in TARGET_CHANNEL_TO_END_OUTPUT_KEY
+    ]
+    return len(requested_output_channels) > 1
+
+
 def _resolve_end_output_key(
     *,
     request_text: str,
@@ -3772,6 +3996,42 @@ def _find_first_node_id(workflow: dict[str, Any], node_type: str) -> str | None:
         if node["type"] == node_type:
             return node["id"]
     return None
+
+
+def _collapse_extra_end_nodes(workflow: dict[str, Any]) -> None:
+    end_id = _find_first_node_id(workflow, "End")
+    if end_id is None:
+        return
+    _remove_extra_nodes_of_type_keep_first(workflow, "End", end_id)
+
+
+def _remove_extra_nodes_of_type_keep_first(
+    workflow: dict[str, Any],
+    node_type: str,
+    keep_node_id: str,
+) -> None:
+    remove_ids = {
+        node["id"]
+        for node in workflow["nodes"]
+        if node["type"] == node_type and node["id"] != keep_node_id
+    }
+    _remove_nodes_and_incident_edges(workflow, remove_ids)
+
+
+def _remove_nodes_and_incident_edges(
+    workflow: dict[str, Any],
+    node_ids: set[str],
+) -> None:
+    if not node_ids:
+        return
+    workflow["nodes"] = [
+        node for node in workflow["nodes"]
+        if node["id"] not in node_ids
+    ]
+    workflow["edges"] = [
+        edge for edge in workflow["edges"]
+        if edge.get("source") not in node_ids and edge.get("target") not in node_ids
+    ]
 
 
 def _next_node_id(workflow: dict[str, Any], node_type: str) -> str:

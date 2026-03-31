@@ -241,7 +241,6 @@ export function ImageMatchingNode({ id }: NodeProps) {
       nodeId={id}
       config={config}
       onExecute={handleExecute}
-      className="min-w-[440px]"
       theme={nodeThemes.amber}
       getOutputDataType={(outputId, defaultType) =>
         outputId === "images" ? "images" : defaultType
