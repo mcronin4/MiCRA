@@ -39,8 +39,9 @@ def _build_client():
     Build a google.genai.Client with the best available auth.
 
     Priority:
-      1. GOOGLE_APPLICATION_CREDENTIALS → Vertex AI mode
-      2. GEMINI_API_KEY → Gemini API mode
+      1. GCP_JSON_KEY (JSON string in env) → Vertex AI mode
+      2. GOOGLE_APPLICATION_CREDENTIALS (file path) → Vertex AI mode
+      3. GEMINI_API_KEY → Gemini API mode
     """
     from google import genai
 
@@ -49,16 +50,20 @@ def _build_client():
     api_key = os.getenv("GEMINI_API_KEY")
 
     if gcp_json:
+        from google.oauth2 import service_account as _sa
         creds_info = json.loads(gcp_json)
         project = os.getenv("GOOGLE_CLOUD_PROJECT", creds_info.get("project_id"))
         location = os.getenv("VERTEX_AI_LOCATION", "us-central1")
-        
-        # Pass the dictionary directly to the client
+        creds = _sa.Credentials.from_service_account_info(creds_info)
+        logger.info(
+            "Using Vertex AI auth via GCP_JSON_KEY (project=%s, location=%s)",
+            project, location,
+        )
         return genai.Client(
             vertexai=True,
             project=project,
             location=location,
-            credentials=creds_info # Modern SDKs accept the dict here
+            credentials=creds,
         )
 
     if sa_path:
@@ -79,8 +84,9 @@ def _build_client():
         return genai.Client(api_key=api_key)
     else:
         raise RuntimeError(
-            "No auth configured. Set either GOOGLE_APPLICATION_CREDENTIALS "
-            "(service-account JSON path) or GEMINI_API_KEY."
+            "No auth configured. Set GCP_JSON_KEY (inline JSON), "
+            "GOOGLE_APPLICATION_CREDENTIALS (service-account file path), "
+            "or GEMINI_API_KEY."
         )
 
 
@@ -270,11 +276,12 @@ def generate_video_with_veo(
             from google.auth.transport.requests import Request as _Req
             if gcp_json:
                 creds_info = json.loads(gcp_json)
-                creds = _sa.Credentials.from_service_acccount_info(
+                creds = _sa.Credentials.from_service_account_info(
                     creds_info,
                     scopes=["https://www.googleapis.com/auth/cloud-platform"],
                 )
-                
+                creds.refresh(_Req())
+                headers["Authorization"] = f"Bearer {creds.token}"
             elif sa_path:
                 creds = _sa.Credentials.from_service_account_file(
                     sa_path,
