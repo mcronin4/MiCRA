@@ -54,7 +54,10 @@ def _build_client():
         creds_info = json.loads(gcp_json)
         project = os.getenv("GOOGLE_CLOUD_PROJECT", creds_info.get("project_id"))
         location = os.getenv("VERTEX_AI_LOCATION", "us-central1")
-        creds = _sa.Credentials.from_service_account_info(creds_info)
+        creds = _sa.Credentials.from_service_account_info(
+            creds_info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
         logger.info(
             "Using Vertex AI auth via GCP_JSON_KEY (project=%s, location=%s)",
             project, location,
