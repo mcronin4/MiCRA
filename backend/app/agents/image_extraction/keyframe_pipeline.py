@@ -13,8 +13,6 @@ from PIL import Image
 
 from .phash import phash as compute_phash_impl
 
-from .scene_detection import detect_scenes
-
 #config
 
 DEFAULT_CONFIG = {
@@ -45,7 +43,7 @@ DEFAULT_CONFIG = {
 }
 
 
-#phase 0: scene detection
+#phase 0: video inspection / uniform sampling
 
 def get_video_duration(video_path: str) -> float:
     #get video duration in seconds
@@ -58,23 +56,29 @@ def get_video_duration(video_path: str) -> float:
     return frame_count / fps if fps > 0 else 0
 
 
-def run_scene_detection(video_path: str, threshold: float) -> List[Dict]:
+def generate_uniform_candidates(video_path: str, config: Dict) -> List[Dict]:
+    # Uniformly sample timestamps across the full video instead of per scene.
+    duration = get_video_duration(video_path)
+    if duration <= 0:
+        return [{"scene_id": 0, "timestamp": 0.0}]
 
-    # Detect scenes and convert to simple dict format.
-    scene_list = detect_scenes(video_path, threshold=threshold)
-    
-    if not scene_list:
-        duration = get_video_duration(video_path)
-        return [{"scene_id": 0, "start_time_seconds": 0.0, "end_time_seconds": duration}]
-    
-    scenes = []
-    for i, (start, end) in enumerate(scene_list):
-        scenes.append({
+    max_total = max(1, int(config.get("max_total_frames", 10)))
+    sample_period = max(0.1, float(config.get("sample_period_seconds", 5.0)))
+
+    # Keep sampling bounded so extraction stays fast while still giving the
+    # later quality/dedup phases enough frames to work with.
+    period_based_count = max(1, int(math.ceil(duration / sample_period)))
+    candidate_count = max(max_total, min(period_based_count, max_total * 2))
+
+    candidates = []
+    for i in range(candidate_count):
+        timestamp = (i + 1) * duration / (candidate_count + 1)
+        candidates.append({
             "scene_id": i,
-            "start_time_seconds": start.get_seconds(),
-            "end_time_seconds": end.get_seconds()
+            "timestamp": timestamp,
         })
-    return scenes
+
+    return candidates
 
 
 #phase 1: candidate sampling
@@ -512,12 +516,12 @@ def run_keyframe_pipeline(video_path: str, config: Optional[Dict] = None) -> Dic
     print(f"Output: {output_dir}")
     print(f"{'='*60}\n")
     
-    print("[Phase 0] Detecting scenes...")
-    scenes = run_scene_detection(video_path, cfg["scene_threshold"])
-    print(f"  Found {len(scenes)} scene(s)\n")
+    print("[Phase 0] Inspecting video...")
+    duration = get_video_duration(video_path)
+    print(f"  Duration: {duration:.2f}s\n")
     
-    print("[Phase 1] Generating candidate timestamps...")
-    candidates = generate_all_candidates(scenes, cfg)
+    print("[Phase 1] Generating uniformly spaced candidate timestamps...")
+    candidates = generate_uniform_candidates(video_path, cfg)
     print(f"  Generated {len(candidates)} candidate timestamps\n")
     
     print("[Phase 2] Extracting frames...")
@@ -581,7 +585,8 @@ def run_keyframe_pipeline(video_path: str, config: Optional[Dict] = None) -> Dic
     print(f"{'='*60}")
     print("SUMMARY")
     print(f"{'='*60}")
-    print(f"  Scenes detected:     {len(scenes)}")
+    print("  Sampling mode:       uniform_full_video")
+    print(f"  Video duration:      {duration:.2f}s")
     print(f"  Candidates sampled:  {len(candidates)}")
     print(f"  Passed filters:      {len(filtered)}")
     print(f"  After dedup:         {len(deduped)}")
@@ -604,7 +609,9 @@ def run_keyframe_pipeline(video_path: str, config: Optional[Dict] = None) -> Dic
         "selected_json": str(selected_json),
         "selected_ranked_json": str(selected_ranked_json),
         "stats": {
-            "scenes_detected": len(scenes),
+            "scenes_detected": 0,
+            "sampling_mode": "uniform_full_video",
+            "video_duration_seconds": duration,
             "candidates_sampled": len(candidates),
             "rejected": len(rejected),
             "passed_filters": len(filtered),
