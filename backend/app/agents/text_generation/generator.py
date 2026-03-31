@@ -75,6 +75,15 @@ def build_prompt(
     return prompt
 
 
+def _append_freeform_output_guardrails(prompt: str) -> str:
+    return (
+        f"{prompt}\n\nFINAL OUTPUT RULES:\n"
+        "- Return only the requested final content body.\n"
+        "- Do not include titles, headings, labels, section dividers, preambles, notes, or explanations.\n"
+        "- Do not add visual suggestions, image ideas, image prompts, or any separate recommendations unless explicitly requested.\n"
+    )
+
+
 def generate_text(
     input_text: str,
     preset_id: str,
@@ -148,6 +157,9 @@ def generate_text(
     # Add max length constraint to prompt if specified
     if max_length:
         final_prompt = f"{final_prompt}\n\nIMPORTANT: Maximum output length is {max_length} characters."
+
+    if not output_format:
+        final_prompt = _append_freeform_output_guardrails(final_prompt)
     
     # Generate using Gemini with structured output if schema is provided
     if output_format:
