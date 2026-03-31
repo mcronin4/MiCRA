@@ -1,17 +1,11 @@
 """
 Image generation service using Gemini API's native image generation.
 """
-from google import genai
 from google.genai import types
-from dotenv import load_dotenv
-import os
 import base64
 from typing import Optional, Tuple
 
-load_dotenv()
-
-gemini_api_key = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=gemini_api_key)
+from ...llm.gemini import format_exception_for_user, run_with_gemini_client
 
 
 def generate_image_from_text(
@@ -31,15 +25,19 @@ def generate_image_from_text(
         - On failure: (None, error_message)
     """
     try:
-        response = client.models.generate_content(
+        response = run_with_gemini_client(
             model="gemini-2.5-flash-image",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=['Image'],
-                image_config=types.ImageConfig(
-                    aspect_ratio=aspect_ratio,
+            operation_name="image_generate_from_text",
+            request_fn=lambda client: client.models.generate_content(
+                model="gemini-2.5-flash-image",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=['Image'],
+                    image_config=types.ImageConfig(
+                        aspect_ratio=aspect_ratio,
+                    )
                 )
-            )
+            ),
         )
         
         # Extract image from response
@@ -53,7 +51,7 @@ def generate_image_from_text(
         return None, "No image was generated"
         
     except Exception as e:
-        return None, str(e)
+        return None, format_exception_for_user(e)
 
 
 def generate_image_from_image(
@@ -92,15 +90,19 @@ def generate_image_from_image(
             )
         ]
         
-        response = client.models.generate_content(
+        response = run_with_gemini_client(
             model="gemini-2.5-flash-image",
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_modalities=['Image'],
-                image_config=types.ImageConfig(
-                    aspect_ratio=aspect_ratio,
+            operation_name="image_generate_from_image",
+            request_fn=lambda client: client.models.generate_content(
+                model="gemini-2.5-flash-image",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_modalities=['Image'],
+                    image_config=types.ImageConfig(
+                        aspect_ratio=aspect_ratio,
+                    )
                 )
-            )
+            ),
         )
         
         # Extract image from response
@@ -113,4 +115,4 @@ def generate_image_from_image(
         return None, "No image was generated"
         
     except Exception as e:
-        return None, str(e)
+        return None, format_exception_for_user(e)

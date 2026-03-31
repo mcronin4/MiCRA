@@ -18,6 +18,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ...llm.gemini import has_configured_gemini_api_keys, run_with_gemini_client
+
 logger = logging.getLogger(__name__)
 
 MODEL = "veo-3.1-generate-preview"
@@ -34,9 +36,9 @@ _VALID_ASPECT_RATIOS = ("16:9", "9:16")
 _VALID_RESOLUTIONS = ("720p", "1080p", "4k")
 
 
-def _build_client():
+def _build_vertex_client():
     """
-    Build a google.genai.Client with the best available auth.
+    Build a Vertex AI client when service-account credentials are configured.
 
     Priority:
       1. GCP_JSON_KEY (JSON string in env) → Vertex AI mode
@@ -95,6 +97,137 @@ def _build_client():
 
 def _is_live() -> bool:
     return os.getenv("VEO_ENABLE_LIVE_CALLS", "").lower() in ("true", "1", "yes")
+
+
+def _has_vertex_auth() -> bool:
+    return bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+
+
+def _execute_generate_video_with_client(
+    client: Any,
+    *,
+    prompt: str,
+    config: Any,
+    duration: str,
+    aspect_ratio: str,
+    resolution: str,
+    reference_images: list[Any],
+    negative_prompt: str | None,
+) -> bytes:
+    call_kwargs: dict[str, Any] = {
+        "model": MODEL,
+        "prompt": prompt,
+        "config": config,
+    }
+
+    logger.info(
+        "Submitting Veo generation (duration=%ss, ar=%s, res=%s, ref_images=%d)",
+        duration, aspect_ratio, resolution, len(reference_images),
+    )
+    logger.info("=== VEO PROMPT ===\n%s\n=== END PROMPT ===", prompt)
+    if negative_prompt:
+        logger.info("=== VEO NEGATIVE PROMPT ===\n%s\n=== END NEGATIVE PROMPT ===", negative_prompt)
+
+    operation = client.models.generate_videos(**call_kwargs)
+
+    elapsed = 0.0
+    logger.info("Waiting for Veo to generate video (timeout %ds)...", _MAX_POLL_SEC)
+    while not operation.done:
+        if elapsed >= _MAX_POLL_SEC:
+            raise RuntimeError(f"Veo generation timed out after {_MAX_POLL_SEC}s")
+        time.sleep(_POLL_INTERVAL_SEC)
+        elapsed += _POLL_INTERVAL_SEC
+        logger.info("  Still generating... %ds / %ds", int(elapsed), _MAX_POLL_SEC)
+        operation = client.operations.get(operation)
+
+    logger.info("Veo generation complete! (%.0fs elapsed)", elapsed)
+
+    op_error = getattr(operation, "error", None)
+    if op_error:
+        logger.error("Veo operation error: %s", op_error)
+        raise RuntimeError(f"Veo generation failed: {op_error}")
+
+    if operation.response is None:
+        logger.error(
+            "Veo operation finished but response is None. "
+            "operation.done=%s, operation.name=%s, operation attrs=%s",
+            operation.done,
+            getattr(operation, "name", "?"),
+            [a for a in dir(operation) if not a.startswith("_")],
+        )
+        raise RuntimeError(
+            "Veo generation returned no response. This typically means the "
+            "API rejected the request silently (e.g. unsupported feature, "
+            "content policy violation, or invalid reference images). "
+            "Check the logs above and try with fewer/different images or "
+            "a different prompt."
+        )
+
+    generated_videos = operation.response.generated_videos
+    if not generated_videos:
+        raise RuntimeError("Veo returned no generated videos")
+
+    video_obj = generated_videos[0].video
+    video_bytes: bytes | None = None
+
+    raw = getattr(video_obj, "video_bytes", None)
+    if raw and isinstance(raw, bytes) and len(raw) > 0:
+        logger.info("Video bytes available directly on response object")
+        video_bytes = raw
+
+    if not video_bytes:
+        try:
+            client.files.download(file=video_obj)
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                tmp_path = tmp.name
+            try:
+                video_obj.save(tmp_path)
+                video_bytes = Path(tmp_path).read_bytes()
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+        except (ValueError, AttributeError):
+            pass
+
+    if not video_bytes:
+        uri = getattr(video_obj, "uri", None)
+        if uri:
+            logger.info("Downloading video from URI: %s", uri[:120])
+            import requests as _requests
+
+            sa_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            gcp_json = os.getenv("GCP_JSON_KEY")
+            headers = {}
+            from google.oauth2 import service_account as _sa
+            from google.auth.transport.requests import Request as _Req
+            if gcp_json:
+                creds_info = json.loads(gcp_json)
+                creds = _sa.Credentials.from_service_account_info(
+                    creds_info,
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                )
+                creds.refresh(_Req())
+                headers["Authorization"] = f"Bearer {creds.token}"
+            elif sa_path:
+                creds = _sa.Credentials.from_service_account_file(
+                    sa_path,
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                )
+                creds.refresh(_Req())
+                headers["Authorization"] = f"Bearer {creds.token}"
+            dl_resp = _requests.get(uri, headers=headers, timeout=120)
+            dl_resp.raise_for_status()
+            video_bytes = dl_resp.content
+
+    if not video_bytes:
+        raise RuntimeError("Downloaded video file is empty")
+
+    logger.info("Video downloaded: %d bytes", len(video_bytes))
+    return video_bytes
 
 
 def generate_video_with_veo(
@@ -179,125 +312,36 @@ def generate_video_with_veo(
 
     config = types.GenerateVideosConfig(**config_kwargs)
 
-    client = _build_client()
-
-    # Build the generate_videos call
-    call_kwargs: dict[str, Any] = {
-        "model": MODEL,
-        "prompt": prompt,
-        "config": config,
-    }
-
-    logger.info(
-        "Submitting Veo generation (duration=%ss, ar=%s, res=%s, ref_images=%d)",
-        duration, aspect_ratio, resolution, len(reference_images),
-    )
-    logger.info("=== VEO PROMPT ===\n%s\n=== END PROMPT ===", prompt)
-    if negative_prompt:
-        logger.info("=== VEO NEGATIVE PROMPT ===\n%s\n=== END NEGATIVE PROMPT ===", negative_prompt)
-
-    operation = client.models.generate_videos(**call_kwargs)
-
-    # Poll for completion
-    elapsed = 0.0
-    logger.info("Waiting for Veo to generate video (timeout %ds)...", _MAX_POLL_SEC)
-    while not operation.done:
-        if elapsed >= _MAX_POLL_SEC:
-            raise RuntimeError(f"Veo generation timed out after {_MAX_POLL_SEC}s")
-        time.sleep(_POLL_INTERVAL_SEC)
-        elapsed += _POLL_INTERVAL_SEC
-        logger.info("  Still generating... %ds / %ds", int(elapsed), _MAX_POLL_SEC)
-        operation = client.operations.get(operation)
-
-    logger.info("Veo generation complete! (%.0fs elapsed)", elapsed)
-
-    # Check for API-side errors
-    op_error = getattr(operation, "error", None)
-    if op_error:
-        logger.error("Veo operation error: %s", op_error)
-        raise RuntimeError(f"Veo generation failed: {op_error}")
-
-    if operation.response is None:
-        # Log everything available on the operation for debugging
-        logger.error(
-            "Veo operation finished but response is None. "
-            "operation.done=%s, operation.name=%s, operation attrs=%s",
-            operation.done,
-            getattr(operation, "name", "?"),
-            [a for a in dir(operation) if not a.startswith("_")],
+    if _has_vertex_auth():
+        client = _build_vertex_client()
+        return _execute_generate_video_with_client(
+            client,
+            prompt=prompt,
+            config=config,
+            duration=duration,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            reference_images=reference_images,
+            negative_prompt=negative_prompt,
         )
+
+    if not has_configured_gemini_api_keys():
         raise RuntimeError(
-            "Veo generation returned no response. This typically means the "
-            "API rejected the request silently (e.g. unsupported feature, "
-            "content policy violation, or invalid reference images). "
-            "Check the logs above and try with fewer/different images or "
-            "a different prompt."
+            "No auth configured. Set GOOGLE_APPLICATION_CREDENTIALS for Vertex AI or "
+            "configure GEMINI_API_KEY_1 through GEMINI_API_KEY_5 (or GEMINI_API_KEY for local fallback)."
         )
 
-    # Extract video
-    generated_videos = operation.response.generated_videos
-    if not generated_videos:
-        raise RuntimeError("Veo returned no generated videos")
-
-    video_obj = generated_videos[0].video
-    video_bytes: bytes | None = None
-
-    # 1. Check if bytes are already on the object (Vertex AI mode)
-    raw = getattr(video_obj, "video_bytes", None)
-    if raw and isinstance(raw, bytes) and len(raw) > 0:
-        logger.info("Video bytes available directly on response object")
-        video_bytes = raw
-
-    # 2. Try Gemini API download (only works in non-Vertex mode)
-    if not video_bytes:
-        try:
-            client.files.download(file=video_obj)
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-                tmp_path = tmp.name
-            try:
-                video_obj.save(tmp_path)
-                video_bytes = Path(tmp_path).read_bytes()
-            finally:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-        except (ValueError, AttributeError):
-            pass
-
-    # 3. Try downloading from URI
-    if not video_bytes:
-        uri = getattr(video_obj, "uri", None)
-        if uri:
-            logger.info("Downloading video from URI: %s", uri[:120])
-            import requests as _requests
-            sa_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-            gcp_json = os.getenv("GCP_JSON_KEY")
-            headers = {}
-            from google.oauth2 import service_account as _sa
-            from google.auth.transport.requests import Request as _Req
-            if gcp_json:
-                creds_info = json.loads(gcp_json)
-                creds = _sa.Credentials.from_service_account_info(
-                    creds_info,
-                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
-                )
-                creds.refresh(_Req())
-                headers["Authorization"] = f"Bearer {creds.token}"
-            elif sa_path:
-                creds = _sa.Credentials.from_service_account_file(
-                    sa_path,
-                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
-                )
-                creds.refresh(_Req())
-                headers["Authorization"] = f"Bearer {creds.token}"
-            dl_resp = _requests.get(uri, headers=headers, timeout=120)
-            dl_resp.raise_for_status()
-            video_bytes = dl_resp.content
-
-    if not video_bytes:
-        raise RuntimeError("Downloaded video file is empty")
-
-    logger.info("Video downloaded: %d bytes", len(video_bytes))
-    return video_bytes
+    return run_with_gemini_client(
+        model=MODEL,
+        operation_name="generate_videos",
+        request_fn=lambda client: _execute_generate_video_with_client(
+            client,
+            prompt=prompt,
+            config=config,
+            duration=duration,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            reference_images=reference_images,
+            negative_prompt=negative_prompt,
+        ),
+    )

@@ -1,4 +1,8 @@
 
+## Gemini Rotation
+
+Production Gemini key rotation setup lives in [GEMINI_ROTATION_SETUP.md](./GEMINI_ROTATION_SETUP.md).
+
 ## Video Generation (GENERATE_VIDEO)
 
 ### Environment Variables
@@ -7,11 +11,13 @@
 |---|---|---|---|
 | `GOOGLE_APPLICATION_CREDENTIALS` | For live calls* | — | Path to GCP service-account JSON key (Vertex AI mode) |
 | `GEMINI_API_KEY` | For live calls* | — | Gemini API key (alternative to service account) |
+| `GEMINI_API_KEY_1` ... `GEMINI_API_KEY_5` | No | — | Preferred production Gemini API key slots for auto-rotation |
+| `GEMINI_ROTATION_MAX_WAIT_SECONDS` | No | `60` | Max time to wait for a cooled-down Gemini key before returning a friendly error |
 | `VEO_ENABLE_LIVE_CALLS` | No | `false` | Set to `true` to enable real Veo API calls |
 | `ARTIFACT_BACKEND` | No | — | Set to `local` for dev-local artifact storage |
 | `ARTIFACTS_DIR` | No | `.artifacts/` | Override local artifact storage directory |
 
-*One of `GOOGLE_APPLICATION_CREDENTIALS` or `GEMINI_API_KEY` is required for live Veo calls.
+*One of `GOOGLE_APPLICATION_CREDENTIALS`, `GEMINI_API_KEY`, or the numbered Gemini key slots is required for live Veo calls.
 
 ### Local Asset Setup
 

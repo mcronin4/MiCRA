@@ -28,6 +28,7 @@ from typing import Any, Callable, Literal
 
 from pydantic import BaseModel
 
+from app.llm.gemini import format_exception_for_user
 from app.models.blueprint import Blueprint, BlueprintConnection
 from app.db.supabase import get_supabase
 
@@ -1400,7 +1401,7 @@ async def execute_workflow(
 
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - node_start) * 1000)
-            error_msg = f"{type(e).__name__}: {e}"
+            error_msg = format_exception_for_user(e)
             logger.exception("Node %s failed: %s", node_id, error_msg)
             return NodeExecutionResult(
                 node_id=node_id,
@@ -1597,7 +1598,7 @@ async def execute_workflow_streaming(
 
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - node_start) * 1000)
-            error_msg = f"{type(e).__name__}: {e}"
+            error_msg = format_exception_for_user(e)
             logger.exception("Node %s failed: %s", node_id, error_msg)
             return NodeExecutionResult(
                 node_id=node_id,

@@ -8,6 +8,7 @@ from uuid import UUID
 from datetime import datetime
 from ...agents.text_generation.generator import generate_text
 from ...auth.dependencies import get_current_user, User, get_supabase_client
+from ...llm.gemini import format_exception_for_user
 from supabase import Client
 
 router = APIRouter(prefix="/text-generation", tags=["text-generation"])
@@ -385,6 +386,6 @@ async def generate_text_endpoint(
         return GenerateResponse(
             success=False,
             output={},
-            error=str(e)
+            error=format_exception_for_user(e)
         )
 
