@@ -61,5 +61,6 @@ STYLE:
 - Hashtags: either none OR exactly 2 relevant ones
 
 Output ONLY the post content. No preamble, no explanations.
-"""
+Do not include visual suggestions, image ideas, or any extra section before or after the post.
+    """
     return query_gemini(prompt)
