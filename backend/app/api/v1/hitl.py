@@ -11,7 +11,7 @@ from ...agents.text_generation.email_generation import generate_email
 from ...agents.text_generation.tiktok_generation import generate_tiktok_script
 from ...agents.text_generation.content_parser import parse_email_content, parse_linkedin_content, parse_tiktok_content
 from ...agents.summarization.summarizer import summarize
-from google.genai.errors import ServerError
+from ...llm.gemini import GeminiRequestError, format_exception_for_user
 import re
 
 router = APIRouter(prefix="/hitl")
@@ -524,5 +524,5 @@ async def chat(request: ChatRequest):
 
         response = generate_chatbot_response(request.message, combined_source_texts, fallback_tone)
         return ChatResponse(message=response, conversation_state={})
-    except ServerError:
-        return ChatResponse(message="The model is currently overloaded. Please try again later.", conversation_state={})
+    except GeminiRequestError as exc:
+        return ChatResponse(message=format_exception_for_user(exc), conversation_state={})

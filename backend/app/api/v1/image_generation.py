@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 from ...agents.image_generation.generator import generate_image_from_text, generate_image_from_image
+from ...llm.gemini import format_exception_for_user
 
 router = APIRouter(prefix="/image-generation", tags=["image-generation"])
 
@@ -58,4 +59,4 @@ async def generate_image(request: GenerateImageRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=format_exception_for_user(e))

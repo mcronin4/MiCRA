@@ -19,6 +19,7 @@ from typing import Optional, List, Dict, Any, Literal
 from uuid import UUID
 from datetime import datetime
 from app.auth.dependencies import User, get_current_user, get_supabase_client
+from app.llm.gemini import format_exception_for_user
 from supabase import Client
 
 
@@ -378,7 +379,10 @@ async def copilot_plan_workflow(
             }
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to plan workflow: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to plan workflow: {format_exception_for_user(e)}",
+        )
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse)

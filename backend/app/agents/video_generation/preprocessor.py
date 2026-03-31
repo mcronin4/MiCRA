@@ -21,12 +21,6 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _get_gemini_client():
-    """Reuse the project-wide Gemini client."""
-    from app.llm.gemini import client
-    return client
-
-
 # ---------------------------------------------------------------------------
 # 1. Image selection
 # ---------------------------------------------------------------------------
@@ -74,8 +68,8 @@ def _select_images_with_gemini(
 ) -> list[bytes]:
     """Use Gemini 2.5 Flash to pick the most relevant images."""
     from google.genai import types
+    from app.llm.gemini import run_with_gemini_client
 
-    client = _get_gemini_client()
     context = user_prompt or text_context or "a visually compelling short video"
 
     parts: list[Any] = [
@@ -94,9 +88,13 @@ def _select_images_with_gemini(
             types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
         )
 
-    response = client.models.generate_content(
+    response = run_with_gemini_client(
         model="gemini-2.5-flash",
-        contents=parts,
+        operation_name="video_preprocessor_select_images",
+        request_fn=lambda client: client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=parts,
+        ),
     )
 
     # Parse the comma-separated indices
@@ -132,21 +130,24 @@ def analyze_images(
         return []
 
     from google.genai import types
-
-    client = _get_gemini_client()
+    from app.llm.gemini import run_with_gemini_client
     descriptions: list[str] = []
 
     for i, img_bytes in enumerate(image_bytes_list):
         try:
-            response = client.models.generate_content(
+            response = run_with_gemini_client(
                 model="gemini-2.5-flash",
-                contents=[
-                    types.Part.from_text(
+                operation_name="video_preprocessor_analyze_image",
+                request_fn=lambda client: client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=[
+                        types.Part.from_text(
                         "Describe this image in detail — subject, composition, "
                         "colors, mood, and setting. Be concise (2-3 sentences)."
                     ),
-                    types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
-                ],
+                        types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                    ],
+                ),
             )
             descriptions.append(response.text.strip())
         except Exception as e:
@@ -256,10 +257,15 @@ def enhance_prompt(
     combined = "\n".join(parts)
 
     try:
-        client = _get_gemini_client()
-        response = client.models.generate_content(
+        from app.llm.gemini import run_with_gemini_client
+
+        response = run_with_gemini_client(
             model="gemini-2.5-flash",
-            contents=combined,
+            operation_name="video_preprocessor_enhance_prompt",
+            request_fn=lambda client: client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=combined,
+            ),
         )
         enhanced = response.text.strip()
         if enhanced:

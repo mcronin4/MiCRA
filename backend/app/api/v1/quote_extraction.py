@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 
 from ...agents.quote_extraction.extractor import extract_quotes
+from ...llm.gemini import format_exception_for_user
 
 router = APIRouter(prefix="/quote-extraction")
 
@@ -34,4 +35,4 @@ async def extract_quotes_endpoint(request: QuoteExtractionRequest):
         )
         return QuoteExtractionResponse(success=True, quotes=quotes)
     except Exception as exc:
-        return QuoteExtractionResponse(success=False, error=str(exc))
+        return QuoteExtractionResponse(success=False, error=format_exception_for_user(exc))

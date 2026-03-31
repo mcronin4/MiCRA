@@ -7,6 +7,7 @@ import uuid
 from ...agents.summarization.summarizer import summarize
 from ...agents.text_generation.linkedin_generation import generate_linkedin_post
 from ...agents.text_generation.email_generation import generate_email
+from ...llm.gemini import format_exception_for_user
 
 router = APIRouter(prefix="/trigger_job") #path for the endpoint
 
@@ -53,4 +54,7 @@ async def trigger_job(job_request: JobRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to trigger job: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to trigger job: {format_exception_for_user(e)}",
+        )
