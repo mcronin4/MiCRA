@@ -3,6 +3,7 @@ Unified text generation service using Supabase-stored presets.
 """
 from typing import Optional, List, Dict, Any
 import json
+import re
 from ...llm.gemini import query_gemini
 from ...db.supabase import get_supabase
 
@@ -82,6 +83,19 @@ def _append_freeform_output_guardrails(prompt: str) -> str:
         "- Do not include titles, headings, labels, section dividers, preambles, notes, or explanations.\n"
         "- Do not add visual suggestions, image ideas, image prompts, or any separate recommendations unless explicitly requested.\n"
     )
+
+
+_UNWANTED_TRAILING_SECTION_PATTERN = re.compile(
+    r"(?:\n\s*(?:---+|\*\*\*+)\s*)?\n\s*"
+    r"(?:visual|image|creative)\s+"
+    r"(?:suggestions?|ideas?|prompts?|recommendations?)\s*:\s*.*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _sanitize_freeform_text_output(text: str) -> str:
+    cleaned = _UNWANTED_TRAILING_SECTION_PATTERN.sub("", text).strip()
+    return cleaned
 
 
 def generate_text(
@@ -175,6 +189,8 @@ def generate_text(
     else:
         # Fallback to plain text generation
         generated_output = query_gemini(final_prompt)
+        if isinstance(generated_output, str):
+            generated_output = _sanitize_freeform_text_output(generated_output)
         # Wrap in a simple structure
         generated_output = {"content": generated_output}
     
