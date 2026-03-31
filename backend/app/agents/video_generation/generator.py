@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+import json
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +45,21 @@ def _build_client():
     from google import genai
 
     sa_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    gcp_json = os.getenv("GCP_JSON_KEY")
     api_key = os.getenv("GEMINI_API_KEY")
+
+    if gcp_json:
+        creds_info = json.loads(gcp_json)
+        project = os.getenv("GOOGLE_CLOUD_PROJECT", creds_info.get("project_id"))
+        location = os.getenv("VERTEX_AI_LOCATION", "us-central1")
+        
+        # Pass the dictionary directly to the client
+        return genai.Client(
+            vertexai=True,
+            project=project,
+            location=location,
+            credentials=creds_info # Modern SDKs accept the dict here
+        )
 
     if sa_path:
         # Vertex AI mode with service-account credentials
@@ -249,10 +264,18 @@ def generate_video_with_veo(
             logger.info("Downloading video from URI: %s", uri[:120])
             import requests as _requests
             sa_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            gcp_json = os.getenv("GCP_JSON_KEY")
             headers = {}
-            if sa_path:
-                from google.oauth2 import service_account as _sa
-                from google.auth.transport.requests import Request as _Req
+            from google.oauth2 import service_account as _sa
+            from google.auth.transport.requests import Request as _Req
+            if gcp_json:
+                creds_info = json.loads(gcp_json)
+                creds = _sa.Credentials.from_service_acccount_info(
+                    creds_info,
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                )
+                
+            elif sa_path:
                 creds = _sa.Credentials.from_service_account_file(
                     sa_path,
                     scopes=["https://www.googleapis.com/auth/cloud-platform"],
