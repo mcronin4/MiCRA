@@ -55,3 +55,5 @@ keys/
 # Dev-local video generation assets and artifacts
 local_test_assets/
 .artifacts/
+
+micra-intent-layer-session(1).md
